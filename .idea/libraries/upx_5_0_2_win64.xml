@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="upx-5.0.2-win64">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/assets/upx-5.0.2-win64.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
