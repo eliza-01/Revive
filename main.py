@@ -1,34 +1,30 @@
-# main.py — точка входа в приложение
-
-from core.updater import check_and_update, try_self_replace
-from ui.launcher_ui import launch_gui
-import threading
+# main.py
+import os
 import sys
 
-LOCAL_VERSION = "1.1.7"
+from app import launch_gui
 
-# Флаг для остановки
-stop_requested = False
+def _base_dir():
+    # Путь рядом с исполняемым файлом при PyInstaller, иначе — рядом с этим скриптом
+    return os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
 
-def listen_for_kill():
-    global stop_requested
-    print("[INFO] Ожидание команды 'KILL' для завершения...")
-    for line in sys.stdin:
-        if line.strip().upper() == "KILL":
-            stop_requested = True
-            print("[STOP] Команда 'KILL' получена — завершение работы.")
-            break
+def get_local_version() -> str:
+    # 1) Переменная окружения имеет приоритет
+    env_ver = os.getenv("REVIVE_VERSION")
+    if env_ver:
+        return env_ver.strip()
+
+    # 2) Файл VERSION в корне проекта
+    try:
+        with open(os.path.join(_base_dir(), "VERSION"), "r", encoding="utf-8") as f:
+            v = f.read().strip()
+            if v:
+                return v
+    except Exception:
+        pass
+
+    # 3) Запасное значение
+    return "0.0.0"
 
 if __name__ == "__main__":
-    # Запускаем слушатель в фоновом потоке
-    kill_thread = threading.Thread(target=listen_for_kill, daemon=True)
-    kill_thread.start()
-
-    # Шаг 1: если запускаемся с флагом обновления — заменить .exe
-    try_self_replace()
-
-    # Шаг 2: проверяем наличие новой версии
-    check_and_update(LOCAL_VERSION)
-
-    # Шаг 3: запускаем GUI
-    launch_gui(LOCAL_VERSION)
+    launch_gui(get_local_version())
