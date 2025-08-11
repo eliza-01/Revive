@@ -1,11 +1,24 @@
 # core/servers/l2mad/zones/respawn.py
-from typing import Dict, Tuple, List
+# Зоны и шаблоны для подъёма после смерти.
+from typing import Dict, Tuple, List, Union
 
-Zone = Tuple[int, int, int, int]
-RGB = Tuple[int, int, int]
+ZoneLTRB = Tuple[int, int, int, int]
+ZoneDecl = Union[ZoneLTRB, dict]
 
-ZONES: Dict[str, Zone] = {
-    # TODO: координаты кнопки "В деревню"
+ZONES: Dict[str, ZoneDecl] = {
+    # Баннер/область смерти, если нужно ждать появления (опционально)
+    "death_banner": (100, 80, 900, 260),
+
+    # Кнопка «В деревню». Поддерживаем центрирование через dict.
+    "to_village": {"centered": True, "width": 200, "height": 160},
+
+    # Подтверждение (если есть). Можно указать фикс/центр/фуллскрин.
+    "confirm": (460, 500, 620, 560),
 }
 
-COLORS: Dict[str, List[Tuple[RGB, RGB]]] = {}
+# Пути до шаблонов через серверный resolver (см. core/servers/l2mad/templates/resolver.py)
+TEMPLATES: Dict[str, List[str]] = {
+    "death_banner": ["death", "to_village_button.png"],  # при надобности заменить на реальный баннер
+    "to_village":   ["death", "to_village_button.png"],
+    # "confirm":    ["death", "confirm.png"],  # добавишь при наличии
+}

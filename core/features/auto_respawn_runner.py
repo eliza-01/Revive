@@ -1,11 +1,11 @@
 # core/features/auto_respawn_runner.py
-# Только "встать". После успешного выполнения вызывает post_hook(window_info)
+# Автореспавн: только "встать" по шаблонам сервера. После успеха вызывает post_hook.
+import importlib
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict, Tuple
 
-from core.servers.base_config import load_feature_config
-from core.vision.matching import find_in_zone, click_center
+from core.vision.matching.template_matcher import match_in_zone
 
 class AutoRespawnRunner:
     def __init__(
@@ -24,19 +24,24 @@ class AutoRespawnRunner:
         self.server = server
         self.poll_interval = poll_interval
         self.debug = debug
-        self._window_provider = window_provider or (lambda: None)
+        self._get_window = window_provider or (lambda: None)
 
-        self._post_hook = None
+        self._post_hook: Optional[Callable[[dict], None]] = None
         self._running = False
         self._thr: Optional[threading.Thread] = None
-        self._cfg = load_feature_config(self.server, "respawn")
 
+        self._zones: Dict[str, Tuple[int, int, int, int]] = {}
+        self._templates: Dict[str, list] = {}
+        self._sequence = []
+        self._load_config()
+
+    # ---- public ----
     def set_language(self, lang: str):
-        self.language = lang
+        self.language = (lang or "rus").lower()
 
     def set_server(self, server: str):
         self.server = server
-        self._cfg = load_feature_config(server, "respawn")
+        self._load_config()
 
     def set_post_respawn_hook(self, fn: Callable[[dict], None]):
         self._post_hook = fn
@@ -45,12 +50,20 @@ class AutoRespawnRunner:
         return self._running
 
     def is_dead(self) -> bool:
-        win = self._window_provider() or {}
-        zone = self._cfg["ZONES"].get("death_banner")
-        tpl = self._cfg["TEMPLATES"].get("death_banner")
-        if not zone or not tpl:
+        # наличие баннера смерти — это wait_template первого шага
+        win = self._get_window() or {}
+        if not win:
             return False
-        return find_in_zone(win, zone, tpl) is not None
+        # ищем по первому wait_template в сценарии
+        for step in self._sequence:
+            if step[0] == "wait_template":
+                zone_key, tpl_key, _timeout, thr = step[1], step[2], step[3], (step[4] if len(step) > 4 else 0.87)
+                zone = self._zones.get(zone_key)
+                tpl = self._templates.get(tpl_key)
+                if not zone or not tpl:
+                    return False
+                return match_in_zone(win, zone, self.server, self.language, tpl, thr) is not None
+        return False
 
     def start(self):
         if self._running:
@@ -62,65 +75,92 @@ class AutoRespawnRunner:
     def stop(self):
         self._running = False
 
+    # ---- internals ----
+    def _load_config(self):
+        try:
+            mod = importlib.import_module(f"core.servers.{self.server}.zones.respawn")
+            self._zones = getattr(mod, "ZONES", {})
+            self._templates = getattr(mod, "TEMPLATES", {})
+            self._sequence = getattr(mod, "SEQUENCE", [])
+            if self.debug:
+                print(f"[respawn] config loaded for {self.server}")
+        except Exception as e:
+            print(f"[respawn] config load error: {e}")
+            self._zones, self._templates, self._sequence = {}, {}, []
+
     def _loop(self):
         while self._running:
             try:
-                if self.is_dead():
-                    if self.debug:
-                        print("[respawn] dead → to village")
-                    ok = self._perform_to_village()
-                    if ok and self._post_hook:
-                        win = self._window_provider() or {}
+                if self._try_respawn_cycle():
+                    # дать времени UI стабилизироваться
+                    time.sleep(0.8)
+                    hook = self._post_hook
+                    if hook:
+                        win = self._get_window() or {}
                         try:
-                            self._post_hook(win)
+                            hook(win)
                         except Exception as e:
                             print(f"[respawn] post hook error: {e}")
-                    time.sleep(1.0)
                 time.sleep(self.poll_interval)
             except Exception as e:
                 print(f"[respawn] loop error: {e}")
                 time.sleep(0.5)
 
-    def _perform_to_village(self) -> bool:
-        seq = self._cfg["SEQUENCE"]
-        win = self._window_provider() or {}
-        for step in seq:
-            action = step[0]
-            if action == "wait_template":
-                zone_key, tpl_key, timeout_ms = step[1], step[2], step[3]
-                if not self._wait_template(win, zone_key, tpl_key, timeout_ms):
+    def _try_respawn_cycle(self) -> bool:
+        win = self._get_window() or {}
+        if not win or not self._sequence:
+            return False
+
+        # сначала проверяем, что действительно «мертв»
+        first_wait = next((s for s in self._sequence if s[0] == "wait_template"), None)
+        if not first_wait:
+            return False
+        zkey, tkey, timeout_ms, thr = first_wait[1], first_wait[2], first_wait[3], (first_wait[4] if len(first_wait) > 4 else 0.87)
+        if not self._wait_template(win, zkey, tkey, timeout_ms, thr):
+            return False
+
+        # выполняем шаги
+        for step in self._sequence:
+            kind = step[0]
+            if kind == "wait_template":
+                zkey, tkey, timeout_ms, thr = step[1], step[2], step[3], (step[4] if len(step) > 4 else 0.87)
+                if not self._wait_template(win, zkey, tkey, timeout_ms, thr):
+                    if self.debug:
+                        print(f"[respawn] wait timeout: {zkey}/{tkey}")
                     return False
-            elif action == "click_template":
-                zone_key, tpl_key, timeout_ms = step[1], step[2], step[3]
-                pt = self._wait_point(win, zone_key, tpl_key, timeout_ms)
+            elif kind == "click_template":
+                zkey, tkey, timeout_ms, thr = step[1], step[2], step[3], (step[4] if len(step) > 4 else 0.87)
+                pt = self._wait_point(win, zkey, tkey, timeout_ms, thr)
                 if not pt:
+                    if self.debug:
+                        print(f"[respawn] click timeout: {zkey}/{tkey}")
                     return False
-                click_center(self.controller, pt)
-            else:
-                # игнорируем прочие действия в respawn-конфиге
-                pass
+                self.controller.send(f"click:{pt[0]},{pt[1]}")
+                time.sleep(0.08)
+            # игнорируем прочие типы
+
+        if self.debug:
+            print("[respawn] done")
         return True
 
-    def _wait_template(self, win, zone_key, tpl_key, timeout_ms) -> bool:
-        deadline = time.time() + max(0, timeout_ms)/1000.0
-        zone = self._cfg["ZONES"].get(zone_key)
-        tpl = self._cfg["TEMPLATES"].get(tpl_key)
+    def _wait_template(self, win: Dict, zkey: str, tkey: str, timeout_ms: int, thr: float) -> bool:
+        deadline = time.time() + max(0, timeout_ms) / 1000.0
+        zone = self._zones.get(zkey); tpl = self._templates.get(tkey)
         if not zone or not tpl:
             return False
         while time.time() < deadline:
-            if find_in_zone(win, zone, tpl) is not None:
+            if match_in_zone(win, zone, self.server, self.language, tpl, thr):
                 return True
             time.sleep(0.05)
         return False
 
-    def _wait_point(self, win, zone_key, tpl_key, timeout_ms):
-        deadline = time.time() + max(0, timeout_ms)/1000.0
-        zone = self._cfg["ZONES"].get(zone_key)
-        tpl = self._cfg["TEMPLATES"].get(tpl_key)
+    def _wait_point(self, win: Dict, zkey: str, tkey: str, timeout_ms: int, thr: float):
+        deadline = time.time() + max(0, timeout_ms) / 1000.0
+        zone = self._zones.get(zkey); tpl = self._templates.get(tkey)
         if not zone or not tpl:
             return None
         while time.time() < deadline:
-            pt = find_in_zone(win, zone, tpl)
+            pt = match_in_zone(win, zone, self.server, self.language, tpl, thr)
             if pt:
                 return pt
             time.sleep(0.05)

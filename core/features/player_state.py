@@ -1,14 +1,13 @@
 # core/features/player_state.py
-# Монитор состояния персонажа: HP (пока только по цветам).
-# Зоны и цвета берём из модулей:
-#   core.servers.<server>.zones.state -> ZONES["state"]
-#   core.servers.<server>.colors.state -> COLORS["hp"] = [(low_rgb, high_rgb), ...]
+# Подсчёт HP по цветам в общей зоне STATE. Без OCR.
 import importlib
 import threading
 import time
 from typing import Callable, Optional, Dict
 
-from core.vision.colors import sample_ratio_in_zone
+import numpy as np
+from core.vision.utils.colors import mask_for_colors_bgr, biggest_horizontal_band
+from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 
 class PlayerState:
     __slots__ = ("hp_ratio", "cp_ratio", "ts")
@@ -25,15 +24,19 @@ class PlayerStateMonitor:
             on_update: Optional[Callable[[PlayerState], None]] = None,
             poll_interval: float = 0.2,
             debug: bool = False,
+            custom_capture: Optional[Callable[[Dict, tuple], Optional[np.ndarray]]] = None,
     ):
         self.server = server
         self._get_window = get_window
         self._on_update = on_update
         self.poll_interval = max(0.05, float(poll_interval))
         self.debug = debug
+        self._capture = custom_capture or capture_window_region_bgr
 
         self._zones = {}
-        self._colors = {}
+        self._colors_alive = []
+        self._colors_dead = []
+        self._tol = 3
         self._load_state_config(server)
 
         self._running = False
@@ -59,32 +62,30 @@ class PlayerStateMonitor:
 
     # -------- internals --------
     def _load_state_config(self, server: str):
-        # zones
         try:
-            zones_mod = importlib.import_module(f"core.servers.{server}.zones.state")
-            self._zones = getattr(zones_mod, "ZONES", {})
+            mod = importlib.import_module(f"core.servers.{server}.zones.state")
+            self._zones = getattr(mod, "ZONES", {})
+            colors = getattr(mod, "COLORS", {})
+            self._colors_alive = colors.get("hp_alive_rgb", [])
+            self._colors_dead = colors.get("hp_dead_rgb", [])
+            self._tol = int(getattr(mod, "HP_COLOR_TOLERANCE", 3))
         except Exception as e:
-            print(f"[state] zones load fail: {e}")
+            print(f"[state] load fail: {e}")
             self._zones = {}
-        # colors
-        try:
-            colors_mod = importlib.import_module(f"core.servers.{server}.colors.state")
-            self._colors = getattr(colors_mod, "COLORS", {})
-        except Exception as e:
-            print(f"[state] colors load fail: {e}")
-            self._colors = {}
+            self._colors_alive = []
+            self._colors_dead = []
+            self._tol = 3
 
     def _loop(self):
         while self._running:
             try:
                 win = self._get_window() or {}
                 zone = self._zones.get("state")
-                hp_ranges = self._colors.get("hp", [])
-                if zone and hp_ranges:
-                    hp = sample_ratio_in_zone(win, zone, hp_ranges)
+                if zone and (self._colors_alive or self._colors_dead):
+                    hp_ratio = self._compute_hp_ratio(win, zone)
                 else:
-                    hp = 1.0
-                st = PlayerState(hp_ratio=float(hp), cp_ratio=1.0, ts=time.time())
+                    hp_ratio = 1.0
+                st = PlayerState(hp_ratio=float(hp_ratio), cp_ratio=1.0, ts=time.time())
                 self._last = st
                 if self._on_update:
                     try:
@@ -92,8 +93,41 @@ class PlayerStateMonitor:
                     except Exception:
                         pass
                 if self.debug:
-                    print(f"[state] hp={st.hp_ratio:.2f}")
+                    print(f"[state] hp={st.hp_ratio:.3f}")
             except Exception as e:
                 if self.debug:
                     print(f"[state] loop error: {e}")
             time.sleep(self.poll_interval)
+
+    def _compute_hp_ratio(self, window: Dict, zone: tuple) -> float:
+        img = self._capture(window, zone)
+        if img is None or img.size == 0:
+            return self._last.hp_ratio  # нет картинки — сохраняем предыдущую оценку
+
+        alive_mask = mask_for_colors_bgr(img, self._colors_alive, tol=self._tol) if self._colors_alive else None
+        dead_mask  = mask_for_colors_bgr(img, self._colors_dead,  tol=self._tol) if self._colors_dead  else None
+
+        if alive_mask is not None and dead_mask is not None:
+            a_rect = biggest_horizontal_band(alive_mask)
+            d_rect = biggest_horizontal_band(dead_mask)
+            a_w = a_rect[2] if a_rect else 0
+            d_w = d_rect[2] if d_rect else 0
+            total = a_w + d_w
+            if total <= 0:
+                a_area = int(np.count_nonzero(alive_mask))
+                d_area = int(np.count_nonzero(dead_mask))
+                total = a_area + d_area
+                return a_area / total if total > 0 else self._last.hp_ratio
+            return a_w / total
+
+        if alive_mask is not None:
+            a_area = int(np.count_nonzero(alive_mask))
+            total = img.shape[0] * img.shape[1]
+            return a_area / total if total > 0 else self._last.hp_ratio
+
+        if dead_mask is not None:
+            d_area = int(np.count_nonzero(dead_mask))
+            total = img.shape[0] * img.shape[1]
+            return 1.0 - (d_area / total if total > 0 else 0.0)
+
+        return self._last.hp_ratio

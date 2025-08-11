@@ -1,4 +1,3 @@
-# app/launcher.py
 import sys
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -8,16 +7,16 @@ from core.logging_setup import init_logging
 from core.connection import ReviveController
 from core.connection_test import run_test_command
 from core.features.auto_respawn_runner import AutoRespawnRunner
-from core.features.buff_after_respawn import BuffAfterRespawnWorker
-from core.features.player_state import PlayerStateMonitor
+from core.features.auto_revive_on_zero_hp import AutoReviveOnZeroHP
+from core.features.player_state import PlayerState, PlayerStateMonitor
 from core.servers.registry import get_server_profile, list_servers
 from core.runtime.poller import RepeaterThread
 
+from app.ui.state_controls import StateControls
 from app.ui.updater_dialog import run_update_check
 from app.ui.window_probe import WindowProbe
 from app.ui.buff_controls import BuffControls
 from app.ui.tp_controls import TPControls
-from app.ui.state_controls import StateControls
 
 LOG_PATH = init_logging()
 
@@ -55,6 +54,41 @@ class ReviveLauncherUI:
                 interval=15.0,
                 debug=False,
             )
+
+        # Автоподъём при 0% HP
+        self.auto_revive = AutoReviveOnZeroHP(
+            controller=self.controller,
+            server=self.server,
+            get_window=lambda: self.winprobe.current_window_info(),
+            get_language=lambda: self.language,
+            poll_interval=0.2,
+            zero_hp_threshold=0.01,
+            confirm_timeout_s=6.0,
+            click_threshold=0.87,
+            debug=True,
+        )
+        self.auto_revive.start()
+
+        self.driver_status = None
+        self.version_status_label = None
+        self.auto_respawn_var = None
+
+        self.buff = BuffControls(
+            parent=root,
+            profile_getter=lambda: self.profile,
+            language_getter=lambda: self.language,
+            window_found_getter=lambda: bool(self.winprobe.window_found),
+        )
+        self.tp = None
+
+        try:
+            self.controller.send("ping")
+            response = self.controller.read()
+            print("[✓] Arduino ответила" if response == "pong" else "[×] Нет ответа")
+        except Exception as e:
+            print(f"[×] Ошибка связи с Arduino: {e}")
+
+        self.update_window_ref = None
 
         # Монитор состояния персонажа (HP)
         self.state_monitor = PlayerStateMonitor(
@@ -156,7 +190,6 @@ class ReviveLauncherUI:
         self.profile = get_server_profile(self.server)
         self.buff.refresh_enabled(self.profile)
 
-        # пересоздать buff_runner под новый профиль
         if hasattr(self.profile, "buff_tick"):
             if self.buff_runner and self.buff_runner.is_running():
                 self.buff_runner.stop()
@@ -168,8 +201,8 @@ class ReviveLauncherUI:
         else:
             self.buff_runner = None
 
-        # обновить state-monitor конфиг
-        self.state_monitor.set_server(self.server)
+        # обновляем и авто-подъём по 0% HP
+        self.auto_revive.set_server(self.server)
 
     def on_toggle_auto_respawn(self, is_enabled):
         if is_enabled:
@@ -247,7 +280,7 @@ class ReviveLauncherUI:
         except Exception:
             pass
         try:
-            self.state_monitor.stop()
+            self.auto_revive.stop()
         except Exception:
             pass
         if self.controller:
@@ -261,7 +294,7 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("420x600")
+    root.geometry("420x700")
     root.resizable(False, False)
     tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
     tk.Label(root, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5))

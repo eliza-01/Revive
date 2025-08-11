@@ -1,9 +1,22 @@
 # core/vision/capture/gdi.py
-def find_window(title: str):
-    known = {"Lineage", "Lineage II", "L2MAD", "L2"}
-    return 1 if title in known else 0
+"""
+Compatibility shim for legacy imports.
 
-def get_window_info(hwnd, client: bool = True):
-    if not hwnd:
-        return {}
-    return {"x": 100, "y": 100, "width": 1024, "height": 768}
+Provides:
+- find_window(title)
+- get_window_info(hwnd, client=True)
+- get_window_rect/get_client_rect
+- client_to_screen
+- gdi_capture_zone(window_info, zone_dict)
+"""
+from typing import Optional, Tuple, Dict
+import numpy as np
+
+from core.vision.win32.gdi_backend import (
+    find_window,
+    get_window_info,
+    get_window_rect,
+    get_client_rect,
+    client_to_screen,
+)
+from core.vision.capture.window_bgr_capture import gdi_capture_zone

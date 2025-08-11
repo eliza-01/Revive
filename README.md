@@ -135,15 +135,40 @@ title bar: 32px (высота на win10 для всех разрешений?)
 
 # TAB Fix
 2️⃣ Через Notepad++ (если есть)
-
 Открой файл profile.py.
-
 Ctrl+H (замена).
-
 В поле Find what вставь \t (включи Match using Regular Expression или галочку Extended).
-
 В поле Replace with вставь 4 пробела.
-
 Нажми Replace All.
-
 Сохрани.
+
+#по шаблонам. Структура:
+core/servers/l2mad/templates/<rus/eng>/<dashboard/death>/<teleport/buffer>:
+dashboard/:
+- dashboard_init.png
+- dashboard_blocked.png
+dashboard/teleport/:
+- dashboard_teleport_button.png
+teleport/villages/:
+villages/Giran/:
+- Giran.png
+- DragonValley.png
+- AntharasLair.png
+villages/Aden/:
+- Aden.png
+- SilentValley.png
+- ForsakenPlains.png
+villages/Goddard/:
+- Goddard.png
+- VarkaSilenos.png
+- HotSprings.png
+- MonasteryOfSilence.png
+dashboard/buffer/:
+- dashboard_buffer_button.png
+- dashboard_buffer_useProfile.png
+- dashboard_buffer_useMage.png
+- dashboard_buffer_useFighter.png
+- dashboard_buffer_restoreHp.png
+- dashboard_buffer_init.png
+death/:
+- to_village_button.png
