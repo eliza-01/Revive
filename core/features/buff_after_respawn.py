@@ -1,82 +1,200 @@
 # core/features/buff_after_respawn.py
-# Баф после респавна: метод dashboard|npc, ждёт окончание, сигнализирует статус
+from __future__ import annotations
+import importlib
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict, Tuple
 
-from core.servers.base_config import load_feature_config
-from core.vision.matching import find_in_zone, click_center
+from core.runtime.dashboard_guard import DASHBOARD_GUARD
+from core.vision.matching.template_matcher import match_in_zone
 
-BUFF_METHOD_DASHBOARD = "dashboard"
-BUFF_METHOD_NPC = "npc"
+BUFF_MODE_PROFILE = "profile"
+BUFF_MODE_MAGE = "mage"
+BUFF_MODE_FIGHTER = "fighter"
 
 class BuffAfterRespawnWorker:
-    def __init__(self, controller, server: str, get_window: Callable[[], Optional[dict]], get_language: Callable[[], str], on_status: Callable[[str, Optional[bool]], None]):
+    def __init__(
+            self,
+            controller,
+            server: str,
+            get_window: Callable[[], Optional[Dict]],
+            get_language: Callable[[], str],
+            on_status: Callable[[str, Optional[bool]], None] = lambda *_: None,
+            click_threshold: float = 0.87,
+            debug: bool = False,
+    ):
         self.controller = controller
         self.server = server
         self._get_window = get_window
-        self.get_language = get_language
+        self._get_language = get_language
         self._on_status = on_status
-        self._cfg = load_feature_config(server, "buff")  # ZONES, TEMPLATES, SEQUENCE: dict per method
-        self._mode = "profile"
-        self._method = BUFF_METHOD_DASHBOARD
+        self.click_threshold = click_threshold
+        self.debug = debug
+
+        self._zones = {}
+        self._templates = {}
+        self._flow = None
+        self._mode = BUFF_MODE_PROFILE
+        self._load_cfg()
 
     def set_mode(self, mode: str):
-        self._mode = (mode or "profile").lower()
+        m = (mode or BUFF_MODE_PROFILE).lower()
+        self._mode = m if m in (BUFF_MODE_PROFILE, BUFF_MODE_MAGE, BUFF_MODE_FIGHTER) else BUFF_MODE_PROFILE
 
-    def set_method(self, method: str):
-        m = (method or BUFF_METHOD_DASHBOARD).lower()
-        if m not in (BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC):
-            raise ValueError(f"unsupported buff method: {method}")
-        self._method = m
+    def set_method(self, _method: str):
+        pass  # только dashboard
 
     def run_once(self) -> bool:
-        seq_map = self._cfg["SEQUENCE"]
-        seq = seq_map.get(self._method, [])
         win = self._get_window() or {}
-        for step in seq:
-            action = step[0]
-            if action == "key":
-                key = step[1]
-                self.controller.send(f"key:{key}")
-            elif action == "wait_template":
-                zone_key, tpl_key, timeout_ms = step[1], step[2], step[3]
-                if not self._wait_template(win, zone_key, tpl_key, timeout_ms):
-                    self._on_status(f"[buff] wait timeout: {tpl_key}", False)
-                    return False
-            elif action == "click_template":
-                zone_key, tpl_key, timeout_ms = step[1], step[2], step[3]
-                pt = self._wait_point(win, zone_key, tpl_key, timeout_ms)
-                if not pt:
-                    self._on_status(f"[buff] click timeout: {tpl_key}", False)
-                    return False
-                click_center(self.controller, pt)
-            else:
-                # future: dynamic selects by profile/mode
-                pass
-        self._on_status("[buff] complete", True)
-        return True
+        if not win:
+            self._on_status("[buff] window missing", False)
+            return False
 
-    def _wait_template(self, win, zone_key, tpl_key, timeout_ms) -> bool:
-        deadline = time.time() + max(0, timeout_ms)/1000.0
-        zone = self._cfg["ZONES"].get(zone_key)
-        tpl = self._cfg["TEMPLATES"].get(tpl_key)
+        with DASHBOARD_GUARD.session():
+            if self._flow:
+                return self._run_flow(win)
+            # fallback на дефолтный сценарий
+            if not self._click_any(win, ("dashboard_tab", "dashboard_body"), "buffer_button", 2000):
+                self._on_status("[buff] buffer button not found", False)
+                return False
+            if "buffer_init" in self._templates:
+                self._wait_template(win, "dashboard_body", "buffer_init", 2000)
+            mode_key = self._mode_tpl_key()
+            if not self._click_in(win, "dashboard_body", mode_key, 2500):
+                self._on_status(f"[buff] mode '{self._mode}' not found", False)
+                return False
+            if "buffer_restore_hp" in self._templates:
+                self._click_in(win, "dashboard_body", "buffer_restore_hp", 1000)
+            self._on_status("[buff] done", True)
+            return True
+
+    # ---------- internals ----------
+    def _load_cfg(self):
+        try:
+            mod = importlib.import_module(f"core.servers.{self.server}.zones.buff")
+            self._zones = getattr(mod, "ZONES", {})
+            self._templates = getattr(mod, "TEMPLATES", {})
+        except Exception as e:
+            print(f"[buff] zones/templates load error: {e}")
+            self._zones, self._templates = {}, {}
+
+        # flow опционален
+        try:
+            flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.buff")
+            self._flow = getattr(flow_mod, "FLOW", None)
+        except Exception:
+            self._flow = None
+
+        if self.debug:
+            print(f"[buff] cfg loaded for {self.server}. flow={'yes' if self._flow else 'no'}")
+
+    def _lang(self) -> str:
+        try:
+            return (self._get_language() or "rus").lower()
+        except Exception:
+            return "rus"
+
+    def _mode_tpl_key(self) -> str:
+        return {
+            BUFF_MODE_PROFILE: "buffer_mode_profile",
+            BUFF_MODE_MAGE: "buffer_mode_mage",
+            BUFF_MODE_FIGHTER: "buffer_mode_fighter",
+        }[self._mode]
+
+    def _zone_ltrb(self, win: Dict, zone_decl):
+        if isinstance(zone_decl, tuple) and len(zone_decl) == 4:
+            return tuple(map(int, zone_decl))
+        if isinstance(zone_decl, dict):
+            ww, wh = int(win.get("width", 0)), int(win.get("height", 0))
+            if zone_decl.get("fullscreen"):
+                return (0, 0, ww, wh)
+            if zone_decl.get("centered"):
+                w, h = int(zone_decl["width"]), int(zone_decl["height"])
+                l = ww // 2 - w // 2
+                t = wh // 2 - h // 2
+                return (l, t, l + w, t + h)
+            l = int(zone_decl.get("left", 0))
+            t = int(zone_decl.get("top", 0))
+            w = int(zone_decl.get("width", 0))
+            h = int(zone_decl.get("height", 0))
+            return (l, t, l + w, t + h)
+        return (0, 0, int(win.get("width", 0)), int(win.get("height", 0)))
+
+    def _wait_template(self, win: Dict, zone_key: str, tpl_key: str, timeout_ms: int, thr: float = None) -> bool:
+        zone = self._zones.get(zone_key); tpl = self._templates.get(tpl_key)
         if not zone or not tpl:
             return False
+        ltrb = self._zone_ltrb(win, zone)
+        thr = self.click_threshold if thr is None else float(thr)
+        deadline = time.time() + timeout_ms / 1000.0
         while time.time() < deadline:
-            if find_in_zone(win, zone, tpl) is not None:
+            if match_in_zone(win, ltrb, self.server, self._lang(), tpl, thr):
                 return True
             time.sleep(0.05)
         return False
 
-    def _wait_point(self, win, zone_key, tpl_key, timeout_ms):
-        deadline = time.time() + max(0, timeout_ms)/1000.0
-        zone = self._cfg["ZONES"].get(zone_key)
-        tpl = self._cfg["TEMPLATES"].get(tpl_key)
+    def _click_in(self, win: Dict, zone_key: str, tpl_key: str, timeout_ms: int, thr: float = None) -> bool:
+        zone = self._zones.get(zone_key); tpl = self._templates.get(tpl_key)
         if not zone or not tpl:
-            return None
+            return False
+        ltrb = self._zone_ltrb(win, zone)
+        thr = self.click_threshold if thr is None else float(thr)
+        deadline = time.time() + timeout_ms / 1000.0
         while time.time() < deadline:
-            pt = find_in_zone(win, zone, tpl)
+            pt = match_in_zone(win, ltrb, self.server, self._lang(), tpl, thr)
             if pt:
-                return pt
+                self.controller.send(f"click:{pt[0]},{pt[1]}")
+                return True
             time.sleep(0.05)
-        return None
+        return False
+
+    def _click_any(self, win: Dict, zone_keys, tpl_key: str, timeout_ms: int, thr: float = None) -> bool:
+        thr = self.click_threshold if thr is None else float(thr)
+        deadline = time.time() + timeout_ms / 1000.0
+        while time.time() < deadline:
+            for zk in zone_keys:
+                if self._click_in(win, zk, tpl_key, 1, thr):
+                    return True
+            time.sleep(0.05)
+        return False
+
+    # ---------- flow engine ----------
+    def _run_flow(self, win: Dict) -> bool:
+        lang = self._lang()
+        for step in self._flow:
+            op = step.get("op")
+            thr = float(step.get("thr", self.click_threshold))
+
+            if op == "click_any":
+                if not self._click_any(win, tuple(step["zones"]), step["tpl"], int(step["timeout_ms"]), thr):
+                    self._on_status(f"[buff] click_any fail: {step}", False)
+                    return False
+
+            elif op == "wait":
+                if not self._wait_template(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr):
+                    # wait можно считать некритичным для init, но оставим строгим
+                    self._on_status(f"[buff] wait fail: {step}", False)
+                    return False
+
+            elif op == "click_in":
+                tpl_key = step["tpl"]
+                if tpl_key == "{mode_key}":
+                    tpl_key = self._mode_tpl_key()
+                if not self._click_in(win, step["zone"], tpl_key, int(step["timeout_ms"]), thr):
+                    self._on_status(f"[buff] click_in fail: {step}", False)
+                    return False
+
+            elif op == "optional_click":
+                self._click_in(win, step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
+
+            elif op == "sleep":
+                time.sleep(int(step.get("ms", 50)) / 1000.0)
+
+            elif op == "send_arduino":
+                self.controller.send(step["cmd"])
+                time.sleep(step.get("delay_ms", 100) / 1000.0)
+            else:
+                self._on_status(f"[buff] unknown op: {op}", False)
+                return False
+
+        self._on_status("[buff] done", True)
+        return True

@@ -4,8 +4,8 @@ from typing import Callable
 
 class StateControls:
     """
-    Чекбокс отслеживания состояния персонажа.
-    По умолчанию включён. При выключении — стоп монитора.
+    Чекбокс отслеживания состояния персонажа (HP).
+    По умолчанию включён. При выключении — вызывает stop_fn.
     """
     def __init__(self, parent: tk.Widget, start_fn: Callable[[], None], stop_fn: Callable[[], None]):
         self.enabled_var = tk.BooleanVar(value=True)
@@ -23,11 +23,17 @@ class StateControls:
         )
         self._cb.pack(side="left")
 
-        # сразу стартуем
-        self._start()
+        # запуск мониторинга сразу
+        try:
+            self._start()
+        except Exception:
+            pass
 
     def _on_toggle(self):
-        if self.enabled_var.get():
-            self._start()
-        else:
-            self._stop()
+        try:
+            if self.enabled_var.get():
+                self._start()
+            else:
+                self._stop()
+        except Exception:
+            pass

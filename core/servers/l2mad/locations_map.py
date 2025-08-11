@@ -1,19 +1,32 @@
 # core/servers/l2mad/locations_map.py
-def get_categories():
-    return [
-        {"id": "catacombs", "display_rus": "Катакомбы", "display_eng": "Catacombs"},
-        {"id": "necropolis", "display_rus": "Некрополь", "display_eng": "Necropolis"},
-    ]
+# Категории/локации для ТП читаем из структуры templates.
+from typing import List, Dict
+from core.servers.l2mad.templates import resolver as tpl
 
-def get_locations(category_id: str):
-    if category_id == "catacombs":
-        return [
-            {"id": "dark_omen", "display_rus": "Тёмное предзнаменование", "display_eng": "Dark Omen"},
-            {"id": "apostate", "display_rus": "Отступник", "display_eng": "Apostate"},
-        ]
-    if category_id == "necropolis":
-        return [
-            {"id": "martyrdom", "display_rus": "Мученичество", "display_eng": "Martyrdom"},
-            {"id": "sacrifice", "display_rus": "Жертвоприношение", "display_eng": "Sacrifice"},
-        ]
-    return []
+def get_categories(lang: str = "rus") -> List[Dict]:
+    out: List[Dict] = []
+    villages = tpl.listdir(lang, "dashboard", "teleport", "villages")
+    for v in villages:
+        if v.startswith("."):
+            continue
+        out.append({
+            "id": v,
+            "display_rus": v,
+            "display_eng": v,
+        })
+    return out
+
+def get_locations(category_id: str, lang: str = "rus") -> List[Dict]:
+    out: List[Dict] = []
+    locs = tpl.listdir(lang, "dashboard", "teleport", "villages", category_id)
+    for f in locs:
+        if not f.lower().endswith(".png"):
+            continue
+        name = f.rsplit(".", 1)[0]
+        out.append({
+            "id": name,
+            "display_rus": name,
+            "display_eng": name,
+            "filename": f,
+        })
+    return out
