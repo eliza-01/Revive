@@ -1,5 +1,6 @@
 # app/launcher.py
 from __future__ import annotations
+import traceback
 import sys
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -78,6 +79,8 @@ class ReviveLauncherUI:
             confirm_timeout_s=6.0,
             click_threshold=0.87,
             debug=True,
+            on_revive=lambda: self._after_revive_sequence_buff_only(),   # ← см. ниже
+            get_tp=lambda: getattr(self, "tp", None),                    # ← ВАЖНО
         )
         self.auto_revive.start()
 
@@ -104,6 +107,30 @@ class ReviveLauncherUI:
     def _respawn_stop(self):
         self.auto_revive.stop()
         print("[respawn] auto revive + state monitor OFF")
+
+    def _after_revive_sequence(self):
+        # баф, если включён
+        try:
+            if getattr(self.buff, "is_enabled", lambda: False)():
+                ok_buff = self.buff.run_once()
+                print("[buff] run:", ok_buff)
+            else:
+                ok_buff = False
+                print("[buff] skipped")
+        except Exception as e:
+            ok_buff = False
+            print(f"[tp] error: {e}")
+            traceback.print_exc()  # ← добавьте эту строку, чтобы увидеть точное место и файл ошибки
+
+    def _after_revive_sequence_buff_only(self):
+        try:
+            if getattr(self.buff, "is_enabled", lambda: False)():
+                ok_buff = self.buff.run_once()
+                print("[buff] run:", ok_buff)
+            else:
+                print("[buff] skipped")
+        except Exception as e:
+            print(f"[buff] error: {e}")
 
     # ---------------- helpers ----------------
     def _safe_window(self):
@@ -173,6 +200,7 @@ class ReviveLauncherUI:
             profile_getter=lambda: self.profile,
             check_is_dead=self._check_is_dead,
         )
+        self.auto_revive.set_tp_getter(lambda: self.tp)
 
         # авто-проверка обновлений
         def _schedule_update_check():
