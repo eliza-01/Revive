@@ -41,6 +41,13 @@ class BuffAfterRespawnWorker:
             print(msg)
         except Exception:
             pass
+
+    def _probe_left_click(self) -> None:
+        try:
+            self.controller.send("l")  # пробный левый клик
+        except Exception:
+            pass
+
     def set_mode(self, mode: str):
         m = (mode or BUFF_MODE_PROFILE).lower()
         self._mode = m if m in (BUFF_MODE_PROFILE, BUFF_MODE_MAGE, BUFF_MODE_FIGHTER) else BUFF_MODE_PROFILE
@@ -214,16 +221,34 @@ class BuffAfterRespawnWorker:
                     return False
 
             elif op == "dashboard_is_locked":
-                # Явная проверка текущего состояния
-                locked_now = self._is_visible(win, step["zone"], step["tpl"], thr)
-                if locked_now:
-                    ok = self._wait_while_visible(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
-                    self._log(f"[tp][step {idx}] result: {'UNLOCKED' if ok else 'LOCKED'}")
-                    if not ok:
-                        self._on_status("[tp] dashboard still locked", False)
-                        return False
-                else:
-                    self._log(f"[tp][step {idx}] result: UNLOCKED (already)")
+                # Если блок виден, кликаем слева раз в 1с, пока блок не исчезнет.
+                zone_key = step["zone"]
+                tpl_key = step["tpl"]              # ожидаем ключ шаблона блокировки
+                timeout_ms = int(step.get("timeout_ms", 8000))
+                interval_s = float(step.get("probe_interval_s", 1.0))
+
+                start_ts = time.time()
+                next_probe = 0.0
+                unlocked = False
+
+                while (time.time() - start_ts) * 1000.0 < timeout_ms:
+                    locked_now = self._is_visible(win, zone_key, tpl_key, thr)
+                    if not locked_now:
+                        unlocked = True
+                        break
+
+                    now = time.time()
+                    if now >= next_probe:
+                        self._log(f"[buff][step {idx}] locked → probe left-click")
+                        self._probe_left_click()
+                        next_probe = now + interval_s
+
+                    time.sleep(0.08)
+
+                self._log(f"[buff][step {idx}] unlocked: {'YES' if unlocked else 'NO'}")
+                if not unlocked:
+                    self._on_status("[buff] dashboard still locked", False)
+                    return False
 
             elif op == "click_in":
                 tpl_key = step["tpl"]
