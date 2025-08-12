@@ -75,6 +75,8 @@ class TPControls:
                 window_info=self.get_window_info(),
                 get_language=self.get_language,
                 on_status=_status,
+                check_is_dead=self._check_is_dead,  # ← добавить сюда
+                # wait_alive_timeout_s=10.0,        # (опционально) настроить таймаут ожидания оживления
             )
         self._worker.window = self.get_window_info()
         self._worker.set_method(self.method_var.get())

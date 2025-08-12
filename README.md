@@ -146,7 +146,7 @@ Ctrl+H (замена).
 core/servers/l2mad/templates/<rus/eng>/<dashboard/death>/<teleport/buffer>:
 dashboard/:
 - dashboard_init.png
-- dashboard_blocked.png
+- dashboard_is_locked.png
 dashboard/teleport/:
 - dashboard_teleport_button.png
 teleport/villages/:

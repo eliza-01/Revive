@@ -10,6 +10,7 @@ from typing import Callable, Optional, Dict, Tuple, Any  # доп. Any
 
 from core.features.player_state import PlayerState, PlayerStateMonitor
 from core.vision.matching.template_matcher import match_in_zone
+from core.features.player_state import is_alive  # ← добавить
 
 class AutoReviveOnZeroHP:
     def __init__(
@@ -85,7 +86,7 @@ class AutoReviveOnZeroHP:
     def _on_state_update(self, st: PlayerState):
         self._state = st
         print(f"[state] HP={int(st.hp_ratio * 100)}%")  # ← лог HP%
-        if st.hp_ratio <= self.zero_hp_threshold:
+        if not is_alive(st, self.zero_hp_threshold):
             now = time.time()
             if (now - self._last_attempt_ts) < self._attempt_cooldown_s:
                 return
@@ -170,7 +171,7 @@ class AutoReviveOnZeroHP:
         # Ожидание подтверждения: HP должен стать > 0%
         deadline = time.time() + self.confirm_timeout_s
         while time.time() < deadline:
-            if self._state.hp_ratio > self.zero_hp_threshold:
+            if is_alive(self._state, self.zero_hp_threshold):
                 return True
             time.sleep(0.05)
         return False
