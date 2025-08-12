@@ -22,14 +22,14 @@ class PlayerStateMonitor:
             server: str,
             get_window: Callable[[], Optional[Dict]],
             on_update: Optional[Callable[[PlayerState], None]] = None,
-            poll_interval: float = 0.2,
+            poll_interval: float = 1,
             debug: bool = False,
             custom_capture: Optional[Callable[[Dict, tuple], Optional[np.ndarray]]] = None,
     ):
         self.server = server
         self._get_window = get_window
         self._on_update = on_update
-        self.poll_interval = max(0.05, float(poll_interval))
+        self.poll_interval = max(1, float(poll_interval))
         self.debug = debug
         self._capture = custom_capture or capture_window_region_bgr
 
