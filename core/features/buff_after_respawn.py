@@ -159,7 +159,6 @@ class BuffAfterRespawnWorker:
 
     # ---------- flow engine ----------
     def _run_flow(self, win: Dict) -> bool:
-        lang = self._lang()
         for step in self._flow:
             op = step.get("op")
             thr = float(step.get("thr", self.click_threshold))
@@ -171,7 +170,6 @@ class BuffAfterRespawnWorker:
 
             elif op == "wait":
                 if not self._wait_template(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr):
-                    # wait можно считать некритичным для init, но оставим строгим
                     self._on_status(f"[buff] wait fail: {step}", False)
                     return False
 
@@ -191,7 +189,8 @@ class BuffAfterRespawnWorker:
 
             elif op == "send_arduino":
                 self.controller.send(step["cmd"])
-                time.sleep(step.get("delay_ms", 100) / 1000.0)
+                time.sleep(int(step.get("delay_ms", 100)) / 1000.0)
+
             else:
                 self._on_status(f"[buff] unknown op: {op}", False)
                 return False

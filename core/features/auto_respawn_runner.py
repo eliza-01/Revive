@@ -104,7 +104,7 @@ class AutoRespawnRunner:
                 time.sleep(self.poll_interval)
             except Exception as e:
                 print(f"[respawn] loop error: {e}")
-                time.sleep(0.5)
+                time.sleep(1)
 
     def _try_respawn_cycle(self) -> bool:
         win = self._get_window() or {}

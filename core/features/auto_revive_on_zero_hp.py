@@ -80,6 +80,7 @@ class AutoReviveOnZeroHP:
 
     def _on_state_update(self, st: PlayerState):
         self._state = st
+        print(f"[state] HP={int(st.hp_ratio * 100)}%")  # ← лог HP%
         if st.hp_ratio <= self.zero_hp_threshold:
             now = time.time()
             if (now - self._last_attempt_ts) < self._attempt_cooldown_s:
