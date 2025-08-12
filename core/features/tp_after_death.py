@@ -1,4 +1,5 @@
 # core/features/tp_after_death.py  # патч: ожидание окончания бафа через DASHBOARD_GUARD
+import traceback  # добавьте импорт наверху файла
 import importlib
 import time
 from typing import Callable, Optional, Dict, Tuple
@@ -47,17 +48,22 @@ class TPAfterDeathWorker:
         pass
 
     def teleport_now(self, category_id: str, location_id: str, method: Optional[str] = None) -> bool:
-        if method:
-            self._method = method
-        self._category_id = category_id
-        self._location_id = location_id
-        if self._method == TP_METHOD_DASHBOARD:
-            return self._tp_via_dashboard_serialized()
-        elif self._method == TP_METHOD_GATEKEEPER:
-            return self._tp_via_gatekeeper()
-        else:
-            self._on_status(f"[tp] unknown method: {self._method}", False)
-            return False
+        try:
+            if method:
+                self._method = method
+            self._category_id = category_id
+            self._location_id = location_id
+            if self._method == TP_METHOD_DASHBOARD:
+                return self._tp_via_dashboard_serialized()
+            elif self._method == TP_METHOD_GATEKEEPER:
+                return self._tp_via_gatekeeper()
+            else:
+                self._on_status(f"[tp] unknown method: {self._method}", False)
+                return False
+        except Exception as e:
+            print(f"[tp] fatal: {e.__class__.__name__}: {e}")
+            traceback.print_exc()
+            raise
 
     # ===== Internals =====
     def _load_cfg(self):

@@ -6,7 +6,7 @@ from __future__ import annotations
 import importlib
 import threading
 import time
-from typing import Callable, Optional, Dict, Tuple
+from typing import Callable, Optional, Dict, Tuple, Any  # доп. Any
 
 from core.features.player_state import PlayerState, PlayerStateMonitor
 from core.vision.matching.template_matcher import match_in_zone
@@ -19,10 +19,12 @@ class AutoReviveOnZeroHP:
             get_window: Callable[[], Optional[Dict]],
             get_language: Callable[[], str],
             poll_interval: float = 0.2,
-            zero_hp_threshold: float = 0.01,   # «0%» с небольшим допуском
-            confirm_timeout_s: float = 6.0,    # время на рост HP после клика
-            click_threshold: float = 0.87,     # точность matchTemplate
+            zero_hp_threshold: float = 0.01,
+            confirm_timeout_s: float = 6.0,
+            click_threshold: float = 0.87,
             debug: bool = False,
+            on_revive: Optional[Callable[[], None]] = None,
+            get_tp: Optional[Callable[[], Any]] = None,   # ← геттер TP
     ):
         self.controller = controller
         self.server = server
@@ -32,6 +34,8 @@ class AutoReviveOnZeroHP:
         self.confirm_timeout_s = confirm_timeout_s
         self.click_threshold = click_threshold
         self.debug = debug
+        self._on_revive = on_revive
+        self._get_tp = get_tp
 
         # загрузка зон и шаблонов для respawn
         self._zones: Dict[str, Tuple[int,int,int,int]] = {}
@@ -89,17 +93,45 @@ class AutoReviveOnZeroHP:
                 self._last_attempt_ts = now
                 threading.Thread(target=self._revive_once_safe, daemon=True).start()
 
+    def set_tp_getter(self, fn: Callable[[], Any]) -> None:    # ← НОВОЕ
+        self._get_tp = fn
+
+# ЗАМЕНИ целиком метод _revive_once_safe в core/features/auto_revive_on_zero_hp.py
+
     def _revive_once_safe(self):
         with self._lock:
             if self._reviving:
                 return
             self._reviving = True
         try:
+            # 1) Пытаемся встать
             ok = self._revive_once()
+
+            # 2) Если встал — запускаем пользовательский хук (баф)
+            if ok and callable(self._on_revive):
+                try:
+                    self._on_revive()
+                except Exception as e:
+                    if self.debug:
+                        print(f"[revive] on_revive error: {e}")
+
+            # 3) После бафа — ТП, если включён
+            try:
+                tp = self._get_tp() if callable(getattr(self, "_get_tp", None)) else None
+                if tp and getattr(tp, "is_enabled", lambda: False)():
+                    fn = getattr(tp, "teleport_now_selected", None)
+                    ok_tp = fn() if callable(fn) else False
+                    print("[tp] run:", ok_tp)
+                else:
+                    print("[tp] skipped")
+            except Exception as e:
+                print(f"[tp] error: {e}")
+
             if self.debug:
                 print(f"[revive] {'OK' if ok else 'FAIL'}")
         finally:
             self._reviving = False
+
 
     def _revive_once(self) -> bool:
         win = self._get_window() or {}
