@@ -22,6 +22,8 @@ class TPAfterDeathWorker:
             window_info: Optional[dict],
             get_language: Callable[[], str],
             on_status: Callable[[str, Optional[bool]], None] = lambda *_: None,
+            check_is_dead: Optional[Callable[[], bool]] = None,
+            wait_alive_timeout_s: float = 1.0,
     ):
         self.controller = controller
         self.window = window_info
@@ -31,12 +33,15 @@ class TPAfterDeathWorker:
         self.server = "l2mad"
         self._zones: Dict[str, object] = {}
         self._templates: Dict[str, list] = {}
-        self._flow = None  # будет загружен из core.servers.<server>.flows.tp
+        self._flow = None
         self._load_cfg()
 
         self._method = TP_METHOD_DASHBOARD
         self._category_id: Optional[str] = None
         self._location_id: Optional[str] = None
+
+        self._check_is_dead = check_is_dead
+        self._wait_alive_timeout_s = float(wait_alive_timeout_s)
 
     # ---------- public ----------
     def configure(self, category_id: str, location_id: str, method: str = TP_METHOD_DASHBOARD):
@@ -47,10 +52,10 @@ class TPAfterDeathWorker:
     def set_method(self, method: str):
         self._method = (method or TP_METHOD_DASHBOARD).lower()
 
-    def start(self):  # compat
+    def start(self):
         pass
 
-    def stop(self):   # compat
+    def stop(self):
         pass
 
     def teleport_now(self, category_id: str, location_id: str, method: Optional[str] = None) -> bool:
@@ -59,8 +64,12 @@ class TPAfterDeathWorker:
         self._category_id = category_id
         self._location_id = location_id
 
+        if not self._wait_until_alive(timeout_s=self._wait_alive_timeout_s):
+            self._on_status("[tp] still dead, abort", False)
+            print("[tp] guard: still dead → abort")
+            return False
+
         if self._method == TP_METHOD_DASHBOARD:
-            # Всё — только через FLOW
             DASHBOARD_GUARD.wait_free(timeout=10.0)
             with DASHBOARD_GUARD.session():
                 return self._run_flow(self.window or {})
@@ -77,8 +86,37 @@ class TPAfterDeathWorker:
         except Exception:
             pass
 
+    def _is_dead(self) -> bool:
+        try:
+            return bool(self._check_is_dead()) if callable(self._check_is_dead) else False
+        except Exception:
+            return False
+
+    def _wait_until_alive(self, timeout_s: float) -> bool:
+        if not callable(self._check_is_dead):
+            return True
+        deadline = time.time() + float(timeout_s)
+        while time.time() < deadline:
+            try:
+                if not self._check_is_dead():
+                    return True
+            except Exception:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def _probe_b(self):
+        try:
+            self.controller.send("b")
+        except Exception:
+            pass
+    def _probe_left_click(self):
+        try:
+            self.controller.send("l")  # левый клик
+        except Exception:
+            pass
+
     def _load_cfg(self):
-        # zones/templates
         try:
             mod = importlib.import_module(f"core.servers.{self.server}.zones.tp")
             self._zones = getattr(mod, "ZONES", {})
@@ -87,7 +125,6 @@ class TPAfterDeathWorker:
             self._on_status(f"[tp] cfg load error: {e}", False)
             self._zones, self._templates = {}, {}
 
-        # flow
         try:
             flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.tp")
             self._flow = getattr(flow_mod, "FLOW", None)
@@ -95,6 +132,9 @@ class TPAfterDeathWorker:
             self._flow = None
 
         self._log(f"[tp] cfg loaded for {self.server}. flow={'yes' if self._flow else 'no'}")
+        # alias: accept "dashboard_blocked" as "dashboard_is_locked"
+        if "dashboard_is_locked" not in self._templates and "dashboard_blocked" in self._templates:
+            self._templates["dashboard_is_locked"] = self._templates["dashboard_blocked"]
 
     def _lang(self) -> str:
         try:
@@ -146,14 +186,6 @@ class TPAfterDeathWorker:
             return False
         return match_in_zone(self.window, ltrb, self.server, self._lang(), parts, thr) is not None
 
-    def _wait_while_visible(self, zone_key: str, tpl_key: str, timeout_ms: int, thr: float) -> bool:
-        deadline = time.time() + timeout_ms / 1000.0
-        while time.time() < deadline:
-            if not self._is_visible(zone_key, tpl_key, thr):
-                return True
-            time.sleep(0.1)
-        return False
-
     def _click_in(self, zone_key: str, tpl_key_or_parts, timeout_ms: int, thr: float) -> bool:
         zone = self._zones.get(zone_key)
         if not zone:
@@ -184,7 +216,7 @@ class TPAfterDeathWorker:
             time.sleep(0.05)
         return False
 
-    # ---------- FLOW engine (dashboard only) ----------
+    # ---------- FLOW engine ----------
     def _run_flow(self, win: Dict) -> bool:
         if not self._flow:
             self._on_status("[tp] flow missing", False)
@@ -203,20 +235,48 @@ class TPAfterDeathWorker:
                 ok = self._click_any(tuple(step["zones"]), step["tpl"], int(step["timeout_ms"]), thr)
                 self._log(f"[tp][step {idx}] result: {'OK' if ok else 'FAIL'}")
                 if not ok:
-                    self._on_status(f"[tp] click_any fail: {step}", False);
+                    self._on_status(f"[tp] click_any fail: {step}", False)
                     return False
 
             elif op == "wait":
                 ok = self._wait_template(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
                 self._log(f"[tp][step {idx}] result: {'OK' if ok else 'FAIL'}")
                 if not ok:
-                    self._on_status(f"[tp] wait fail: {step}", False);
+                    self._on_status(f"[tp] wait fail: {step}", False)
                     return False
 
             elif op == "dashboard_is_locked":
-                ok = self._wait_while_visible(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
-                self._log(f"[tp][step {idx}] result: {'UNLOCKED' if ok else 'LOCKED'}")
-                if not ok:
+                zone_key = step["zone"]
+                tpl_key = step["tpl"]
+                timeout_ms = int(step.get("timeout_ms", 8000))
+                interval_s = float(step.get("probe_interval_s", 1.0))
+
+                if isinstance(tpl_key, str) and not self._templates.get(tpl_key) and self._templates.get("dashboard_blocked"):
+                    self._templates["dashboard_is_locked"] = self._templates["dashboard_blocked"]
+
+                start_ts = time.time()
+                next_probe = 0.0
+                unlocked = False
+
+                while (time.time() - start_ts) * 1000.0 < timeout_ms:
+                    if self._is_dead():
+                        break
+
+                    locked_now = self._is_visible(zone_key, tpl_key, thr)
+                    if not locked_now:
+                        unlocked = True
+                        break
+
+                    now = time.time()
+                    if now >= next_probe:
+                        self._log(f"[tp][step {idx}] locked → probe left-click")
+                        self._probe_left_click()
+                        next_probe = now + interval_s
+
+                    time.sleep(0.08)
+
+                self._log(f"[tp][step {idx}] unlocked: {'YES' if unlocked else 'NO'}")
+                if not unlocked:
                     self._on_status("[tp] dashboard still locked", False)
                     return False
 
@@ -232,7 +292,6 @@ class TPAfterDeathWorker:
                 self._log(f"[tp][step {idx}] result: {'CLICKED' if ok else 'SKIP'}")
 
             elif op == "click_village":
-                # динамическое разрешение шаблона деревни по _category_id
                 lang = self._lang()
                 village_png = f"{self._category_id}.png"
                 ok_res = l2mad_resolver.teleport_location(lang, self._category_id, village_png)
@@ -248,7 +307,6 @@ class TPAfterDeathWorker:
                     return False
 
             elif op == "click_location":
-                # динамическое разрешение шаблона локации по _location_id
                 lang = self._lang()
                 loc_png = f"{self._location_id}.png"
                 ok_res = l2mad_resolver.teleport_location(lang, self._category_id, loc_png)
@@ -285,6 +343,5 @@ class TPAfterDeathWorker:
         return True
 
     def _tp_via_gatekeeper(self) -> bool:
-        # заглушка — позже вынесем в отдельный flow для gatekeeper-метода
         self._on_status("[tp] gatekeeper method not implemented yet", False)
         return False

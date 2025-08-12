@@ -15,6 +15,8 @@ ZONES: Dict[str, Zone] = {
 # Ключи → части пути в resolver (конкретные локации выбираем динамически)
 TEMPLATES: Dict[str, list] = {
     "dashboard_init": ["dashboard", "dashboard_init.png"],
+    "dashboard_is_locked": ["dashboard", "dashboard_is_locked.png"],
+
     "teleport_button": ["dashboard", "teleport", "dashboard_teleport_button.png"],
     "confirm": ["dashboard", "buffer", "dashboard_buffer_init.png"],  # заменишь на реальный confirm, если есть
 }

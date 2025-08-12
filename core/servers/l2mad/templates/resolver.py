@@ -6,7 +6,7 @@ Structure:
 core/servers/l2mad/templates/<lang>/
   dashboard/
     dashboard_init.png
-    dashboard_blocked.png
+    dashboard_is_locked.png
     teleport/
       dashboard_teleport_button.png
       villages/<Village>/<Location>.png
@@ -61,8 +61,8 @@ def death_to_village_button(lang: str) -> Optional[str]:
 def dashboard_init(lang: str) -> Optional[str]:
     return resolve(lang, "dashboard", "dashboard_init.png")
 
-def dashboard_blocked(lang: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "dashboard_blocked.png")
+def dashboard_is_locked(lang: str) -> Optional[str]:
+    return resolve(lang, "dashboard", "dashboard_is_locked.png")
 
 def dashboard_teleport_button(lang: str) -> Optional[str]:
     return resolve(lang, "dashboard", "teleport", "dashboard_teleport_button.png")

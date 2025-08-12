@@ -16,6 +16,16 @@ class PlayerState:
         self.cp_ratio = cp_ratio
         self.ts = ts
 
+# --- unified alive check ---
+def is_alive(state: "PlayerState", zero_hp_threshold: float = 0.01) -> bool:
+    """
+    Жив, если доля HP выше порога. Порог совпадает с revive-логикой.
+    """
+    try:
+        return float(getattr(state, "hp_ratio", 0.0)) > float(zero_hp_threshold)
+    except Exception:
+        return False
+
 class PlayerStateMonitor:
     def __init__(
             self,

@@ -299,7 +299,7 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("420x720")
+    root.geometry("620x720")
     root.resizable(False, False)
 
     tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
