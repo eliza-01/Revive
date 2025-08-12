@@ -3,7 +3,7 @@ from typing import Dict, Tuple, List, Union
 
 # Зоны могут быть кортежом (l,t,r,b) в client-координатах
 # или словарём {"fullscreen":True} | {"centered":True,"width":W,"height":H} | {"left","top","width","height"}
-ZoneLTRB = Tuple[int, int, int, int]
+ZoneLTRB = Tupble[int, int, int, int]
 ZoneDecl = Union[ZoneLTRB, dict]
 
 ZONES: Dict[str, ZoneDecl] = {

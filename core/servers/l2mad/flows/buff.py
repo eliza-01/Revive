@@ -12,6 +12,7 @@ FLOW = [
     {"op": "wait", "zone": "dashboard_body", "tpl": "dashboard_init", "timeout_ms": 1000, "thr": 0.87},
     {"op": "click_in", "zone": "dashboard_body", "tpl": "buffer_button", "timeout_ms": 1000, "thr": 0.87},
     {"op": "wait",      "zone": "dashboard_body", "tpl": "buffer_init",   "timeout_ms": 1000, "thr": 0.87},
+    # {"op": "dashboard_is_locked", "zone": "dashboard_body", "tpl": "dashboard_blocked", "timeout_ms": 10000, "thr": 0.87},
     {"op": "click_in",  "zone": "dashboard_body", "tpl": "{mode_key}",    "timeout_ms": 2500, "thr": 0.88},
     {"op": "sleep",     "ms": 1000},
     {"op": "optional_click", "zone": "dashboard_body", "tpl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87},

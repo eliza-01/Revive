@@ -36,6 +36,11 @@ class BuffAfterRespawnWorker:
         self._mode = BUFF_MODE_PROFILE
         self._load_cfg()
 
+    def _log(self, msg: str) -> None:
+        try:
+            print(msg)
+        except Exception:
+            pass
     def set_mode(self, mode: str):
         m = (mode or BUFF_MODE_PROFILE).lower()
         self._mode = m if m in (BUFF_MODE_PROFILE, BUFF_MODE_MAGE, BUFF_MODE_FIGHTER) else BUFF_MODE_PROFILE
@@ -119,6 +124,34 @@ class BuffAfterRespawnWorker:
             return (l, t, l + w, t + h)
         return (0, 0, int(win.get("width", 0)), int(win.get("height", 0)))
 
+    def _is_visible(self, win: Dict, zone_key: str, tpl_key_or_parts, thr: float) -> bool:
+        zone = self._zones.get(zone_key)
+        if not zone:
+            return False
+        ltrb = self._zone_ltrb(win, zone)
+        parts = tpl_key_or_parts
+        if isinstance(parts, str):
+            parts = self._templates.get(parts, [])
+        if not parts:
+            return False
+        return match_in_zone(win, ltrb, self.server, self._lang(), parts, thr) is not None
+
+    def _wait_in(self, win: Dict, zone_key: str, tpl_key: str, timeout_ms: int, thr: float) -> bool:
+        deadline = time.time() + timeout_ms / 1000.0
+        while time.time() < deadline:
+            if self._is_visible(win, zone_key, tpl_key, thr):
+                return True
+            time.sleep(0.05)
+        return False
+
+    def _wait_while_visible(self, win: Dict, zone_key: str, tpl_key: str, timeout_ms: int, thr: float) -> bool:
+        deadline = time.time() + timeout_ms / 1000.0
+        while time.time() < deadline:
+            if not self._is_visible(win, zone_key, tpl_key, thr):
+                return True
+            time.sleep(0.1)
+        return False
+
     def _wait_template(self, win: Dict, zone_key: str, tpl_key: str, timeout_ms: int, thr: float = None) -> bool:
         zone = self._zones.get(zone_key); tpl = self._templates.get(tpl_key)
         if not zone or not tpl:
@@ -159,41 +192,65 @@ class BuffAfterRespawnWorker:
 
     # ---------- flow engine ----------
     def _run_flow(self, win: Dict) -> bool:
-        for step in self._flow:
+        total = len(self._flow) if self._flow else 0
+        for idx, step in enumerate(self._flow, start=1):
             op = step.get("op")
             thr = float(step.get("thr", self.click_threshold))
 
+            self._log(f"[buff][step {idx}/{total}] {op}: {step}")
+
             if op == "click_any":
-                if not self._click_any(win, tuple(step["zones"]), step["tpl"], int(step["timeout_ms"]), thr):
+                ok = self._click_any(win, tuple(step["zones"]), step["tpl"], int(step["timeout_ms"]), thr)
+                self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
+                if not ok:
                     self._on_status(f"[buff] click_any fail: {step}", False)
                     return False
 
             elif op == "wait":
-                if not self._wait_template(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr):
+                ok = self._wait_template(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+                self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
+                if not ok:
                     self._on_status(f"[buff] wait fail: {step}", False)
+                    return False
+
+            elif op == "dashboard_is_locked":
+                ok = self._wait_while_visible(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+                self._log(f"[buff][step {idx}] result: {'UNLOCKED' if ok else 'LOCKED'}")
+                if not ok:
+                    self._on_status("[buff] dashboard still locked", False)
                     return False
 
             elif op == "click_in":
                 tpl_key = step["tpl"]
                 if tpl_key == "{mode_key}":
                     tpl_key = self._mode_tpl_key()
-                if not self._click_in(win, step["zone"], tpl_key, int(step["timeout_ms"]), thr):
+                ok = self._click_in(win, step["zone"], tpl_key, int(step["timeout_ms"]), thr)
+                self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
+                if not ok:
                     self._on_status(f"[buff] click_in fail: {step}", False)
                     return False
 
             elif op == "optional_click":
-                self._click_in(win, step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
+                ok = self._click_in(win, step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
+                self._log(f"[buff][step {idx}] result: {'CLICKED' if ok else 'SKIP'}")
 
             elif op == "sleep":
-                time.sleep(int(step.get("ms", 50)) / 1000.0)
+                ms = int(step.get("ms", 50))
+                self._log(f"[buff][step {idx}] sleeping {ms} ms")
+                time.sleep(ms / 1000.0)
 
             elif op == "send_arduino":
-                self.controller.send(step["cmd"])
-                time.sleep(int(step.get("delay_ms", 100)) / 1000.0)
+                cmd = step.get("cmd", "")
+                delay_ms = int(step.get("delay_ms", 100))
+                self._log(f"[buff][step {idx}] send_arduino '{cmd}', delay {delay_ms} ms")
+                self.controller.send(cmd)
+                time.sleep(delay_ms / 1000.0)
 
             else:
+                self._log(f"[buff][step {idx}] unknown op: {op}")
                 self._on_status(f"[buff] unknown op: {op}", False)
                 return False
 
+        self._log("[buff] flow DONE")
         self._on_status("[buff] done", True)
         return True
