@@ -1,38 +1,60 @@
-# app/ui/respawn_controls.py
 import tkinter as tk
+import tkinter.ttk as ttk
 from typing import Callable
 
 class RespawnControls:
     """
-    Чекбокс автоподъёма (0% HP → В деревню).
-    По умолчанию включён. Вызывает start_fn/stop_fn.
+    Блок «Отслеживание и подъём» + внутр. контейнер для дочерних панелей.
+    Публично: is_monitoring(), is_enabled(), get_body()
     """
     def __init__(self, parent: tk.Widget, start_fn: Callable[[], None], stop_fn: Callable[[], None]):
         self._start = start_fn
         self._stop = stop_fn
-        self.enabled_var = tk.BooleanVar(value=True)
 
-        frame = tk.Frame(parent)
-        frame.pack(pady=(2, 6), anchor="w")
+        frame = tk.LabelFrame(parent, text="Отслеживание и подъём")
+        frame.pack(fill="x", padx=6, pady=6, anchor="w")
+        self._frame = frame
+
+        row1 = tk.Frame(frame); row1.pack(fill="x", pady=(2, 2), anchor="w")
+        self._monitor_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
-            frame,
-            text="Мониторинг HP + автоподъём (0% → В деревню)",
+            row1,
+            text="Отслеживать состояние (включить StateWatcher)",
+            variable=self._monitor_var,
+            command=self._on_toggle_monitor,
             font=("Arial", 10),
-            variable=self.enabled_var,
-            command=self._on_toggle,
         ).pack(side="left")
 
-        # старт сразу
-        try:
-            self._start()
-        except Exception:
-            pass
+        row2 = tk.Frame(frame); row2.pack(fill="x", pady=(2, 2), anchor="w")
+        self._enabled_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            row2,
+            text="Встать после смерти (нажать «В деревню»)",
+            variable=self._enabled_var,
+            font=("Arial", 10),
+        ).pack(side="left")
 
-    def _on_toggle(self):
+        self._status = tk.Label(frame, text="Мониторинг: выкл", fg="gray")
+        self._status.pack(anchor="w", pady=(4, 2))
+
+        # Внутренний контейнер для доп. панелей (сюда поместим «Состояние персонажа»)
+        self._body = tk.Frame(frame)
+        self._body.pack(fill="x", pady=(6, 2), anchor="w")
+
+    def _on_toggle_monitor(self):
         try:
-            if self.enabled_var.get():
-                self._start()
+            if self._monitor_var.get():
+                self._start(); self._status.config(text="Мониторинг: вкл", fg="green")
             else:
-                self._stop()
+                self._stop();  self._status.config(text="Мониторинг: выкл", fg="gray")
         except Exception:
-            pass
+            self._status.config(text="Ошибка переключения", fg="red")
+
+    def is_monitoring(self) -> bool:
+        return bool(self._monitor_var.get())
+
+    def is_enabled(self) -> bool:
+        return bool(self._enabled_var.get())
+
+    def get_body(self) -> tk.Frame:
+        return self._body

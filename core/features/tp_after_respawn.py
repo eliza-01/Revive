@@ -1,5 +1,5 @@
 # =========================
-# File: core/features/tp_after_death.py
+# File: core/features/tp_after_respawn.py
 # Flow-only TP worker (dashboard/gatekeeper). With per-step logging.
 # =========================
 from __future__ import annotations
@@ -102,7 +102,7 @@ class TPAfterDeathWorker:
                     return True
             except Exception:
                 return True
-            time.sleep(0.1)
+            time.sleep(5)
         return False
 
     def _probe_b(self):

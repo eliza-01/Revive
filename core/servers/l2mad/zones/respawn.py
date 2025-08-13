@@ -6,14 +6,14 @@ ZoneLTRB = Tuple[int, int, int, int]
 ZoneDecl = Union[ZoneLTRB, dict]
 
 ZONES: Dict[str, ZoneDecl] = {
-    # Баннер/область смерти, если нужно ждать появления (опционально)
-    "death_banner": (100, 80, 900, 260),
 
     # Кнопка «В деревню». Поддерживаем центрирование через dict.
-    "to_village": {"centered": True, "width": 200, "height": 160},
+    "to_village": {"centered": True, "width": 200, "height": 200},
 
+    # Баннер/область смерти, если нужно ждать появления (опционально)
+    # "death_banner": (100, 80, 900, 260),
     # Подтверждение (если есть). Можно указать фикс/центр/фуллскрин.
-    "confirm": (460, 500, 620, 560),
+    # "confirm": (460, 500, 620, 560),
 }
 
 # Пути до шаблонов через серверный resolver (см. core/servers/l2mad/templates/resolver.py)

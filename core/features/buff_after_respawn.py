@@ -27,7 +27,7 @@ class BuffAfterRespawnWorker:
         self._get_window = get_window
         self._get_language = get_language
         self._on_status = on_status
-        self.click_threshold = click_threshold
+        self.click_threshold = self.click_threshold = click_threshold or 0.82
         self.debug = debug
 
         self._zones = {}
@@ -64,18 +64,30 @@ class BuffAfterRespawnWorker:
         with DASHBOARD_GUARD.session():
             if self._flow:
                 return self._run_flow(win)
-            # fallback на дефолтный сценарий
+
+            # 1) открыть модуль бафа
             if not self._click_any(win, ("dashboard_tab", "dashboard_body"), "buffer_button", 2000):
+                self._log("[buff] FAIL: buffer_button not found in dashboard_tab/body")
                 self._on_status("[buff] buffer button not found", False)
                 return False
+
+            # 2) дождаться инициализации модуля (если есть шаблон)
             if "buffer_init" in self._templates:
-                self._wait_template(win, "dashboard_body", "buffer_init", 2000)
+                ok_init = self._wait_template(win, "dashboard_body", "buffer_init", 2000)
+                self._log(f"[buff] buffer_init: {'OK' if ok_init else 'SKIP/FAIL'}")
+
+            # 3) клик по режиму
             mode_key = self._mode_tpl_key()
             if not self._click_in(win, "dashboard_body", mode_key, 2500):
+                self._log(f"[buff] FAIL: mode key not found → {mode_key}")
                 self._on_status(f"[buff] mode '{self._mode}' not found", False)
                 return False
+
+            # 4) восстановить HP (если есть)
             if "buffer_restore_hp" in self._templates:
-                self._click_in(win, "dashboard_body", "buffer_restore_hp", 1000)
+                ok_rhp = self._click_in(win, "dashboard_body", "buffer_restore_hp", 1000)
+                self._log(f"[buff] restore_hp: {'CLICK' if ok_rhp else 'SKIP'}")
+
             self._on_status("[buff] done", True)
             return True
 
@@ -224,7 +236,7 @@ class BuffAfterRespawnWorker:
                 # Если блок виден, кликаем слева раз в 1с, пока блок не исчезнет.
                 zone_key = step["zone"]
                 tpl_key = step["tpl"]              # ожидаем ключ шаблона блокировки
-                timeout_ms = int(step.get("timeout_ms", 8000))
+                timeout_ms = int(step.get("timeout_ms", 11000))
                 interval_s = float(step.get("probe_interval_s", 1.0))
 
                 start_ts = time.time()

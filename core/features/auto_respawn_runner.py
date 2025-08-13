@@ -14,7 +14,7 @@ class AutoRespawnRunner:
             window_title: str,
             language: str,
             server: str,
-            poll_interval: float = 0.5,
+            poll_interval: float = 0.9,
             debug: bool = False,
             window_provider: Optional[Callable[[], Optional[dict]]] = None,
     ):
