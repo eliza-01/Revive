@@ -5,14 +5,18 @@ import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 import logging
+import time  # ← вот это
 
 from core.connection import ReviveController
 from core.connection_test import run_test_command
-from core.features.auto_respawn_runner import AutoRespawnRunner
-from core.runtime.state_watcher import StateWatcher
 from core.servers.registry import get_server_profile
+
+from core.runtime.state_watcher import StateWatcher
 from core.runtime.poller import RepeaterThread
+
+from core.features.auto_respawn_runner import AutoRespawnRunner
 from core.features.to_village import ToVillage
+from core.features.afterbuff_macros import AfterBuffMacroRunner
 
 from core.checks.charged import ChargeChecker, BuffTemplateProbe
 
@@ -23,9 +27,12 @@ from app.ui.buff_controls import BuffControls
 from app.ui.tp_controls import TPControls
 from app.ui.updater_dialog import run_update_check
 from app.ui.settings import BuffIntervalControl
+from app.ui.afterbuff_macros import AfterBuffMacrosControls
 
 from core.runtime.flow_config import PRIORITY
 from core.runtime.flow_runner import FlowRunner
+
+
 
 # ---------------- Logging ----------------
 def _init_logging():
@@ -105,6 +112,10 @@ class ReviveLauncherUI:
                 debug=False,
             )
 
+        # раннер макросов создадим позже, когда UI будет
+        self.afterbuff_ui = None
+        self.afterbuff_runner = None
+
         # --- window probe ---
         self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
 
@@ -139,6 +150,7 @@ class ReviveLauncherUI:
         self.flow = FlowRunner(
             steps={
                 "buff_if_needed": self._flow_step_buff_if_needed,
+                "macros_after_buff": self._flow_step_macros_after_buff,
                 "recheck_charged": self._flow_step_recheck_charged,
                 "tp_if_ready": self._flow_step_tp_if_ready,
             },
@@ -160,8 +172,47 @@ class ReviveLauncherUI:
     def _flow_step_buff_if_needed(self):
         need_buff = getattr(self.buff, "is_enabled", lambda: False)() and not bool(self.checker.is_charged(None))
         if need_buff:
-            ok = self.buff.run_once()
-            print(f"[flow] buff_if_needed → {ok}")
+            ok_buff = self.buff.run_once()
+            print(f"[buff] auto-after-alive run: {ok_buff}")
+            self._buff_was_success = ok_buff
+        else:
+            self._buff_was_success = False
+
+    def _flow_step_macros_after_buff(self):
+        try:
+            # если UI выключен — сразу завершаем шаг
+            if not self.afterbuff_ui.is_enabled():
+                self._macros_done = True
+                print("[macros] skipped (UI disabled)")
+                return
+
+            # проверка: либо баф был, либо разрешено запускать без бафа
+            if not self._buff_was_success and not self.afterbuff_ui.run_always():
+                self._macros_done = True
+                print("[macros] skipped (buff not executed, run_always=False)")
+                return
+
+            ok_macros = self.afterbuff_runner.run_once()
+
+            try:
+                dur = float(self.afterbuff_ui.get_duration_s())
+            except Exception:
+                dur = 0.0
+
+            if dur > 0:
+                print(f"[macros] waiting {dur:.2f}s for completion window")
+                time.sleep(dur)
+
+            self._macros_done = True
+            print(f"[macros] after-buff run: {ok_macros}")
+
+        except Exception as e:
+            self._macros_done = True
+            print(f"[macros] error: {e}")
+
+
+
+
 
     def _flow_step_recheck_charged(self):
         try:
@@ -339,6 +390,14 @@ class ReviveLauncherUI:
             intervals=(1, 5, 10, 20),
         )
 
+        # Макросы после бафа
+        self.afterbuff_ui = AfterBuffMacrosControls(parent)
+        self.afterbuff_runner = AfterBuffMacroRunner(
+            controller=self.controller,
+            get_sequence=lambda: self.afterbuff_ui.get_sequence(),
+            get_delay_ms=lambda: self.afterbuff_ui.get_delay_ms(),
+        )
+
         # 3) ТП
         self.tp = TPControls(
             parent=parent,
@@ -432,7 +491,7 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("620x920")
+    root.geometry("620x1080")
     root.resizable(False, False)
 
     tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
