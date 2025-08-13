@@ -7,6 +7,7 @@ import tkinter.ttk as ttk
 import logging
 import time  # ← вот это
 
+
 from core.connection import ReviveController
 from core.connection_test import run_test_command
 from core.servers.registry import get_server_profile
@@ -32,7 +33,28 @@ from app.ui.afterbuff_macros import AfterBuffMacrosControls
 from core.runtime.flow_config import PRIORITY
 from core.runtime.flow_runner import FlowRunner
 
+class _Collapsible(tk.Frame):
+    def __init__(self, parent, title: str, opened: bool = True):
+        super().__init__(parent)
+        self._open = tk.BooleanVar(value=opened)
+        self._btn = ttk.Button(self, text=("▼ " + title if opened else "► " + title), command=self._toggle)
+        self._btn.pack(fill="x", pady=(6, 2))
+        self._body = tk.Frame(self)
+        if opened:
+            self._body.pack(fill="x")
 
+    def _toggle(self):
+        if self._open.get():
+            self._open.set(False)
+            self._btn.config(text="► " + self._btn.cget("text")[2:])
+            self._body.forget()
+        else:
+            self._open.set(True)
+            self._btn.config(text="▼ " + self._btn.cget("text")[2:])
+            self._body.pack(fill="x")
+
+    def body(self) -> tk.Frame:
+        return self._body
 
 # ---------------- Logging ----------------
 def _init_logging():
@@ -343,39 +365,51 @@ class ReviveLauncherUI:
 
     # ---------------- UI build ----------------
     def build_ui(self, parent: tk.Widget, local_version: str):
-        version_frame = tk.Frame(parent); version_frame.pack(padx=10, pady=10, fill="x")
+        # Блок 1: системные настройки (язык, сервер, поиск окна, коннект, версия, апдейт, выход)
+        top = _Collapsible(parent, "Системные настройки", opened=True)
+        top.pack(fill="x", padx=8, pady=4)
 
-        lang_frame = tk.Frame(parent); lang_frame.pack(pady=(5, 2))
+        # язык
+        lang_frame = tk.Frame(top.body()); lang_frame.pack(pady=(5, 2), anchor="center")
         tk.Label(lang_frame, text="Язык интерфейса:", font=("Arial", 10)).pack(side="left", padx=(0, 6))
-        ttk.OptionMenu(lang_frame, self.language_var, self.language_var.get(), "rus", "eng", command=self.set_language).pack(side="left")
+        ttk.OptionMenu(lang_frame, self.language_var, self.language_var.get(), "rus", "eng", command=self.set_language).pack(side="left", padx=(0, 20))
 
-        server_frame = tk.Frame(parent); server_frame.pack(pady=(2, 6))
-        tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 34))
-        ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(side="left")
+        # сервер
+        server_frame = tk.Frame(top.body()); server_frame.pack(pady=(2, 6), anchor="center")
+        tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 12))
+        ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(side="left", padx=(0, 20))
 
-        window_frame = tk.Frame(parent); window_frame.pack(pady=(2, 10))
+        # окно
+        window_frame = tk.Frame(top.body()); window_frame.pack(pady=(2, 10), anchor="center")
         tk.Button(window_frame, text="🔍 Найти окно Lineage", command=self.winprobe.try_find_window_again).pack(side="left", padx=(0, 8))
         ws_label = tk.Label(window_frame, text="[?] Поиск окна...", font=("Arial", 9), fg="gray"); ws_label.pack(side="left")
         self.winprobe.attach_status(ws_label)
 
-        self.driver_status = tk.Label(parent, text="Состояние связи: неизвестно", fg="gray")
-        tk.Button(parent, text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)).pack(pady=5)
+        # связь
+        self.driver_status = tk.Label(top.body(), text="Состояние связи: неизвестно", fg="gray")
+        tk.Button(top.body(), text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)).pack(pady=5)
         self.driver_status.pack(pady=(0, 5))
 
-        tk.Label(parent, text=f"Версия: {local_version}", font=("Arial", 10)).pack()
-        self.version_status_label = tk.Label(parent, text="", font=("Arial", 9), fg="orange"); self.version_status_label.pack()
-        tk.Button(parent, text="🔄 Проверить обновление",
+        # версия + апдейтер
+        tk.Label(top.body(), text=f"Версия: {local_version}", font=("Arial", 10)).pack()
+        self.version_status_label = tk.Label(top.body(), text="", font=("Arial", 9), fg="orange"); self.version_status_label.pack()
+        tk.Button(top.body(), text="🔄 Проверить обновление",
                   command=lambda: run_update_check(local_version, self.version_status_label, self.root, self)).pack()
 
-        tk.Button(parent, text="Выход", fg="red", command=self.exit_program).pack(side="bottom", pady=10)
+        # выход
+        tk.Button(top.body(), text="Выход", fg="red", command=self.exit_program).pack(pady=10)
 
-        # 1) Общий блок мониторинга/подъёма
-        self.respawn_ui = RespawnControls(parent=parent, start_fn=self._respawn_start, stop_fn=self._respawn_stop)
+        # Блок 2: рабочий поток — отслеживание состояния · баф · макросы · ТП
+        flow = _Collapsible(parent, "Отслеживать состояние · Баф · Макросы · ТП", opened=True)
+        flow.pack(fill="x", padx=8, pady=4)
+
+        # 1) Мониторинг/подъём
+        self.respawn_ui = RespawnControls(parent=flow.body(), start_fn=self._respawn_start, stop_fn=self._respawn_stop)
         StateControls(parent=self.respawn_ui.get_body(), state_getter=lambda: self.watcher.last())
 
         # 2) Баф
         self.buff = BuffControls(
-            parent=parent,
+            parent=flow.body(),
             controller=self.controller,
             server_getter=lambda: self.server,
             language_getter=lambda: self.language,
@@ -384,23 +418,27 @@ class ReviveLauncherUI:
             window_found_getter=lambda: bool(self.winprobe.window_found),
         )
         BuffIntervalControl(
-            parent,
+            flow.body(),
             checker=self.checker,
             on_toggle_autobuff=self._toggle_autobuff,
             intervals=(1, 5, 10, 20),
         )
 
-        # Макросы после бафа
-        self.afterbuff_ui = AfterBuffMacrosControls(parent)
+        # 3) Макросы после бафа
+        from app.ui.afterbuff_macros import AfterBuffMacrosControls
+        from core.features.afterbuff_macros import AfterBuffMacroRunner
+        self.afterbuff_ui = AfterBuffMacrosControls(flow.body())
         self.afterbuff_runner = AfterBuffMacroRunner(
             controller=self.controller,
             get_sequence=lambda: self.afterbuff_ui.get_sequence(),
             get_delay_ms=lambda: self.afterbuff_ui.get_delay_ms(),
         )
 
-        # 3) ТП
+        # 4) ТП
+        tp_frame = tk.LabelFrame(flow.body(), text="Телепорт", padx=6, pady=6)
+        tp_frame.pack(fill="x", padx=6, pady=6, anchor="w")
         self.tp = TPControls(
-            parent=parent,
+            parent=tp_frame,
             controller=self.controller,
             get_language=lambda: self.language,
             get_window_info=lambda: self._safe_window(),
