@@ -1,4 +1,4 @@
-# core/features/auto_revive_on_zero_hp.py
+# core/features/auto_revive_on_zero_hp1.py
 # Триггер: HP == 0% (с допуском). Действие: клик по центру шаблона "to_village".
 # Подтверждение: HP > 0% в разумный таймаут.
 
@@ -97,7 +97,7 @@ class AutoReviveOnZeroHP:
     def set_tp_getter(self, fn: Callable[[], Any]) -> None:    # ← НОВОЕ
         self._get_tp = fn
 
-# ЗАМЕНИ целиком метод _revive_once_safe в core/features/auto_revive_on_zero_hp.py
+# ЗАМЕНИ целиком метод _revive_once_safe в core/features/auto_revive_on_zero_hp1.py
 
     def _revive_once_safe(self):
         with self._lock:
