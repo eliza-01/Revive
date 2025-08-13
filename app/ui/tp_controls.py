@@ -3,7 +3,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable, Optional, Tuple
 
-from core.features.tp_after_death import TPAfterDeathWorker, TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER
+from core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER
 from core.servers.l2mad.locations_map import get_categories, get_locations
 
 class TPControls:

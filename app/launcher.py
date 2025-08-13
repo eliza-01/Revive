@@ -1,7 +1,7 @@
-# app/launcher.py
 from __future__ import annotations
 import traceback
 import sys
+import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 import logging
@@ -9,9 +9,12 @@ import logging
 from core.connection import ReviveController
 from core.connection_test import run_test_command
 from core.features.auto_respawn_runner import AutoRespawnRunner
-from core.features.auto_revive_on_zero_hp import AutoReviveOnZeroHP
+from core.runtime.state_watcher import StateWatcher
 from core.servers.registry import get_server_profile
 from core.runtime.poller import RepeaterThread
+from core.features.to_village import ToVillage
+
+from core.checks.charged import ChargeChecker, BuffTemplateProbe
 
 from app.ui.window_probe import WindowProbe
 from app.ui.state_controls import StateControls
@@ -19,13 +22,16 @@ from app.ui.respawn_controls import RespawnControls
 from app.ui.buff_controls import BuffControls
 from app.ui.tp_controls import TPControls
 from app.ui.updater_dialog import run_update_check
+from app.ui.settings import BuffIntervalControl
+
+from core.runtime.flow_config import PRIORITY
+from core.runtime.flow_runner import FlowRunner
 
 # ---------------- Logging ----------------
 def _init_logging():
     LOG_PATH = "revive.log"
     logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
     return LOG_PATH
-
 _init_logging()
 
 
@@ -39,13 +45,58 @@ class ReviveLauncherUI:
         self.server = "l2mad"
         self.server_var = tk.StringVar(value=self.server)
 
+        self._alive_flag = True
+        self._charged_flag = None  # None/False/True
+
         # --- controller ---
         self.controller = ReviveController()
 
         # --- server profile FIRST ---
         self.profile = get_server_profile(self.server)
 
-        # --- periodic buff tick placeholder BEFORE any callbacks can fire ---
+        self.checker = ChargeChecker(interval_minutes=10, mode="ANY")
+        self.checker.register_probe(
+            "autobuff_icons",
+            BuffTemplateProbe(
+                name="autobuff_icons",
+                server_getter=lambda: self.server,
+                get_window=lambda: self._safe_window(),
+                get_language=lambda: self.language,
+                zone_key="buff_bar",
+                tpl_keys=[
+                    "buff_icon_shield",
+                    "buff_icon_blessedBody",
+                ],
+                threshold=0.85,
+                debug=True,
+            ),
+            enabled=True,
+        )
+
+        # агрегатор «заряженности» (заглушка проверки)
+        def _probe_is_buffed_stub() -> bool:
+            return False
+
+
+        # флаг и поллер для автобафов по интервалу
+        self._autobuff_enabled = False
+        self.charge_poller = RepeaterThread(fn=self._buff_interval_tick, interval=1.0, debug=False)
+        self.charge_poller.start()  # тикает всегда; действует только при включённом флаге
+
+        # исполнитель «В деревню»
+        self.to_village = ToVillage(
+            controller=self.controller,
+            server=self.server,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            click_threshold=0.87,
+            debug=True,
+            is_alive=lambda: self.watcher.is_alive(),
+            confirm_timeout_s=3.0,
+        )
+        self._tp_after_death = False  # ТП запускать только если мы жали "В деревню"
+
+        # --- periodic buff tick placeholder (профильный) ---
         self.buff_runner = None
         if hasattr(self.profile, "buff_tick"):
             self.buff_runner = RepeaterThread(
@@ -54,10 +105,10 @@ class ReviveLauncherUI:
                 debug=False,
             )
 
-        # --- window probe (автопоиск окна L2). on_found может сработать в __init__, поэтому всё выше уже готово ---
+        # --- window probe ---
         self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
 
-        # --- auto respawn runner (старый сценарий по шаблонам, может пригодиться отдельно) ---
+        # --- auto respawn runner (старый, отдельно) ---
         self.respawn = AutoRespawnRunner(
             controller=self.controller,
             window_title="Lineage",
@@ -68,25 +119,31 @@ class ReviveLauncherUI:
             window_provider=lambda: self._safe_window(),
         )
 
-        # --- auto revive on HP==0 ---
-        self.auto_revive = AutoReviveOnZeroHP(
-            controller=self.controller,
+        # --- watcher: только мониторинг состояния ---
+        self.watcher = StateWatcher(
             server=self.server,
             get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
             poll_interval=0.2,
             zero_hp_threshold=0.01,
-            confirm_timeout_s=6.0,
-            click_threshold=0.87,
+            on_state=self._on_state_ui,
+            on_dead=self._on_dead_ui,
+            on_alive=self._on_alive_ui,
             debug=True,
-            on_revive=lambda: self._after_revive_sequence_buff_only(),   # ← см. ниже
-            get_tp=lambda: getattr(self, "tp", None),                    # ← ВАЖНО
         )
-        self.auto_revive.start()
 
         # --- ui parts ---
         self.driver_status = None
         self.version_status_label = None
+
+        self.flow = FlowRunner(
+            steps={
+                "buff_if_needed": self._flow_step_buff_if_needed,
+                "recheck_charged": self._flow_step_recheck_charged,
+                "tp_if_ready": self._flow_step_tp_if_ready,
+            },
+            order=PRIORITY,
+        )
 
         # ping arduino
         try:
@@ -98,39 +155,127 @@ class ReviveLauncherUI:
 
         self.update_window_ref = None
 
+
+    # ----------------  Charge Flow  ----------------
+    def _flow_step_buff_if_needed(self):
+        need_buff = getattr(self.buff, "is_enabled", lambda: False)() and not bool(self.checker.is_charged(None))
+        if need_buff:
+            ok = self.buff.run_once()
+            print(f"[flow] buff_if_needed → {ok}")
+
+    def _flow_step_recheck_charged(self):
+        try:
+            v = self.checker.force_check()
+            self._charged_flag = bool(v)
+            print(f"[flow] recheck_charged → {v}")
+        except Exception as e:
+            print(f"[flow] recheck_charged error: {e}")
+
+    def _flow_step_tp_if_ready(self):
+        tp_enabled = getattr(self.tp, "is_enabled", lambda: False)()
+
+        if tp_enabled:
+            fn = getattr(self.tp, "teleport_now_selected", None)
+            ok_tp = bool(fn()) if callable(fn) else False
+            print(f"[flow] tp_if_ready → {ok_tp}")
+        else:
+            print("[flow] tp_if_ready → skip (disabled)")
+
+        # if tp_enabled and (self._charged_flag is True):
+        #     fn = getattr(self.tp, "teleport_now_selected", None)
+        #     ok_tp = bool(fn()) if callable(fn) else False
+        #     print(f"[flow] tp_if_ready → {ok_tp}")
+        # else:
+        #     print("[flow] tp_if_ready → skip")
+
+    # ----------------  Buff Interval Checker ----------------
+    def _buff_interval_tick(self):
+        # работает только при включённом флаге и когда живы
+        if not self._autobuff_enabled or not getattr(self, "_alive_flag", True):
+            return
+        try:
+            # опрос по интервалу; если рано — выходим
+            if not self.checker.tick():
+                return
+
+            cur = self.checker.is_charged(None)
+            print(f"[charged] interval → {cur}")
+            if cur is True:
+                self._charged_flag = True
+                return  # уже заряжены
+
+            # cur is False/None → пробуем баф
+            if getattr(self.buff, "is_enabled", lambda: False)():
+                ok = self.buff.run_once()
+                print(f"[buff] interval autobuff run: {ok}")
+                if ok:
+                    # мгновенная переоценка и обновление локального флага
+                    new_val = self.checker.force_check()
+                    self._charged_flag = bool(new_val)
+                    print(f"[charged] after buff → {new_val}")
+        except Exception as e:
+            print(f"[buff] interval tick error: {e}")
+
+
+    # ----------------  State Watcher ----------------
+    def _on_state_ui(self, st):
+        pass
+
+    def _raise_after_death(self):
+        try:
+            ok = self.to_village.run_once(timeout_ms=4000)
+            print(f"[to_village] run: {ok}")
+            if ok:
+                self._tp_after_death = True   # ← оживили СВОИМ действием
+        except Exception as e:
+            print(f"[to_village] error in thread: {e}")
+
+    def _on_dead_ui(self, st):
+        self._alive_flag = False
+        self._charged_flag = None
+        print("[state] death detected → charged=None")
+        try:
+            ui_ok = (
+                    getattr(self, "respawn_ui", None)
+                    and getattr(self.respawn_ui, "is_enabled", None)
+                    and self.respawn_ui.is_enabled()
+            )
+            if ui_ok:
+                threading.Thread(target=self._raise_after_death, daemon=True).start()
+            else:
+                print("[to_village] skipped (UI disabled or missing)")
+        except Exception as e:
+            print(f"[to_village] error: {e}")
+
+    def _on_alive_ui(self, st):
+        self._alive_flag = True
+        ch = self.checker.is_charged(None)
+        self._charged_flag = ch
+        print(f"[state] alive detected → charged={ch}")
+        try:
+            self.root.after(0, self._run_alive_flow)
+        except Exception:
+            self._run_alive_flow()
+
+    def _run_alive_flow(self):
+        self.flow.run()
+
     # ---------------- respawn controls ----------------
     def _respawn_start(self):
-        # запускает AutoReviveOnZeroHP, в котором уже внутри стартует PlayerStateMonitor
-        self.auto_revive.start()
-        print("[respawn] auto revive + state monitor ON")
+        if not self.watcher.is_running():
+            self.watcher.start()
+            print("[state] watcher ON")
+        else:
+            print("[state] watcher already running")
 
     def _respawn_stop(self):
-        self.auto_revive.stop()
-        print("[respawn] auto revive + state monitor OFF")
+        if self.watcher.is_running():
+            self.watcher.stop()
+        print("[state] watcher OFF")
 
-    def _after_revive_sequence(self):
-        # баф, если включён
-        try:
-            if getattr(self.buff, "is_enabled", lambda: False)():
-                ok_buff = self.buff.run_once()
-                print("[buff] run:", ok_buff)
-            else:
-                ok_buff = False
-                print("[buff] skipped")
-        except Exception as e:
-            ok_buff = False
-            print(f"[tp] error: {e}")
-            traceback.print_exc()  # ← добавьте эту строку, чтобы увидеть точное место и файл ошибки
-
-    def _after_revive_sequence_buff_only(self):
-        try:
-            if getattr(self.buff, "is_enabled", lambda: False)():
-                ok_buff = self.buff.run_once()
-                print("[buff] run:", ok_buff)
-            else:
-                print("[buff] skipped")
-        except Exception as e:
-            print(f"[buff] error: {e}")
+    def _toggle_autobuff(self, enabled: bool):
+        self._autobuff_enabled = bool(enabled)
+        # поллер уже крутится; флаг управляет логикой в _buff_interval_tick
 
     # ---------------- helpers ----------------
     def _safe_window(self):
@@ -139,48 +284,45 @@ class ReviveLauncherUI:
         except Exception:
             return None
 
+    def _check_is_dead(self) -> bool:
+        try:
+            return not self.watcher.is_alive()
+        except Exception:
+            return False
+
     # ---------------- UI build ----------------
     def build_ui(self, parent: tk.Widget, local_version: str):
         version_frame = tk.Frame(parent); version_frame.pack(padx=10, pady=10, fill="x")
 
-        # language selector
         lang_frame = tk.Frame(parent); lang_frame.pack(pady=(5, 2))
         tk.Label(lang_frame, text="Язык интерфейса:", font=("Arial", 10)).pack(side="left", padx=(0, 6))
         ttk.OptionMenu(lang_frame, self.language_var, self.language_var.get(), "rus", "eng", command=self.set_language).pack(side="left")
 
-        # server selector
         server_frame = tk.Frame(parent); server_frame.pack(pady=(2, 6))
         tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 34))
         ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(side="left")
 
-        # window probe controls
         window_frame = tk.Frame(parent); window_frame.pack(pady=(2, 10))
         tk.Button(window_frame, text="🔍 Найти окно Lineage", command=self.winprobe.try_find_window_again).pack(side="left", padx=(0, 8))
         ws_label = tk.Label(window_frame, text="[?] Поиск окна...", font=("Arial", 9), fg="gray"); ws_label.pack(side="left")
         self.winprobe.attach_status(ws_label)
 
-        # connection test
         self.driver_status = tk.Label(parent, text="Состояние связи: неизвестно", fg="gray")
         tk.Button(parent, text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)).pack(pady=5)
         self.driver_status.pack(pady=(0, 5))
 
-        # version + updater
         tk.Label(parent, text=f"Версия: {local_version}", font=("Arial", 10)).pack()
         self.version_status_label = tk.Label(parent, text="", font=("Arial", 9), fg="orange"); self.version_status_label.pack()
         tk.Button(parent, text="🔄 Проверить обновление",
                   command=lambda: run_update_check(local_version, self.version_status_label, self.root, self)).pack()
 
-        # exit button
         tk.Button(parent, text="Выход", fg="red", command=self.exit_program).pack(side="bottom", pady=10)
 
-        # 1) Автовозрождение (UI)
-        RespawnControls(
-            parent=parent,
-            start_fn=self._respawn_start,
-            stop_fn=self._respawn_stop,
-        )
+        # 1) Общий блок мониторинга/подъёма
+        self.respawn_ui = RespawnControls(parent=parent, start_fn=self._respawn_start, stop_fn=self._respawn_stop)
+        StateControls(parent=self.respawn_ui.get_body(), state_getter=lambda: self.watcher.last())
 
-        # 2) Баф после респавна (UI)
+        # 2) Баф
         self.buff = BuffControls(
             parent=parent,
             controller=self.controller,
@@ -190,8 +332,14 @@ class ReviveLauncherUI:
             profile_getter=lambda: self.profile,
             window_found_getter=lambda: bool(self.winprobe.window_found),
         )
+        BuffIntervalControl(
+            parent,
+            checker=self.checker,
+            on_toggle_autobuff=self._toggle_autobuff,
+            intervals=(1, 5, 10, 20),
+        )
 
-        # 3) ТП (UI)
+        # 3) ТП
         self.tp = TPControls(
             parent=parent,
             controller=self.controller,
@@ -200,7 +348,6 @@ class ReviveLauncherUI:
             profile_getter=lambda: self.profile,
             check_is_dead=self._check_is_dead,
         )
-        self.auto_revive.set_tp_getter(lambda: self.tp)
 
         # авто-проверка обновлений
         def _schedule_update_check():
@@ -210,32 +357,10 @@ class ReviveLauncherUI:
 
     # ---------------- window probe callbacks ----------------
     def _on_window_found(self, win_info: dict):
-        # Защита: buff_runner мог не быть создан, если профиль не поддерживает
         br = getattr(self, "buff_runner", None)
         supports = bool(getattr(self.profile, "supports_buffing", lambda: False)())
         if br and supports and not br.is_running():
             br.start()
-
-    # ---------------- state monitor (HP) ----------------
-    def _state_start(self):
-        try:
-            self.auto_revive.start()
-            print("[state] monitor ON")
-        except Exception as e:
-            print(f"[state] start error: {e}")
-
-    def _state_stop(self):
-        try:
-            self.auto_revive.stop()
-            print("[state] monitor OFF")
-        except Exception as e:
-            print(f"[state] stop error: {e}")
-
-    def _check_is_dead(self) -> bool:
-        try:
-            return bool(self.auto_revive._state.hp_ratio <= 0.01)
-        except Exception:
-            return False
 
     # ---------------- setters ----------------
     def set_language(self, lang):
@@ -249,7 +374,6 @@ class ReviveLauncherUI:
         self.respawn.set_server(self.server)
         self.profile = get_server_profile(self.server)
 
-        # обновить buff runner доступность
         br = getattr(self, "buff_runner", None)
         if br and br.is_running():
             br.stop()
@@ -262,10 +386,14 @@ class ReviveLauncherUI:
         else:
             self.buff_runner = None
 
-        # обновить auto_revive сервер
-        self.auto_revive.set_server(self.server)
-
-        # уведомить BuffControls о новом профиле/сервере
+        try:
+            self.watcher.set_server(self.server)
+        except Exception:
+            pass
+        try:
+            self.to_village.set_server(self.server)
+        except Exception:
+            pass
         try:
             self.buff.refresh_enabled(self.profile)
         except Exception:
@@ -283,7 +411,7 @@ class ReviveLauncherUI:
         except Exception:
             pass
         try:
-            self.auto_revive.stop()
+            self.watcher.stop()
         except Exception:
             pass
         if self.controller:
@@ -291,6 +419,11 @@ class ReviveLauncherUI:
                 self.controller.close()
             except Exception:
                 pass
+        try:
+            if self.charge_poller:
+                self.charge_poller.stop()
+        except Exception:
+            pass
         self.root.destroy()
         sys.exit(0)
 
@@ -299,7 +432,7 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("620x720")
+    root.geometry("620x920")
     root.resizable(False, False)
 
     tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)

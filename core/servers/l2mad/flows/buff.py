@@ -11,7 +11,7 @@ FLOW = [
     {"op": "sleep",     "ms": 900},
     {"op": "click_in", "zone": "dashboard_body", "tpl": "buffer_button", "timeout_ms": 2500, "thr": 0.87},
     {"op": "sleep",     "ms": 900},
-    {"op": "dashboard_is_locked", "zone": "dashboard_body", "tpl": "dashboard_is_locked", "timeout_ms": 10000, "thr": 0.80},
+    {"op": "dashboard_is_locked", "zone": "dashboard_body", "tpl": "dashboard_is_locked", "timeout_ms": 11000, "thr": 0.80},
     {"op": "sleep",     "ms": 900},
     {"op": "click_in",  "zone": "dashboard_body", "tpl": "{mode_key}",    "timeout_ms": 2500, "thr": 0.88},
     {"op": "sleep",     "ms": 900},
