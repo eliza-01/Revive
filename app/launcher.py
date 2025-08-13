@@ -192,12 +192,17 @@ class ReviveLauncherUI:
 
     # ----------------  Charge Flow  ----------------
     def _flow_step_buff_if_needed(self):
-        need_buff = getattr(self.buff, "is_enabled", lambda: False)() and not bool(self.checker.is_charged(None))
+        charged_now = bool(self.checker.is_charged(None))
+        buff_enabled = getattr(self.buff, "is_enabled", lambda: False)()
+        need_buff = buff_enabled and not charged_now
+
         if need_buff:
             ok_buff = self.buff.run_once()
             print(f"[buff] auto-after-alive run: {ok_buff}")
             self._buff_was_success = ok_buff
         else:
+            reason = "disabled" if not buff_enabled else "already charged"
+            print(f"[buff] skip ({reason})")
             self._buff_was_success = False
 
     def _flow_step_macros_after_buff(self):
@@ -246,20 +251,23 @@ class ReviveLauncherUI:
 
     def _flow_step_tp_if_ready(self):
         tp_enabled = getattr(self.tp, "is_enabled", lambda: False)()
-
-        if tp_enabled:
-            fn = getattr(self.tp, "teleport_now_selected", None)
-            ok_tp = bool(fn()) if callable(fn) else False
-            print(f"[flow] tp_if_ready → {ok_tp}")
-        else:
+        if not tp_enabled:
             print("[flow] tp_if_ready → skip (disabled)")
+            return
 
-        # if tp_enabled and (self._charged_flag is True):
-        #     fn = getattr(self.tp, "teleport_now_selected", None)
-        #     ok_tp = bool(fn()) if callable(fn) else False
-        #     print(f"[flow] tp_if_ready → {ok_tp}")
-        # else:
-        #     print("[flow] tp_if_ready → skip")
+        if self._charged_flag is not True:
+            print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
+            return
+
+        if not getattr(self, "_tp_after_death", False):
+            print("[flow] tp_if_ready → skip (revive was not ours)")
+            return
+
+        fn = getattr(self.tp, "teleport_now_selected", None)
+        ok_tp = bool(fn()) if callable(fn) else False
+        print(f"[flow] tp_if_ready → {ok_tp}")
+        # одноразово на цикл «умер→встал»
+        self._tp_after_death = False
 
     # ----------------  Buff Interval Checker ----------------
     def _buff_interval_tick(self):
@@ -298,15 +306,22 @@ class ReviveLauncherUI:
         try:
             ok = self.to_village.run_once(timeout_ms=4000)
             print(f"[to_village] run: {ok}")
-            if ok:
-                self._tp_after_death = True   # ← оживили СВОИМ действием
+            self._tp_after_death = bool(ok)   # True только если реально нажали и поднялись
         except Exception as e:
             print(f"[to_village] error in thread: {e}")
+            self._tp_after_death = False
+        finally:
+            self._revive_decided = True       # решение принято в любом случае
 
     def _on_dead_ui(self, st):
         self._alive_flag = False
         self._charged_flag = None
         print("[state] death detected → charged=None")
+        try: self.checker.invalidate()
+        except Exception: pass
+        self._tp_after_death = False       # ТП можно только если сами нажали «В деревню»
+        self._revive_decided = False       # ещё не знаем, кто поднял
+        print("[state] death detected → charged=None (cache invalidated)")
         try:
             ui_ok = (
                     getattr(self, "respawn_ui", None)
@@ -331,6 +346,19 @@ class ReviveLauncherUI:
             self._run_alive_flow()
 
     def _run_alive_flow(self):
+        # если в UI включено «встать после смерти» — ждём решения, кто поднял
+        try:
+            ui_wants_raise = getattr(self, "respawn_ui", None) and self.respawn_ui.is_enabled()
+        except Exception:
+            ui_wants_raise = False
+
+        if ui_wants_raise and not getattr(self, "_revive_decided", True):
+            # небольшая задержка и пробуем снова
+            try: self.root.after(300, self._run_alive_flow)
+            except Exception: time.sleep(0.3); self._run_alive_flow()
+            return
+
+        self._buff_was_success = False   # ← ДОБАВЬ сбросить результат бафа текущего цикла?
         self.flow.run()
 
     # ---------------- respawn controls ----------------
