@@ -236,7 +236,7 @@ class BuffAfterRespawnWorker:
                 # Если блок виден, кликаем слева раз в 1с, пока блок не исчезнет.
                 zone_key = step["zone"]
                 tpl_key = step["tpl"]              # ожидаем ключ шаблона блокировки
-                timeout_ms = int(step.get("timeout_ms", 11000))
+                timeout_ms = int(step.get("timeout_ms", 12000))
                 interval_s = float(step.get("probe_interval_s", 1.0))
 
                 start_ts = time.time()
