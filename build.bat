@@ -1,34 +1,45 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal
 cd /d "%~dp0"
 
-echo [>>] Активация среды venv...
-call "venv\Scripts\activate.bat" || (
-echo [!!] Не удалось активировать venv
-exit /b 1
-)
+rem 0) Очистка прошлых сборок
+if exist build rmdir /s /q build
+if exist dist rmdir /s /q dist
+for %%F in (*.spec) do del "%%F" >nul 2>&1
 
-echo [>>] Компиляция ReviveLauncher (с правами администратора)...
+rem 1) Python + venv
+where py >nul 2>&1 && set PY=py -3 || set PY=python
+if not exist venv (%PY% -m venv venv) || (echo venv OK)
+call "venv\Scripts\activate"
 
-rmdir /S /Q "dist" 2>nul
-rmdir /S /Q "build" 2>nul
-del /Q "ReviveLauncher.spec" 2>nul
-del /Q "ReviveLauncher.exe" 2>nul
+rem 2) Зависимости
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install pyinstaller
 
-pyinstaller ^
---onefile ^
---windowed ^
---uac-admin ^
---icon="assets\icon.ico" ^
---name="ReviveLauncher" ^
---add-data "core\vision\templates\l2mad;core\vision\templates\l2mad" ^
-"main.py"
+rem 3) Опции сборки
+set NAME=Revive
+set ICON=assets\icon.ico
+set UPXDIR=
+if exist "assets\upx\upx.exe" set UPXDIR=--upx-dir "assets\upx"
 
-if exist "dist\ReviveLauncher.exe" (
-echo [✓] Готово. Exe находится в dist
+set DATA_OPTS=^
+ --add-data "assets;assets" ^
+ --add-data "core\servers;core\servers" ^
+ --add-data "app;app" ^
+ --add-data "tools;tools" ^
+ --add-data "latest_version.txt;."
+
+rem 4) Сборка onefile
+if exist "%ICON%" (set ICON_OPT=--icon "%ICON%") else (set ICON_OPT=)
+pyinstaller --onefile --noconsole --uac-admin %ICON_OPT% %UPXDIR% ^
+ --name "%NAME%" %DATA_OPTS% main.py
+
+rem 5) Результат
+if exist "dist\%NAME%.exe" (
+  echo Done: dist\%NAME%.exe
 ) else (
-echo [!!] Сборка не создала dist\ReviveLauncher.exe
+  echo ERROR: exe not produced. Check PyInstaller log above.
+  exit /b 1
 )
-
-pause
-exit /b 0
+endlocal
