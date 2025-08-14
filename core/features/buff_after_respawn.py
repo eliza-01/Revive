@@ -210,6 +210,22 @@ class BuffAfterRespawnWorker:
             time.sleep(0.05)
         return False
 
+    def _dashboard_reset(self, win: Dict):
+        self._log("[buff] dashboard reset")
+        thr = self.click_threshold
+        while True:
+            self.controller.send("b")  # dashboard_close
+            time.sleep(0.5)
+            self.controller.send("b")  # dashboard_init
+            time.sleep(0.5)
+            if not self._is_visible(win, "dashboard_body", "dashboard_init", thr):
+                continue
+            self.controller.send("b")  # close again
+            time.sleep(0.5)
+            if not self._is_visible(win, "dashboard_body", "dashboard_init", thr):
+                break
+        self._log("[buff] dashboard reset done")
+
     # ---------- flow engine ----------
     def _exec_flow_step(self, win: Dict, step: Dict, idx: int, total: int) -> bool:
         op = step.get("op")
@@ -296,9 +312,12 @@ class BuffAfterRespawnWorker:
             return False
 
     def _run_flow(self, win: Dict) -> bool:
-        engine = FlowEngine(self._flow, lambda s, i, t: self._exec_flow_step(win, s, i, t))
-        ok = engine.run()
-        if ok:
-            self._log("[buff] flow DONE")
-            self._on_status("[buff] done", True)
-        return ok
+        while True:
+            engine = FlowEngine(self._flow, lambda s, i, t: self._exec_flow_step(win, s, i, t))
+            ok = engine.run()
+            if ok:
+                self._log("[buff] flow DONE")
+                self._on_status("[buff] done", True)
+                return True
+            self._log("[buff] flow failed → dashboard reset")
+            self._dashboard_reset(win)
