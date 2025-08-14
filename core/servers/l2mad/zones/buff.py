@@ -20,6 +20,7 @@ TEMPLATES: Dict[str, List[str]] = {
     "dashboard_is_locked": ["dashboard", "dashboard_is_locked.png"],
 
     "buffer_button": ["dashboard", "buffer", "dashboard_buffer_button.png"],
+    "buffer_init":   ["dashboard", "buffer", "dashboard_buffer_init.png"],  # ← ДОБАВЬ ЭТО
     "buffer_mode_profile": ["dashboard", "buffer", "dashboard_buffer_profile.png"],
     "buffer_mode_mage":    ["dashboard", "buffer", "dashboard_buffer_mage.png"],
     "buffer_mode_fighter": ["dashboard", "buffer", "dashboard_buffer_fighter.png"],
