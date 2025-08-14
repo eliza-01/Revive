@@ -5,6 +5,7 @@ import time
 from typing import Callable, Optional, Dict, Tuple
 
 from core.runtime.dashboard_guard import DASHBOARD_GUARD
+from core.runtime.flow_engine import FlowEngine
 from core.vision.matching.template_matcher import match_in_zone
 
 BUFF_MODE_PROFILE = "profile"
@@ -210,89 +211,94 @@ class BuffAfterRespawnWorker:
         return False
 
     # ---------- flow engine ----------
+    def _exec_flow_step(self, win: Dict, step: Dict, idx: int, total: int) -> bool:
+        op = step.get("op")
+        thr = float(step.get("thr", self.click_threshold))
+
+        self._log(f"[buff][step {idx}/{total}] {op}: {step}")
+
+        if op == "click_any":
+            ok = self._click_any(win, tuple(step["zones"]), step["tpl"], int(step["timeout_ms"]), thr)
+            self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
+            if not ok:
+                self._on_status(f"[buff] click_any fail: {step}", False)
+            return ok
+
+        elif op == "wait":
+            ok = self._wait_template(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+            self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
+            if not ok:
+                self._on_status(f"[buff] wait fail: {step}", False)
+            return ok
+
+        elif op == "dashboard_is_locked":
+            # Если блок виден, кликаем слева раз в 1с, пока блок не исчезнет.
+            zone_key = step["zone"]
+            tpl_key = step["tpl"]              # ожидаем ключ шаблона блокировки
+            timeout_ms = int(step.get("timeout_ms", 12000))
+            interval_s = float(step.get("probe_interval_s", 1.0))
+
+            start_ts = time.time()
+            next_probe = 0.0
+            unlocked = False
+
+            while (time.time() - start_ts) * 1000.0 < timeout_ms:
+                locked_now = self._is_visible(win, zone_key, tpl_key, thr)
+                if not locked_now:
+                    unlocked = True
+                    break
+
+                now = time.time()
+                if now >= next_probe:
+                    self._log(f"[buff][step {idx}] locked → probe left-click")
+                    self._probe_left_click()
+                    next_probe = now + interval_s
+
+                time.sleep(0.08)
+
+            self._log(f"[buff][step {idx}] unlocked: {'YES' if unlocked else 'NO'}")
+            if not unlocked:
+                self._on_status("[buff] dashboard still locked", False)
+            return unlocked
+
+        elif op == "click_in":
+            tpl_key = step["tpl"]
+            if tpl_key == "{mode_key}":
+                tpl_key = self._mode_tpl_key()
+            ok = self._click_in(win, step["zone"], tpl_key, int(step["timeout_ms"]), thr)
+            self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
+            if not ok:
+                self._on_status(f"[buff] click_in fail: {step}", False)
+            return ok
+
+        elif op == "optional_click":
+            ok = self._click_in(win, step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
+            self._log(f"[buff][step {idx}] result: {'CLICKED' if ok else 'SKIP'}")
+            return True
+
+        elif op == "sleep":
+            ms = int(step.get("ms", 50))
+            self._log(f"[buff][step {idx}] sleeping {ms} ms")
+            time.sleep(ms / 1000.0)
+            return True
+
+        elif op == "send_arduino":
+            cmd = step.get("cmd", "")
+            delay_ms = int(step.get("delay_ms", 100))
+            self._log(f"[buff][step {idx}] send_arduino '{cmd}', delay {delay_ms} ms")
+            self.controller.send(cmd)
+            time.sleep(delay_ms / 1000.0)
+            return True
+
+        else:
+            self._log(f"[buff][step {idx}] unknown op: {op}")
+            self._on_status(f"[buff] unknown op: {op}", False)
+            return False
+
     def _run_flow(self, win: Dict) -> bool:
-        total = len(self._flow) if self._flow else 0
-        for idx, step in enumerate(self._flow, start=1):
-            op = step.get("op")
-            thr = float(step.get("thr", self.click_threshold))
-
-            self._log(f"[buff][step {idx}/{total}] {op}: {step}")
-
-            if op == "click_any":
-                ok = self._click_any(win, tuple(step["zones"]), step["tpl"], int(step["timeout_ms"]), thr)
-                self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[buff] click_any fail: {step}", False)
-                    return False
-
-            elif op == "wait":
-                ok = self._wait_template(win, step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
-                self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[buff] wait fail: {step}", False)
-                    return False
-
-            elif op == "dashboard_is_locked":
-                # Если блок виден, кликаем слева раз в 1с, пока блок не исчезнет.
-                zone_key = step["zone"]
-                tpl_key = step["tpl"]              # ожидаем ключ шаблона блокировки
-                timeout_ms = int(step.get("timeout_ms", 12000))
-                interval_s = float(step.get("probe_interval_s", 1.0))
-
-                start_ts = time.time()
-                next_probe = 0.0
-                unlocked = False
-
-                while (time.time() - start_ts) * 1000.0 < timeout_ms:
-                    locked_now = self._is_visible(win, zone_key, tpl_key, thr)
-                    if not locked_now:
-                        unlocked = True
-                        break
-
-                    now = time.time()
-                    if now >= next_probe:
-                        self._log(f"[buff][step {idx}] locked → probe left-click")
-                        self._probe_left_click()
-                        next_probe = now + interval_s
-
-                    time.sleep(0.08)
-
-                self._log(f"[buff][step {idx}] unlocked: {'YES' if unlocked else 'NO'}")
-                if not unlocked:
-                    self._on_status("[buff] dashboard still locked", False)
-                    return False
-
-            elif op == "click_in":
-                tpl_key = step["tpl"]
-                if tpl_key == "{mode_key}":
-                    tpl_key = self._mode_tpl_key()
-                ok = self._click_in(win, step["zone"], tpl_key, int(step["timeout_ms"]), thr)
-                self._log(f"[buff][step {idx}] result: {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[buff] click_in fail: {step}", False)
-                    return False
-
-            elif op == "optional_click":
-                ok = self._click_in(win, step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
-                self._log(f"[buff][step {idx}] result: {'CLICKED' if ok else 'SKIP'}")
-
-            elif op == "sleep":
-                ms = int(step.get("ms", 50))
-                self._log(f"[buff][step {idx}] sleeping {ms} ms")
-                time.sleep(ms / 1000.0)
-
-            elif op == "send_arduino":
-                cmd = step.get("cmd", "")
-                delay_ms = int(step.get("delay_ms", 100))
-                self._log(f"[buff][step {idx}] send_arduino '{cmd}', delay {delay_ms} ms")
-                self.controller.send(cmd)
-                time.sleep(delay_ms / 1000.0)
-
-            else:
-                self._log(f"[buff][step {idx}] unknown op: {op}")
-                self._on_status(f"[buff] unknown op: {op}", False)
-                return False
-
-        self._log("[buff] flow DONE")
-        self._on_status("[buff] done", True)
-        return True
+        engine = FlowEngine(self._flow, lambda s, i, t: self._exec_flow_step(win, s, i, t))
+        ok = engine.run()
+        if ok:
+            self._log("[buff] flow DONE")
+            self._on_status("[buff] done", True)
+        return ok
