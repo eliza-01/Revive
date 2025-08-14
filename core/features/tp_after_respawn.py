@@ -1,4 +1,3 @@
-# =========================
 # File: core/features/tp_after_respawn.py
 # Flow-only TP worker (dashboard/gatekeeper). With per-step logging.
 # =========================

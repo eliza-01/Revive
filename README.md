@@ -22,7 +22,7 @@ eliza.83501@gmail.com
 power55power
 
 #Вход
-cd C:/sv/Projects/Revive
+cd C:/Projects/Revive
 venv\Scripts\activate
 python main.py
 
