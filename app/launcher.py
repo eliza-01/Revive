@@ -237,10 +237,6 @@ class ReviveLauncherUI:
             self._macros_done = True
             print(f"[macros] error: {e}")
 
-
-
-
-
     def _flow_step_recheck_charged(self):
         try:
             v = self.checker.force_check()
@@ -257,10 +253,6 @@ class ReviveLauncherUI:
 
         if self._charged_flag is not True:
             print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
-            return
-
-        if not getattr(self, "_tp_after_death", False):
-            print("[flow] tp_if_ready → skip (revive was not ours)")
             return
 
         fn = getattr(self.tp, "teleport_now_selected", None)
@@ -317,10 +309,10 @@ class ReviveLauncherUI:
         self._alive_flag = False
         self._charged_flag = None
         print("[state] death detected → charged=None")
-        try: self.checker.invalidate()
-        except Exception: pass
-        self._tp_after_death = False       # ТП можно только если сами нажали «В деревню»
-        self._revive_decided = False       # ещё не знаем, кто поднял
+        try:
+            self.checker.invalidate()          # ← ВАЖНО: сбросить кеш при смерти
+        except Exception:
+            pass
         print("[state] death detected → charged=None (cache invalidated)")
         try:
             ui_ok = (
@@ -459,7 +451,7 @@ class ReviveLauncherUI:
         self.afterbuff_runner = AfterBuffMacroRunner(
             controller=self.controller,
             get_sequence=lambda: self.afterbuff_ui.get_sequence(),
-            get_delay_ms=lambda: self.afterbuff_ui.get_delay_ms(),
+            get_delay_s=lambda: self.afterbuff_ui.get_delay_s(),
         )
 
         # 4) ТП
@@ -557,7 +549,7 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("620x1080")
+    root.geometry("620x1180")
     root.resizable(False, False)
 
     tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)

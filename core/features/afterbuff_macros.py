@@ -1,28 +1,45 @@
 from __future__ import annotations
 import time
-from typing import Iterable
-
-ALLOWED_KEYS = tuple("0123456789-=")
+from typing import Callable, Iterable, List
 
 class AfterBuffMacroRunner:
-    def __init__(self, controller, get_sequence, get_delay_ms):
+    """
+    Последовательно отправляет выбранные клавиши на Arduino.
+    Задержка между нажатиями — уже в СЕКУНДАХ (как в UI).
+    """
+    def __init__(
+            self,
+            controller,
+            get_sequence: Callable[[], Iterable[str]],
+            get_delay_s: Callable[[], float],
+    ):
         self.controller = controller
         self._get_sequence = get_sequence
-        self._get_delay_ms = get_delay_ms
+        self._get_delay_s = get_delay_s
 
     def run_once(self) -> bool:
+        seq: List[str] = list(self._get_sequence() or [])
         try:
-            seq: Iterable[str] = list(self._get_sequence() or [])
-            delay_ms = int(self._get_delay_ms() or 0)
-            delay_s = max(0.0, delay_ms / 1000.0)
+            delay_s = float(self._get_delay_s() or 0.0)
+        except Exception:
+            delay_s = 0.0
 
-            for k in seq:
-                ch = str(k).strip()
-                if len(ch) != 1 or ch not in ALLOWED_KEYS:
-                    continue
-                self.controller.send(ch)   # прошивка: одиночный символ
-                time.sleep(delay_s)
-            return True
-        except Exception as e:
-            print(f"[macros] error: {e}")
+        if not seq:
+            print("[macros] run: empty sequence")
             return False
+
+        print(f"[macros] run: {seq}, delay={delay_s:.3f} s")
+
+        sent = 0
+        for idx, key in enumerate(seq, start=1):
+            if not key:
+                continue
+            ch = str(key)[0]
+            self.controller.send(ch)
+            sent += 1
+            print(f"[macros] sent {idx}/{len(seq)} → '{ch}'")
+            if idx < len(seq) and delay_s > 0:
+                time.sleep(delay_s)
+
+        print(f"[macros] done, sent={sent}")
+        return sent > 0

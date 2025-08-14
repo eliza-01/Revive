@@ -168,3 +168,8 @@ class ChargeChecker:
         self._last_val = val
         self._last_ts = time.time()
         return val
+
+    def invalidate(self) -> None:
+        """Сбросить кеш и таймер, чтобы след. запрос не полагался на старое значение."""
+        self._last_val = None
+        self._last_ts = 0.0
