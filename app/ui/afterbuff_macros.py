@@ -1,8 +1,7 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 
-# только цифры, 0 идёт после 9
-_ALLOWED = tuple("1234567890")
+_ALLOWED = tuple("1234567890")  # если нужны "-" и "=", добавь их сюда
 
 class AfterBuffMacrosControls:
     def __init__(self, parent: tk.Widget):
@@ -24,15 +23,15 @@ class AfterBuffMacrosControls:
         self._add_row()
 
         row_delay = tk.Frame(frame); row_delay.pack(fill="x", pady=(4, 2), anchor="w")
-        tk.Label(row_delay, text="Задержка между макросами, мс:").pack(side="left")
+        tk.Label(row_delay, text="Задержка между макросами, сек:").pack(side="left")
         self.delay_entry = tk.Entry(row_delay, width=6)
-        self.delay_entry.insert(0, "300")
+        self.delay_entry.insert(0, "1")  # секунды
         self.delay_entry.pack(side="left", padx=(6, 0))
 
         row_dur = tk.Frame(frame); row_dur.pack(fill="x", pady=(4, 2), anchor="w")
         tk.Label(row_dur, text="Время на выполнение макросов, сек:").pack(side="left")
         self.duration_entry = tk.Entry(row_dur, width=6)
-        self.duration_entry.insert(0, "2")
+        self.duration_entry.insert(0, "5")  # секунды
         self.duration_entry.pack(side="left", padx=(6, 0))
 
     def run_always(self) -> bool:
@@ -58,13 +57,15 @@ class AfterBuffMacrosControls:
     def get_sequence(self):
         return [v.get() for (_, v) in self._rows]
 
-    def get_delay_ms(self) -> int:
+    def get_delay_s(self) -> float:
+        """Задержка между макросами в секундах."""
         try:
-            return int(self.delay_entry.get().strip())
+            return max(0.0, float(self.delay_entry.get().strip()))
         except Exception:
-            return 0
+            return 0.0
 
     def get_duration_s(self) -> float:
+        """Окно ожидания завершения (сек)."""
         try:
             return max(0.0, float(self.duration_entry.get().strip()))
         except Exception:
