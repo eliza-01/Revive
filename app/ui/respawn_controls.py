@@ -22,8 +22,10 @@ class RespawnControls:
             text="Отслеживать состояние (включить StateWatcher)",
             variable=self._monitor_var,
             command=self._on_toggle_monitor,
-            font=("Arial", 10),
-        ).pack(side="left")
+            font=("Arial", 12, "bold"),
+            fg="orange",
+            selectcolor="lightyellow",
+        ).pack(side="left", padx=4, pady=2)
 
         row2 = tk.Frame(frame); row2.pack(fill="x", pady=(2, 2), anchor="w")
         self._enabled_var = tk.BooleanVar(value=True)

@@ -29,7 +29,7 @@ class BuffIntervalControl:
         self._auto_var = tk.BooleanVar(value=False)  # дефолт OFF
         tk.Checkbutton(
             row,
-            text="Автобаф по интервалу",
+            text="Автобаф по интервалу (в разработке)",
             variable=self._auto_var,
             command=lambda: on_toggle_autobuff(self._auto_var.get())
         ).pack(side="left", padx=(12, 0))

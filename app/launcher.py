@@ -5,14 +5,19 @@ import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 import logging
+import time  # ← вот это
+
 
 from core.connection import ReviveController
 from core.connection_test import run_test_command
-from core.features.auto_respawn_runner import AutoRespawnRunner
-from core.runtime.state_watcher import StateWatcher
 from core.servers.registry import get_server_profile
+
+from core.runtime.state_watcher import StateWatcher
 from core.runtime.poller import RepeaterThread
+
+from core.features.auto_respawn_runner import AutoRespawnRunner
 from core.features.to_village import ToVillage
+from core.features.afterbuff_macros import AfterBuffMacroRunner
 
 from core.checks.charged import ChargeChecker, BuffTemplateProbe
 
@@ -23,9 +28,33 @@ from app.ui.buff_controls import BuffControls
 from app.ui.tp_controls import TPControls
 from app.ui.updater_dialog import run_update_check
 from app.ui.settings import BuffIntervalControl
+from app.ui.afterbuff_macros import AfterBuffMacrosControls
 
 from core.runtime.flow_config import PRIORITY
 from core.runtime.flow_runner import FlowRunner
+
+class _Collapsible(tk.Frame):
+    def __init__(self, parent, title: str, opened: bool = True):
+        super().__init__(parent)
+        self._open = tk.BooleanVar(value=opened)
+        self._btn = ttk.Button(self, text=("▼ " + title if opened else "► " + title), command=self._toggle)
+        self._btn.pack(fill="x", pady=(6, 2))
+        self._body = tk.Frame(self)
+        if opened:
+            self._body.pack(fill="x")
+
+    def _toggle(self):
+        if self._open.get():
+            self._open.set(False)
+            self._btn.config(text="► " + self._btn.cget("text")[2:])
+            self._body.forget()
+        else:
+            self._open.set(True)
+            self._btn.config(text="▼ " + self._btn.cget("text")[2:])
+            self._body.pack(fill="x")
+
+    def body(self) -> tk.Frame:
+        return self._body
 
 # ---------------- Logging ----------------
 def _init_logging():
@@ -105,6 +134,10 @@ class ReviveLauncherUI:
                 debug=False,
             )
 
+        # раннер макросов создадим позже, когда UI будет
+        self.afterbuff_ui = None
+        self.afterbuff_runner = None
+
         # --- window probe ---
         self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
 
@@ -139,6 +172,7 @@ class ReviveLauncherUI:
         self.flow = FlowRunner(
             steps={
                 "buff_if_needed": self._flow_step_buff_if_needed,
+                "macros_after_buff": self._flow_step_macros_after_buff,
                 "recheck_charged": self._flow_step_recheck_charged,
                 "tp_if_ready": self._flow_step_tp_if_ready,
             },
@@ -158,10 +192,50 @@ class ReviveLauncherUI:
 
     # ----------------  Charge Flow  ----------------
     def _flow_step_buff_if_needed(self):
-        need_buff = getattr(self.buff, "is_enabled", lambda: False)() and not bool(self.checker.is_charged(None))
+        charged_now = bool(self.checker.is_charged(None))
+        buff_enabled = getattr(self.buff, "is_enabled", lambda: False)()
+        need_buff = buff_enabled and not charged_now
+
         if need_buff:
-            ok = self.buff.run_once()
-            print(f"[flow] buff_if_needed → {ok}")
+            ok_buff = self.buff.run_once()
+            print(f"[buff] auto-after-alive run: {ok_buff}")
+            self._buff_was_success = ok_buff
+        else:
+            reason = "disabled" if not buff_enabled else "already charged"
+            print(f"[buff] skip ({reason})")
+            self._buff_was_success = False
+
+    def _flow_step_macros_after_buff(self):
+        try:
+            # если UI выключен — сразу завершаем шаг
+            if not self.afterbuff_ui.is_enabled():
+                self._macros_done = True
+                print("[macros] skipped (UI disabled)")
+                return
+
+            # проверка: либо баф был, либо разрешено запускать без бафа
+            if not self._buff_was_success and not self.afterbuff_ui.run_always():
+                self._macros_done = True
+                print("[macros] skipped (buff not executed, run_always=False)")
+                return
+
+            ok_macros = self.afterbuff_runner.run_once()
+
+            try:
+                dur = float(self.afterbuff_ui.get_duration_s())
+            except Exception:
+                dur = 0.0
+
+            if dur > 0:
+                print(f"[macros] waiting {dur:.2f}s for completion window")
+                time.sleep(dur)
+
+            self._macros_done = True
+            print(f"[macros] after-buff run: {ok_macros}")
+
+        except Exception as e:
+            self._macros_done = True
+            print(f"[macros] error: {e}")
 
     def _flow_step_recheck_charged(self):
         try:
@@ -173,20 +247,19 @@ class ReviveLauncherUI:
 
     def _flow_step_tp_if_ready(self):
         tp_enabled = getattr(self.tp, "is_enabled", lambda: False)()
-
-        if tp_enabled:
-            fn = getattr(self.tp, "teleport_now_selected", None)
-            ok_tp = bool(fn()) if callable(fn) else False
-            print(f"[flow] tp_if_ready → {ok_tp}")
-        else:
+        if not tp_enabled:
             print("[flow] tp_if_ready → skip (disabled)")
+            return
 
-        # if tp_enabled and (self._charged_flag is True):
-        #     fn = getattr(self.tp, "teleport_now_selected", None)
-        #     ok_tp = bool(fn()) if callable(fn) else False
-        #     print(f"[flow] tp_if_ready → {ok_tp}")
-        # else:
-        #     print("[flow] tp_if_ready → skip")
+        if self._charged_flag is not True:
+            print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
+            return
+
+        fn = getattr(self.tp, "teleport_now_selected", None)
+        ok_tp = bool(fn()) if callable(fn) else False
+        print(f"[flow] tp_if_ready → {ok_tp}")
+        # одноразово на цикл «умер→встал»
+        self._tp_after_death = False
 
     # ----------------  Buff Interval Checker ----------------
     def _buff_interval_tick(self):
@@ -225,15 +298,22 @@ class ReviveLauncherUI:
         try:
             ok = self.to_village.run_once(timeout_ms=4000)
             print(f"[to_village] run: {ok}")
-            if ok:
-                self._tp_after_death = True   # ← оживили СВОИМ действием
+            self._tp_after_death = bool(ok)   # True только если реально нажали и поднялись
         except Exception as e:
             print(f"[to_village] error in thread: {e}")
+            self._tp_after_death = False
+        finally:
+            self._revive_decided = True       # решение принято в любом случае
 
     def _on_dead_ui(self, st):
         self._alive_flag = False
         self._charged_flag = None
         print("[state] death detected → charged=None")
+        try:
+            self.checker.invalidate()          # ← ВАЖНО: сбросить кеш при смерти
+        except Exception:
+            pass
+        print("[state] death detected → charged=None (cache invalidated)")
         try:
             ui_ok = (
                     getattr(self, "respawn_ui", None)
@@ -258,6 +338,19 @@ class ReviveLauncherUI:
             self._run_alive_flow()
 
     def _run_alive_flow(self):
+        # если в UI включено «встать после смерти» — ждём решения, кто поднял
+        try:
+            ui_wants_raise = getattr(self, "respawn_ui", None) and self.respawn_ui.is_enabled()
+        except Exception:
+            ui_wants_raise = False
+
+        if ui_wants_raise and not getattr(self, "_revive_decided", True):
+            # небольшая задержка и пробуем снова
+            try: self.root.after(300, self._run_alive_flow)
+            except Exception: time.sleep(0.3); self._run_alive_flow()
+            return
+
+        self._buff_was_success = False   # ← ДОБАВЬ сбросить результат бафа текущего цикла?
         self.flow.run()
 
     # ---------------- respawn controls ----------------
@@ -292,39 +385,51 @@ class ReviveLauncherUI:
 
     # ---------------- UI build ----------------
     def build_ui(self, parent: tk.Widget, local_version: str):
-        version_frame = tk.Frame(parent); version_frame.pack(padx=10, pady=10, fill="x")
+        # Блок 1: системные настройки (язык, сервер, поиск окна, коннект, версия, апдейт, выход)
+        top = _Collapsible(parent, "Системные настройки", opened=True)
+        top.pack(fill="x", padx=8, pady=4)
 
-        lang_frame = tk.Frame(parent); lang_frame.pack(pady=(5, 2))
+        # язык
+        lang_frame = tk.Frame(top.body()); lang_frame.pack(pady=(5, 2), anchor="center")
         tk.Label(lang_frame, text="Язык интерфейса:", font=("Arial", 10)).pack(side="left", padx=(0, 6))
-        ttk.OptionMenu(lang_frame, self.language_var, self.language_var.get(), "rus", "eng", command=self.set_language).pack(side="left")
+        ttk.OptionMenu(lang_frame, self.language_var, self.language_var.get(), "rus", "eng", command=self.set_language).pack(side="left", padx=(0, 20))
 
-        server_frame = tk.Frame(parent); server_frame.pack(pady=(2, 6))
-        tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 34))
-        ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(side="left")
+        # сервер
+        server_frame = tk.Frame(top.body()); server_frame.pack(pady=(2, 6), anchor="center")
+        tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 12))
+        ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(side="left", padx=(0, 20))
 
-        window_frame = tk.Frame(parent); window_frame.pack(pady=(2, 10))
+        # окно
+        window_frame = tk.Frame(top.body()); window_frame.pack(pady=(2, 10), anchor="center")
         tk.Button(window_frame, text="🔍 Найти окно Lineage", command=self.winprobe.try_find_window_again).pack(side="left", padx=(0, 8))
         ws_label = tk.Label(window_frame, text="[?] Поиск окна...", font=("Arial", 9), fg="gray"); ws_label.pack(side="left")
         self.winprobe.attach_status(ws_label)
 
-        self.driver_status = tk.Label(parent, text="Состояние связи: неизвестно", fg="gray")
-        tk.Button(parent, text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)).pack(pady=5)
+        # связь
+        self.driver_status = tk.Label(top.body(), text="Состояние связи: неизвестно", fg="gray")
+        tk.Button(top.body(), text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)).pack(pady=5)
         self.driver_status.pack(pady=(0, 5))
 
-        tk.Label(parent, text=f"Версия: {local_version}", font=("Arial", 10)).pack()
-        self.version_status_label = tk.Label(parent, text="", font=("Arial", 9), fg="orange"); self.version_status_label.pack()
-        tk.Button(parent, text="🔄 Проверить обновление",
+        # версия + апдейтер
+        tk.Label(top.body(), text=f"Версия: {local_version}", font=("Arial", 10)).pack()
+        self.version_status_label = tk.Label(top.body(), text="", font=("Arial", 9), fg="orange"); self.version_status_label.pack()
+        tk.Button(top.body(), text="🔄 Проверить обновление",
                   command=lambda: run_update_check(local_version, self.version_status_label, self.root, self)).pack()
 
-        tk.Button(parent, text="Выход", fg="red", command=self.exit_program).pack(side="bottom", pady=10)
+        # выход
+        tk.Button(top.body(), text="Выход", fg="red", command=self.exit_program).pack(pady=10)
 
-        # 1) Общий блок мониторинга/подъёма
-        self.respawn_ui = RespawnControls(parent=parent, start_fn=self._respawn_start, stop_fn=self._respawn_stop)
+        # Блок 2: рабочий поток — отслеживание состояния · баф · макросы · ТП
+        flow = _Collapsible(parent, "Отслеживать состояние · Баф · Макросы · ТП", opened=True)
+        flow.pack(fill="x", padx=8, pady=4)
+
+        # 1) Мониторинг/подъём
+        self.respawn_ui = RespawnControls(parent=flow.body(), start_fn=self._respawn_start, stop_fn=self._respawn_stop)
         StateControls(parent=self.respawn_ui.get_body(), state_getter=lambda: self.watcher.last())
 
         # 2) Баф
         self.buff = BuffControls(
-            parent=parent,
+            parent=flow.body(),
             controller=self.controller,
             server_getter=lambda: self.server,
             language_getter=lambda: self.language,
@@ -333,15 +438,27 @@ class ReviveLauncherUI:
             window_found_getter=lambda: bool(self.winprobe.window_found),
         )
         BuffIntervalControl(
-            parent,
+            flow.body(),
             checker=self.checker,
             on_toggle_autobuff=self._toggle_autobuff,
             intervals=(1, 5, 10, 20),
         )
 
-        # 3) ТП
+        # 3) Макросы после бафа
+        from app.ui.afterbuff_macros import AfterBuffMacrosControls
+        from core.features.afterbuff_macros import AfterBuffMacroRunner
+        self.afterbuff_ui = AfterBuffMacrosControls(flow.body())
+        self.afterbuff_runner = AfterBuffMacroRunner(
+            controller=self.controller,
+            get_sequence=lambda: self.afterbuff_ui.get_sequence(),
+            get_delay_s=lambda: self.afterbuff_ui.get_delay_s(),
+        )
+
+        # 4) ТП
+        tp_frame = tk.LabelFrame(flow.body(), text="Телепорт", padx=6, pady=6)
+        tp_frame.pack(fill="x", padx=6, pady=6, anchor="w")
         self.tp = TPControls(
-            parent=parent,
+            parent=tp_frame,
             controller=self.controller,
             get_language=lambda: self.language,
             get_window_info=lambda: self._safe_window(),
@@ -432,7 +549,7 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("620x920")
+    root.geometry("620x1180")
     root.resizable(False, False)
 
     tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)

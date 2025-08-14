@@ -47,7 +47,7 @@ class ToVillage:
         self.server = server
         self._load_cfg()
 
-    def run_once(self, timeout_ms: int = 4000) -> bool:
+    def run_once(self, timeout_ms: int = 14000) -> bool:
         win = self._get_window() or {}
         if not win:
             self._log("[to_village] no window")
