@@ -10,7 +10,7 @@ FLOW = [
     {"op": "send_arduino", "cmd": "b"},  # Открыть дэшборд
     {"op": "sleep",     "ms": 900},
     {"op": "click_in", "zone": "dashboard_body", "tpl": "buffer_button", "timeout_ms": 12500, "thr": 0.87},
-    {"op": "sleep",     "ms": 900},
+    {"op": "wait", "zone": "dashboard_body", "tpl": "buffer_init", "timeout_ms": 2000, "thr": 0.87, "retry_count": 1, "retry_action": "prev"},
     {"op": "dashboard_is_locked", "zone": "dashboard_body", "tpl": "dashboard_is_locked", "timeout_ms": 12000, "thr": 0.80},
     {"op": "sleep",     "ms": 900},
     {"op": "click_in",  "zone": "dashboard_body", "tpl": "{mode_key}",    "timeout_ms": 2500, "thr": 0.88},
