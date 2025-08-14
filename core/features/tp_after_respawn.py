@@ -248,7 +248,7 @@ class TPAfterDeathWorker:
             elif op == "dashboard_is_locked":
                 zone_key = step["zone"]
                 tpl_key = step["tpl"]
-                timeout_ms = int(step.get("timeout_ms", 8000))
+                timeout_ms = int(step.get("timeout_ms", 12000))
                 interval_s = float(step.get("probe_interval_s", 1.0))
 
                 if isinstance(tpl_key, str) and not self._templates.get(tpl_key) and self._templates.get("dashboard_blocked"):
