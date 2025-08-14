@@ -1,4 +1,3 @@
-# =========================
 # File: core/features/tp_after_respawn.py
 # Flow-only TP worker (dashboard/gatekeeper). With per-step logging.
 # =========================
@@ -8,6 +7,7 @@ import time
 from typing import Callable, Optional, Dict, Tuple
 
 from core.runtime.dashboard_guard import DASHBOARD_GUARD
+from core.runtime.flow_engine import FlowEngine, FlowExecutor
 from core.vision.matching.template_matcher import match_in_zone
 from core.servers.l2mad.templates import resolver as l2mad_resolver
 
@@ -34,6 +34,7 @@ class TPAfterDeathWorker:
         self._zones: Dict[str, object] = {}
         self._templates: Dict[str, list] = {}
         self._flow = None
+        self._tag = "[tp]"
         self._load_cfg()
 
         self._method = TP_METHOD_DASHBOARD
@@ -72,7 +73,7 @@ class TPAfterDeathWorker:
         if self._method == TP_METHOD_DASHBOARD:
             DASHBOARD_GUARD.wait_free(timeout=10.0)
             with DASHBOARD_GUARD.session():
-                return self._run_flow(self.window or {})
+                return self._run_flow()
         elif self._method == TP_METHOD_GATEKEEPER:
             return self._tp_via_gatekeeper()
         else:
@@ -216,132 +217,70 @@ class TPAfterDeathWorker:
             time.sleep(0.05)
         return False
 
-    # ---------- FLOW engine ----------
-    def _run_flow(self, win: Dict) -> bool:
+    def _dashboard_reset(self):
+        self._log("[tp] dashboard reset")
+        thr = 0.87
+        while True:
+            self.controller.send("b")  # dashboard_close
+            time.sleep(0.5)
+            self.controller.send("b")  # dashboard_init
+            time.sleep(0.5)
+            if not self._is_visible("dashboard_body", "dashboard_init", thr):
+                continue
+            self.controller.send("b")  # close again
+            time.sleep(0.5)
+            if not self._is_visible("dashboard_body", "dashboard_init", thr):
+                break
+        self._log("[tp] dashboard reset done")
+
+    def _run_flow(self) -> bool:
         if not self._flow:
             self._on_status("[tp] flow missing", False)
             return False
         if not (self.window and self._category_id and self._location_id):
             self._on_status("[tp] missing window/category/location", False)
             return False
-
-        total = len(self._flow)
-        for idx, step in enumerate(self._flow, start=1):
-            op = step.get("op")
-            thr = float(step.get("thr", 0.87))
-            self._log(f"[tp][step {idx}/{total}] {op}: {step}")
-
-            if op == "click_any":
-                ok = self._click_any(tuple(step["zones"]), step["tpl"], int(step["timeout_ms"]), thr)
-                self._log(f"[tp][step {idx}] result: {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[tp] click_any fail: {step}", False)
-                    return False
-
-            elif op == "wait":
-                ok = self._wait_template(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
-                self._log(f"[tp][step {idx}] result: {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[tp] wait fail: {step}", False)
-                    return False
-
-            elif op == "dashboard_is_locked":
-                zone_key = step["zone"]
-                tpl_key = step["tpl"]
-                timeout_ms = int(step.get("timeout_ms", 12000))
-                interval_s = float(step.get("probe_interval_s", 1.0))
-
-                if isinstance(tpl_key, str) and not self._templates.get(tpl_key) and self._templates.get("dashboard_blocked"):
-                    self._templates["dashboard_is_locked"] = self._templates["dashboard_blocked"]
-
-                start_ts = time.time()
-                next_probe = 0.0
-                unlocked = False
-
-                while (time.time() - start_ts) * 1000.0 < timeout_ms:
-                    if self._is_dead():
-                        break
-
-                    locked_now = self._is_visible(zone_key, tpl_key, thr)
-                    if not locked_now:
-                        unlocked = True
-                        break
-
-                    now = time.time()
-                    if now >= next_probe:
-                        self._log(f"[tp][step {idx}] locked → probe left-click")
-                        self._probe_left_click()
-                        next_probe = now + interval_s
-
-                    time.sleep(0.08)
-
-                self._log(f"[tp][step {idx}] unlocked: {'YES' if unlocked else 'NO'}")
-                if not unlocked:
-                    self._on_status("[tp] dashboard still locked", False)
-                    return False
-
-            elif op == "click_in":
-                ok = self._click_in(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
-                self._log(f"[tp][step {idx}] result: {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[tp] click_in fail: {step}", False)
-                    return False
-
-            elif op == "optional_click":
-                ok = self._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
-                self._log(f"[tp][step {idx}] result: {'CLICKED' if ok else 'SKIP'}")
-
-            elif op == "click_village":
-                lang = self._lang()
-                village_png = f"{self._category_id}.png"
-                ok_res = l2mad_resolver.teleport_location(lang, self._category_id, village_png)
-                self._log(f"[tp][step {idx}] resolve village '{self._category_id}' → {'OK' if ok_res else 'FAIL'}")
-                if not ok_res:
-                    self._on_status(f"[tp] village template missing: {self._category_id}", False)
-                    return False
-                parts = ["dashboard", "teleport", "villages", self._category_id, village_png]
-                ok = self._click_in("dashboard_body", parts, int(step.get("timeout_ms", 2500)), float(step.get("thr", 0.88)))
-                self._log(f"[tp][step {idx}] click village → {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[tp] village not found: {self._category_id}", False)
-                    return False
-
-            elif op == "click_location":
-                lang = self._lang()
-                loc_png = f"{self._location_id}.png"
-                ok_res = l2mad_resolver.teleport_location(lang, self._category_id, loc_png)
-                self._log(f"[tp][step {idx}] resolve location '{self._category_id}/{self._location_id}' → {'OK' if ok_res else 'FAIL'}")
-                if not ok_res:
-                    self._on_status(f"[tp] location template missing: {self._category_id}/{self._location_id}", False)
-                    return False
-                parts = ["dashboard", "teleport", "villages", self._category_id, loc_png]
-                ok = self._click_in("dashboard_body", parts, int(step.get("timeout_ms", 2500)), float(step.get("thr", 0.88)))
-                self._log(f"[tp][step {idx}] click location → {'OK' if ok else 'FAIL'}")
-                if not ok:
-                    self._on_status(f"[tp] location not found: {self._location_id}", False)
-                    return False
-
-            elif op == "sleep":
-                ms = int(step.get("ms", 50))
-                self._log(f"[tp][step {idx}] sleeping {ms} ms")
-                time.sleep(ms / 1000.0)
-
-            elif op == "send_arduino":
-                cmd = step.get("cmd", "")
-                delay_ms = int(step.get("delay_ms", 100))
-                self._log(f"[tp][step {idx}] send_arduino '{cmd}', delay {delay_ms} ms")
-                self.controller.send(cmd)
-                time.sleep(delay_ms / 1000.0)
-
-            else:
-                self._log(f"[tp][step {idx}] unknown op: {op}")
-                self._on_status(f"[tp] unknown op: {op}", False)
-                return False
-
-        self._log("[tp] flow DONE")
-        self._on_status("[tp] dashboard ok", True)
-        return True
+        while True:
+            engine = FlowEngine(self._flow, FlowExecutor(self))
+            ok = engine.run()
+            if ok:
+                self._log("[tp] flow DONE")
+                self._on_status("[tp] dashboard ok", True)
+                return True
+            self._log("[tp] flow failed → dashboard reset")
+            self._dashboard_reset()
 
     def _tp_via_gatekeeper(self) -> bool:
         self._on_status("[tp] gatekeeper method not implemented yet", False)
         return False
+
+    # ---------- flow helpers ----------
+    def _click_village(self, step: Dict) -> bool:
+        lang = self._lang()
+        village_png = f"{self._category_id}.png"
+        ok_res = l2mad_resolver.teleport_location(lang, self._category_id, village_png)
+        self._log(f"[tp] resolve village '{self._category_id}' → {'OK' if ok_res else 'FAIL'}")
+        if not ok_res:
+            self._on_status(f"[tp] village template missing: {self._category_id}", False)
+            return False
+        parts = ["dashboard", "teleport", "villages", self._category_id, village_png]
+        thr = float(step.get("thr", 0.88))
+        ok = self._click_in("dashboard_body", parts, int(step.get("timeout_ms", 2500)), thr)
+        if not ok:
+            self._on_status(f"[tp] village not found: {self._category_id}", False)
+        return ok
+
+    def _click_location(self, step: Dict) -> bool:
+        lang = self._lang()
+        loc_png = f"{self._location_id}.png"
+        ok_res = l2mad_resolver.teleport_location(lang, self._category_id, loc_png)
+        self._log(f"[tp] resolve location '{self._category_id}/{self._location_id}' → {'OK' if ok_res else 'FAIL'}")
+        if not ok_res:
+            self._on_status(f"[tp] location template missing: {self._category_id}/{self._location_id}", False)
+            return False
+        parts = ["dashboard", "teleport", "villages", self._category_id, loc_png]
+        thr = float(step.get("thr", 0.88))
+        ok = self._click_in("dashboard_body", parts, int(step.get("timeout_ms", 2500)), thr)
+        if not ok:
+            self._on_status(f"[tp] location not found: {self._location_id}", False)
+        return ok
