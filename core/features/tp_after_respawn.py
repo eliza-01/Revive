@@ -217,6 +217,22 @@ class TPAfterDeathWorker:
             time.sleep(0.05)
         return False
 
+    def _dashboard_reset(self):
+        self._log("[tp] dashboard reset")
+        thr = 0.87
+        while True:
+            self.controller.send("b")  # dashboard_close
+            time.sleep(0.5)
+            self.controller.send("b")  # dashboard_init
+            time.sleep(0.5)
+            if not self._is_visible("dashboard_body", "dashboard_init", thr):
+                continue
+            self.controller.send("b")  # close again
+            time.sleep(0.5)
+            if not self._is_visible("dashboard_body", "dashboard_init", thr):
+                break
+        self._log("[tp] dashboard reset done")
+
     # ---------- FLOW engine ----------
     def _exec_flow_step(self, step: Dict, idx: int, total: int) -> bool:
         op = step.get("op")
@@ -340,13 +356,15 @@ class TPAfterDeathWorker:
         if not (self.window and self._category_id and self._location_id):
             self._on_status("[tp] missing window/category/location", False)
             return False
-
-        engine = FlowEngine(self._flow, self._exec_flow_step)
-        ok = engine.run()
-        if ok:
-            self._log("[tp] flow DONE")
-            self._on_status("[tp] dashboard ok", True)
-        return ok
+        while True:
+            engine = FlowEngine(self._flow, self._exec_flow_step)
+            ok = engine.run()
+            if ok:
+                self._log("[tp] flow DONE")
+                self._on_status("[tp] dashboard ok", True)
+                return True
+            self._log("[tp] flow failed → dashboard reset")
+            self._dashboard_reset()
 
     def _tp_via_gatekeeper(self) -> bool:
         self._on_status("[tp] gatekeeper method not implemented yet", False)

@@ -1,5 +1,6 @@
 """Generic flow engine with retry and restart logic."""
 from __future__ import annotations
+import time
 from typing import Callable, Dict, List
 
 
@@ -47,6 +48,9 @@ class FlowEngine:
             attempts[idx] += 1
             retries = int(step.get("retry_count", 0))
             if attempts[idx] <= retries:
+                delay_ms = int(step.get("retry_delay_ms", 0))
+                if delay_ms > 0:
+                    time.sleep(delay_ms / 1000.0)
                 action = (step.get("retry_action") or "repeat").lower()
                 if action == "prev" and idx > 0:
                     attempts[idx] = 0  # reset current attempts
