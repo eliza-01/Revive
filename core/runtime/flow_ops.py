@@ -1,0 +1,189 @@
+# core/runtime/flow_ops.py
+from __future__ import annotations
+import time
+from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
+
+from core.runtime.flow_engine import FlowEngine
+from core.vision.matching.template_matcher import match_in_zone
+
+ZoneLTRB = Tuple[int, int, int, int]
+
+class FlowCtx:
+    def __init__(
+            self,
+            server: str,
+            controller,
+            get_window: Callable[[], Optional[dict]],
+            get_language: Callable[[], str],
+            zones: Dict[str, object],
+            templates: Dict[str, List[str]],
+            extras: Optional[Dict[str, Any]] = None,
+    ):
+        self.server = server
+        self.controller = controller
+        self.get_window = get_window
+        self.get_language = get_language
+        self.zones = zones or {}
+        self.templates = templates or {}
+        self.extras = extras or {}
+
+    # ---- helpers ----
+    def _lang(self) -> str:
+        try: return (self.get_language() or "rus").lower()
+        except: return "rus"
+
+    def _win(self) -> Dict: return self.get_window() or {}
+
+    def _zone_ltrb(self, zone_decl) -> ZoneLTRB:
+        win = self._win()
+        if isinstance(zone_decl, tuple) and len(zone_decl) == 4:
+            return tuple(map(int, zone_decl))
+        if isinstance(zone_decl, dict):
+            ww, wh = int(win.get("width", 0)), int(win.get("height", 0))
+            if zone_decl.get("fullscreen"): return (0, 0, ww, wh)
+            if zone_decl.get("centered"):
+                w, h = int(zone_decl["width"]), int(zone_decl["height"])
+                l = ww // 2 - w // 2; t = wh // 2 - h // 2
+                return (l, t, l + w, t + h)
+            l = int(zone_decl.get("left", 0)); t = int(zone_decl.get("top", 0))
+            w = int(zone_decl.get("width", 0)); h = int(zone_decl.get("height", 0))
+            return (l, t, l + w, t + h)
+        return (0, 0, int(self._win().get("width", 0)), int(self._win().get("height", 0)))
+
+    def _parts(self, tpl_key_or_parts: Sequence[str] | str) -> Optional[List[str]]:
+        if isinstance(tpl_key_or_parts, str):
+            return self.templates.get(tpl_key_or_parts)
+        return list(tpl_key_or_parts or [])
+
+    def wait(self, zone_key: str, tpl_key: str, timeout_ms: int, thr: float) -> bool:
+        zone = self.zones.get(zone_key); parts = self._parts(tpl_key)
+        if not zone or not parts: return False
+        ltrb = self._zone_ltrb(zone); win = self._win()
+        deadline = time.time() + timeout_ms / 1000.0
+        while time.time() < deadline:
+            if match_in_zone(win, ltrb, self.server, self._lang(), parts, thr): return True
+            time.sleep(0.05)
+        return False
+
+    def _click_in(self, zone_key: str, tpl_key_or_parts: Sequence[str] | str, timeout_ms: int, thr: float) -> bool:
+        zone = self.zones.get(zone_key); parts = self._parts(tpl_key_or_parts)
+        if not zone or not parts: return False
+        ltrb = self._zone_ltrb(zone); win = self._win()
+        deadline = time.time() + timeout_ms / 1000.0
+        while time.time() < deadline:
+            pt = match_in_zone(win, ltrb, self.server, self._lang(), parts, thr)
+            if pt:
+                try: self.controller.send(f"click:{pt[0]},{pt[1]}")
+                except: pass
+                time.sleep(0.08)
+                return True
+            time.sleep(0.05)
+        return False
+
+    def _visible(self, zone_key: str, tpl_key_or_parts, thr: float) -> bool:
+        zone = self.zones.get(zone_key); parts = self._parts(tpl_key_or_parts)
+        if not zone or not parts: return False
+        ltrb = self._zone_ltrb(zone); win = self._win()
+        return match_in_zone(win, ltrb, self.server, self._lang(), parts, thr) is not None
+
+class FlowOpExecutor:
+    def __init__(self, ctx: FlowCtx, on_status: Callable[[str, Optional[bool]], None] = lambda *_: None, logger: Callable[[str], None] = print):
+        self.ctx = ctx
+        self._on_status = on_status
+        self._log = logger
+
+    # ---- dispatcher ----
+    def exec(self, step: Dict, idx: int, total: int) -> bool:
+        op = step.get("op"); thr = float(step.get("thr", 0.87))
+        self._log(f"[flow][step {idx}/{total}] {op}: {step}")
+        try:
+            if op == "wait":
+                ok = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+            elif op == "click_in":
+                tpl = step["tpl"]
+                if tpl == "{mode_key}":
+                    tpl = self.ctx.extras.get("mode_key_provider", lambda: None)() or "buffer_mode_profile"
+                ok = self.ctx._click_in(step["zone"], tpl, int(step["timeout_ms"]), thr)
+            elif op == "click_any":
+                ok = False
+                deadline = time.time() + int(step["timeout_ms"]) / 1000.0
+                while time.time() < deadline and not ok:
+                    for zk in tuple(step["zones"]):
+                        ok = self.ctx._click_in(zk, step["tpl"], 1, thr)
+                        if ok: break
+                    time.sleep(0.05)
+            elif op == "optional_click":
+                _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
+                ok = True
+            elif op == "dashboard_is_locked":
+                ok = self._dashboard_is_locked(step, thr)
+            elif op == "send_arduino":
+                try: self.ctx.controller.send(step.get("cmd", ""))
+                except: pass
+                time.sleep(int(step.get("delay_ms", 100)) / 1000.0)
+                ok = True
+            elif op == "sleep":
+                time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
+            elif op == "click_village":
+                ok = self._click_by_resolver("dashboard_body", "village_png", "category_id", step, thr)
+            elif op == "click_location":
+                ok = self._click_by_resolver("dashboard_body", "location_png", "location_id", step, thr)
+            else:
+                self._on_status(f"[flow] unknown op: {op}", False)
+                ok = False
+        except Exception as e:
+            self._on_status(f"[flow] op error {op}: {e}", False)
+            ok = False
+
+        self._log(f"[flow][step {idx}] result: {'OK' if ok else 'FAIL'}")
+        return ok
+
+    # ---- special ops ----
+    def _dashboard_is_locked(self, step: Dict, thr: float) -> bool:
+        zone_key = step["zone"]; tpl_key = step["tpl"]
+        timeout_ms = int(step.get("timeout_ms", 12000))
+        interval_s = float(step.get("probe_interval_s", 1.0))
+        start = time.time(); next_probe = 0.0
+        while (time.time() - start) * 1000.0 < timeout_ms:
+            if not self.ctx._visible(zone_key, tpl_key, thr): return True
+            now = time.time()
+            if now >= next_probe:
+                try: self.ctx.controller.send("l")
+                except: pass
+                next_probe = now + interval_s
+            time.sleep(0.08)
+        self._on_status("[flow] dashboard still locked", False)
+        return False
+
+    def _click_by_resolver(self, zone_key: str, png_field: str, id_field: str, step: Dict, thr: float) -> bool:
+        """
+        Uses ctx.extras['resolver'](lang, *parts) and ctx.extras[id_field].
+        Expects:
+          - extras['resolver']: callable(lang, *parts) -> path or None
+          - extras['category_id'], extras['location_id']
+        """
+        resolver = self.ctx.extras.get("resolver")
+        if not callable(resolver): return False
+        lang = self.ctx._lang()
+
+        if png_field == "village_png":
+            category = self.ctx.extras.get("category_id")
+            if not category: return False
+            file = f"{category}.png"
+            ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", category, file))
+            if not ok_res: self._on_status(f"[tp] village template missing: {category}", False); return False
+            parts = ["dashboard", "teleport", "villages", category, file]
+        else:
+            category = self.ctx.extras.get("category_id")
+            loc = self.ctx.extras.get("location_id")
+            if not (category and loc): return False
+            file = f"{loc}.png"
+            ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", category, file))
+            if not ok_res: self._on_status(f"[tp] location template missing: {category}/{loc}", False); return False
+            parts = ["dashboard", "teleport", "villages", category, file]
+
+        return self.ctx._click_in(zone_key, parts, int(step.get("timeout_ms", 2500)), float(step.get("thr", 0.88)))
+
+def run_flow(flow: List[Dict], executor: FlowOpExecutor) -> bool:
+    engine = FlowEngine(flow, executor.exec)
+    return engine.run()

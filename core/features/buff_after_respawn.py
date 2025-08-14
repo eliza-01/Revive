@@ -5,8 +5,10 @@ import time
 from typing import Callable, Optional, Dict, Tuple
 
 from core.runtime.dashboard_guard import DASHBOARD_GUARD
-from core.runtime.flow_engine import FlowEngine, FlowExecutor
 from core.vision.matching.template_matcher import match_in_zone
+
+from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+
 
 BUFF_MODE_PROFILE = "profile"
 BUFF_MODE_MAGE = "mage"
@@ -28,7 +30,7 @@ class BuffAfterRespawnWorker:
         self._get_window = get_window
         self._get_language = get_language
         self._on_status = on_status
-        self.click_threshold = self.click_threshold = click_threshold or 0.82
+        self.click_threshold = click_threshold or 0.82
         self.debug = debug
 
         self._zones = {}
@@ -208,8 +210,17 @@ class BuffAfterRespawnWorker:
     # ---------- flow engine ----------
     def _run_flow(self) -> bool:
         while True:
-            engine = FlowEngine(self._flow, FlowExecutor(self))
-            ok = engine.run()
+            ctx = FlowCtx(
+                server=self.server,
+                controller=self.controller,
+                get_window=self._get_window,
+                get_language=self._get_language,
+                zones=self._zones,
+                templates=self._templates,
+                extras={"mode_key_provider": self._mode_tpl_key},
+            )
+            execu = FlowOpExecutor(ctx, on_status=self._on_status, logger=self._log)
+            ok = run_flow(self._flow, execu)
             if ok:
                 self._log("[buff] flow DONE")
                 self._on_status("[buff] done", True)

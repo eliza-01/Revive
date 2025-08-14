@@ -235,20 +235,33 @@ class TPAfterDeathWorker:
 
     def _run_flow(self) -> bool:
         if not self._flow:
-            self._on_status("[tp] flow missing", False)
-            return False
+            self._on_status("[tp] flow missing", False); return False
         if not (self.window and self._category_id and self._location_id):
-            self._on_status("[tp] missing window/category/location", False)
-            return False
+            self._on_status("[tp] missing window/category/location", False); return False
+
         while True:
-            engine = FlowEngine(self._flow, FlowExecutor(self))
-            ok = engine.run()
+            ctx = FlowCtx(
+                server=self.server,
+                controller=self.controller,
+                get_window=lambda: self.window,
+                get_language=self.get_language,
+                zones=self._zones,
+                templates=self._templates,
+                extras={
+                    "resolver": l2mad_resolver.resolve,
+                    "category_id": self._category_id,
+                    "location_id": self._location_id,
+                },
+            )
+            execu = FlowOpExecutor(ctx, on_status=self._on_status, logger=self._log)
+            ok = run_flow(self._flow, execu)
             if ok:
                 self._log("[tp] flow DONE")
                 self._on_status("[tp] dashboard ok", True)
                 return True
             self._log("[tp] flow failed → dashboard reset")
             self._dashboard_reset()
+
 
     def _tp_via_gatekeeper(self) -> bool:
         self._on_status("[tp] gatekeeper method not implemented yet", False)
