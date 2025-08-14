@@ -27,7 +27,6 @@ class FlowCtx:
         self.templates = templates or {}
         self.extras = extras or {}
 
-    # ---- helpers ----
     def _lang(self) -> str:
         try: return (self.get_language() or "rus").lower()
         except: return "rus"
@@ -92,7 +91,6 @@ class FlowOpExecutor:
         self._on_status = on_status
         self._log = logger
 
-    # ---- dispatcher ----
     def exec(self, step: Dict, idx: int, total: int) -> bool:
         op = step.get("op"); thr = float(step.get("thr", 0.87))
         self._log(f"[flow][step {idx}/{total}] {op}: {step}")
@@ -113,36 +111,30 @@ class FlowOpExecutor:
                         if ok: break
                     time.sleep(0.05)
             elif op == "optional_click":
-                _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr)
-                ok = True
+                _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr); ok = True
             elif op == "dashboard_is_locked":
                 ok = self._dashboard_is_locked(step, thr)
+            elif op == "while_visible_send":
+                ok = self._while_visible_send(step, thr)
             elif op == "send_arduino":
                 try: self.ctx.controller.send(step.get("cmd", ""))
                 except: pass
-                time.sleep(int(step.get("delay_ms", 100)) / 1000.0)
-                ok = True
+                time.sleep(int(step.get("delay_ms", 100)) / 1000.0); ok = True
             elif op == "sleep":
                 time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
             elif op == "click_village":
-                ok = self._click_by_resolver("dashboard_body", "village_png", "category_id", step, thr)
+                ok = self._click_by_resolver("dashboard_body", "village_png", step, thr)
             elif op == "click_location":
-                ok = self._click_by_resolver("dashboard_body", "location_png", "location_id", step, thr)
+                ok = self._click_by_resolver("dashboard_body", "location_png", step, thr)
             else:
-                self._on_status(f"[flow] unknown op: {op}", False)
-                ok = False
+                self._on_status(f"[flow] unknown op: {op}", False); ok = False
         except Exception as e:
-            self._on_status(f"[flow] op error {op}: {e}", False)
-            ok = False
+            self._on_status(f"[flow] op error {op}: {e}", False); ok = False
+        self._log(f"[flow][step {idx}] result: {'OK' if ok else 'FAIL'}"); return ok
 
-        self._log(f"[flow][step {idx}] result: {'OK' if ok else 'FAIL'}")
-        return ok
-
-    # ---- special ops ----
     def _dashboard_is_locked(self, step: Dict, thr: float) -> bool:
         zone_key = step["zone"]; tpl_key = step["tpl"]
-        timeout_ms = int(step.get("timeout_ms", 12000))
-        interval_s = float(step.get("probe_interval_s", 1.0))
+        timeout_ms = int(step.get("timeout_ms", 12000)); interval_s = float(step.get("probe_interval_s", 1.0))
         start = time.time(); next_probe = 0.0
         while (time.time() - start) * 1000.0 < timeout_ms:
             if not self.ctx._visible(zone_key, tpl_key, thr): return True
@@ -152,36 +144,41 @@ class FlowOpExecutor:
                 except: pass
                 next_probe = now + interval_s
             time.sleep(0.08)
-        self._on_status("[flow] dashboard still locked", False)
-        return False
+        self._on_status("[flow] dashboard still locked", False); return False
 
-    def _click_by_resolver(self, zone_key: str, png_field: str, id_field: str, step: Dict, thr: float) -> bool:
-        """
-        Uses ctx.extras['resolver'](lang, *parts) and ctx.extras[id_field].
-        Expects:
-          - extras['resolver']: callable(lang, *parts) -> path or None
-          - extras['category_id'], extras['location_id']
-        """
+    def _while_visible_send(self, step: Dict, thr: float) -> bool:
+        """Пока виден tpl в zone — отправлять cmd (например, 'b')."""
+        zone_key = step["zone"]; tpl_key = step["tpl"]
+        cmd = step.get("cmd", "b")
+        timeout_ms = int(step.get("timeout_ms", 10000)); interval_s = float(step.get("probe_interval_s", 0.5))
+        start = time.time(); next_probe = 0.0
+        while (time.time() - start) * 1000.0 < timeout_ms:
+            if not self.ctx._visible(zone_key, tpl_key, thr): return True
+            now = time.time()
+            if now >= next_probe:
+                try: self.ctx.controller.send(cmd)
+                except: pass
+                next_probe = now + interval_s
+            time.sleep(0.05)
+        self._on_status(f"[flow] still visible: {tpl_key}", False); return False
+
+    def _click_by_resolver(self, zone_key: str, which: str, step: Dict, thr: float) -> bool:
         resolver = self.ctx.extras.get("resolver")
         if not callable(resolver): return False
         lang = self.ctx._lang()
-
-        if png_field == "village_png":
-            category = self.ctx.extras.get("category_id")
-            if not category: return False
-            file = f"{category}.png"
-            ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", category, file))
-            if not ok_res: self._on_status(f"[tp] village template missing: {category}", False); return False
-            parts = ["dashboard", "teleport", "villages", category, file]
+        cat = self.ctx.extras.get("category_id"); loc = self.ctx.extras.get("location_id")
+        if which == "village_png":
+            if not cat: return False
+            file = f"{cat}.png"
+            ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
+            if not ok_res: self._on_status(f"[tp] village template missing: {cat}", False); return False
+            parts = ["dashboard", "teleport", "villages", cat, file]
         else:
-            category = self.ctx.extras.get("category_id")
-            loc = self.ctx.extras.get("location_id")
-            if not (category and loc): return False
+            if not (cat and loc): return False
             file = f"{loc}.png"
-            ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", category, file))
-            if not ok_res: self._on_status(f"[tp] location template missing: {category}/{loc}", False); return False
-            parts = ["dashboard", "teleport", "villages", category, file]
-
+            ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
+            if not ok_res: self._on_status(f"[tp] location template missing: {cat}/{loc}", False); return False
+            parts = ["dashboard", "teleport", "villages", cat, file]
         return self.ctx._click_in(zone_key, parts, int(step.get("timeout_ms", 2500)), float(step.get("thr", 0.88)))
 
 def run_flow(flow: List[Dict], executor: FlowOpExecutor) -> bool:
