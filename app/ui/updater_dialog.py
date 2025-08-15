@@ -23,7 +23,7 @@ def run_update_check(local_version, version_status_label, root, app):
                     return
                 if is_newer_version(remote_version, local_version):
                     version_status_label.config(text=f"Доступно обновление: {remote_version}", fg="orange")
-                    app.update_window_ref = show_update_window(root, remote_version, app)
+                    # app.update_window_ref = show_update_window(root, remote_version, app)
                 else:
                     version_status_label.config(text=f"Установлена последняя версия: {local_version}", fg="green")
             root.after(0, apply_result)
