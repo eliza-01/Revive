@@ -133,9 +133,9 @@ class FlowOpExecutor:
             elif op == "sleep":
                 time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
             elif op == "click_village":
-                ok = self._click_by_resolver("dashboard_body", "village_png", step, thr)
+                ok = self._click_by_resolver(step["zone"], "village_png", step, thr)
             elif op == "click_location":
-                ok = self._click_by_resolver("dashboard_body", "location_png", step, thr)
+                ok = self._click_by_resolver(step["zone"], "location_png", step, thr)
             else:
                 self._on_status(f"[flow] unknown op: {op}", False); ok = False
         except Exception as e:
