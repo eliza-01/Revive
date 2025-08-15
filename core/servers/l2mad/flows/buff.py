@@ -8,6 +8,7 @@
 #   - {"op":"optional_click", "zone":"dashboard_body", "tpl":"buffer_restore_hp", "timeout_ms":1000, "thr":0.87}
 FLOW = [
     {"op": "send_arduino", "cmd": "b"},  # Открыть дэшборд
+    {"op": "wait", "zone": "dashboard_body", "tpl": "dashboard_init", "timeout_ms": 2000, "thr": 0.87, "retry_count": 5, "retry_delay_ms": 1000, "retry_action": "prev"},
     {"op": "sleep",     "ms": 900},
     {"op": "click_in", "zone": "dashboard_body", "tpl": "buffer_button", "timeout_ms": 12500, "thr": 0.87},
     {"op": "wait", "zone": "dashboard_body", "tpl": "buffer_init", "timeout_ms": 2000, "thr": 0.87, "retry_count": 5, "retry_delay_ms": 1000, "retry_action": "prev"},
