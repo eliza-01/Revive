@@ -1,8 +1,13 @@
 # core/servers/l2mad/flows/rows/Rune/PrimevalIsle/Primeval_1.py
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
-    {"op": "sleep", "ms": 4000},
-    {"op": "send_message", "text": "Привет гaндoны", "delay_ms": 200},
+    {"op": "sleep", "ms": 2000},
+    { "op": "send_message", "text": "Привет гандоны", "layout": "ru" },
+    {"op": "sleep", "ms": 1000},
+    { "op": "set_layout", "layout": "ru" },
+    {"op": "sleep", "ms": 1000},
+    # { "op": "set_layout", "layout": "toggle", "count": 2, "delay_ms": 150 }
+    { "op": "send_message", "text": "/target Vervato", "layout": "en" },
     # {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
     # {"op": "sleep", "ms": 900},
     # {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 85},  #
@@ -21,3 +26,11 @@ FLOW = [
     #     {"op": "send_arduino", "cmd": "pagedown", "delay_ms": 300},  # повернуть
     #     {"op": "sleep", "ms": 2000},
 ]
+
+# Английский/сырой текст (ничего не конвертировать):
+{ "op": "send_message", "text": "Ready at spot.", "layout": "en" }
+# или
+{ "op": "send_message", "text": "Ready at spot.", "layout": "raw" }
+
+# Русский (конвертация в US-клавиши под включённую RU-раскладку):
+{ "op": "send_message", "text": "Привет! Я на месте.", "layout": "ru" }

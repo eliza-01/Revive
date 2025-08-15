@@ -6,6 +6,35 @@ from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
 from core.runtime.flow_engine import FlowEngine
 from core.vision.matching.template_matcher import match_in_zone
 
+_RU2US = {
+    # верхний ряд
+    "й":"q","ц":"w","у":"e","к":"r","е":"t","н":"y","г":"u","ш":"i","щ":"o","з":"p","х":"[","ъ":"]",
+    # средний
+    "ф":"a","ы":"s","в":"d","а":"f","п":"g","р":"h","о":"j","л":"k","д":"l","ж":";","э":"'",
+    # нижний
+    "я":"z","ч":"x","с":"c","м":"v","и":"b","т":"n","ь":"m","б":",","ю":".","ё":"`",
+    # прочее
+    " ":" ","-":"-",
+}
+_SHIFT_PUNCT = {"[":"{","]":"}",";":":","'":'"',",":"<",".":">","`":"~"}
+
+def _ru_to_us_keys(text: str) -> str:
+    out = []
+    for ch in text:
+        lo = ch.lower()
+        if lo in _RU2US:
+            key = _RU2US[lo]
+            if ch.isupper():
+                if "a" <= key <= "z":
+                    out.append(key.upper())
+                else:
+                    out.append(_SHIFT_PUNCT.get(key, key))
+            else:
+                out.append(key)
+        else:
+            out.append(ch)  # оставить ASCII и прочее как есть
+    return "".join(out)
+
 ZoneLTRB = Tuple[int, int, int, int]
 
 class FlowCtx:
@@ -131,16 +160,47 @@ class FlowOpExecutor:
                         time.sleep(delay_ms / 1000.0)
                 ok = True
             elif op == "send_message":
-                # отправить текст в чат: Enter → текст → Enter
-                text = str(step.get("text", "")).strip()
-                delay_ms = int(step.get("delay_ms", 150))
-                try:
-                    self.ctx.controller.send(f"enter {text}")
-                except:
-                    pass
-                if delay_ms > 0:
-                    time.sleep(delay_ms / 1000.0)
+                text = str(step.get("text", ""))
+                layout = (step.get("layout") or "auto").lower()
+                # auto: если есть не-ASCII — считаем, что это русское и конвертим
+                if layout == "ru" or (layout == "auto" and any(ord(c) > 127 for c in text)):
+                    text = _ru_to_us_keys(text)
+                # прошивка уже умеет "enter <payload>": Enter → печать → Enter
+                self.ctx.controller.send(f"enter {text}")
                 ok = True
+            elif op == "set_layout":
+                # Только Alt+Shift
+                target = (step.get("layout") or step.get("value") or "toggle").lower()  # "toggle" | "ru" | "en"
+                count = int(step.get("count", 1))
+                delay_ms = int(step.get("delay_ms", 120))
+
+                def _toggle_once():
+                    try:
+                        self.ctx.controller.send("layout_toggle_altshift")
+                    except:
+                        pass
+                    if delay_ms > 0:
+                        time.sleep(delay_ms / 1000.0)
+
+                cur = getattr(self, "_kb_layout", None)
+
+                if target in ("toggle", "switch"):
+                    if count <= 0:
+                        count = 1
+                    for _ in range(count):
+                        _toggle_once()
+                    ok = True
+                elif target in ("ru", "en"):
+                    if cur == target:
+                        ok = True
+                    else:
+                        _toggle_once()
+                        self._kb_layout = target
+                        ok = True
+                else:
+                    self._on_status(f"[flow] set_layout: unknown layout '{target}'", False)
+                    ok = False
+
             elif op == "sleep":
                 time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
             elif op == "click_village":
