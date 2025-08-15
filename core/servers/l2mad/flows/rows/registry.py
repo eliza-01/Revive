@@ -4,7 +4,7 @@ from typing import List, Dict, Tuple
 # Ключ: (village_id, location_id)
 ROWS_MAP: Dict[Tuple[str, str], List[Dict]] = {
     ("Goddard", "VarkaSilenosStronghold"): [
-        {"id": "safe_route", "title_rus": "Безопасный маршрут 1", "title_eng": "Safe route"},
+        {"id": "Varka1", "title_rus": "Безопасный маршрут 1", "title_eng": "Varka1"},
         # {"id": "fast_route", "title_rus": "Быстрый маршрут", "title_eng": "Fast route"},
     ],
 }
