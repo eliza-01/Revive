@@ -16,7 +16,7 @@ TEMPLATES: Dict[str, List[str]] = {
     # ...
 
     #Varka_1
-    "Varka_1_1": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "1.png"],
-    "Varka_1_2": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "2.png"],
-    "Varka_1_3": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "3.png"],
+    "Varka_1_capt1": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "1.png"],
+    "Varka_1_capt2": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "2.png"],
+    "Varka_1_capt3": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "3.png"],
 }
