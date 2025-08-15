@@ -156,6 +156,8 @@ class ReviveLauncherUI:
         self.afterbuff_ui = None
         self.afterbuff_runner = None
 
+        self._tp_success = False
+
         # --- window probe ---
         self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
 
@@ -268,16 +270,19 @@ class ReviveLauncherUI:
         tp_enabled = getattr(self.tp, "is_enabled", lambda: False)()
         if not tp_enabled:
             print("[flow] tp_if_ready → skip (disabled)")
+            self._tp_success = False        # ← подстрахуемся
             return
 
         if self._charged_flag is not True:
             print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
+            self._tp_success = False        # ← подстрахуемся
             return
 
+        self._tp_success = False            # ← СБРОС ПЕРЕД ВЫЗОВОМ
         fn = getattr(self.tp, "teleport_now_selected", None)
         ok_tp = bool(fn()) if callable(fn) else False
+        self._tp_success = ok_tp            # ← ФИКСИРУЕМ ТОЛЬКО УСПЕХ
         print(f"[flow] tp_if_ready → {ok_tp}")
-        # одноразово на цикл «умер→встал»
         self._tp_after_death = False
 
     # ----------------  Buff Interval Checker ----------------
@@ -327,6 +332,7 @@ class ReviveLauncherUI:
     def _on_dead_ui(self, st):
         self._alive_flag = False
         self._charged_flag = None
+        self._tp_success = False
         print("[state] death detected → charged=None")
         try:
             self.checker.invalidate()          # ← ВАЖНО: сбросить кеш при смерти
@@ -554,17 +560,25 @@ class ReviveLauncherUI:
 
     def _flow_step_post_tp_row(self):
         try:
+            if not getattr(self, "_tp_success", False):
+                print("[rows] skip (tp not successful)")
+                return
             get_sel = getattr(self.tp, "get_selected_destination", None)
-            if not callable(get_sel):
-                print("[rows] UI does not expose destination"); return
-            cat, loc = get_sel()  # (village_id, location_id)
-            row_id = self._row_id_from_title(self._row_var.get() or "")
+            get_row = getattr(self.tp, "get_selected_row_id", None)
+            if not callable(get_sel) or not callable(get_row):
+                print("[rows] UI does not expose selection"); return
+
+            cat, loc = get_sel()
+            row_id = get_row()
             if not (cat and loc and row_id):
                 print("[rows] skip (no row selected)"); return
+
             ok = self.postrow.run_row(cat, loc, row_id)
             print(f"[rows] run → {ok}")
         except Exception as e:
             print(f"[rows] error: {e}")
+        finally:
+            self._tp_success = False   # ← чтобы маршрут не повторился в следующем цикле
 
     def _rows_watch(self):
         get_sel = getattr(self.tp, "get_selected_destination", None)

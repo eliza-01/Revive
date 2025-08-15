@@ -84,7 +84,11 @@ void processCommand(String cmd) {
     Keyboard.press(KEY_PAGE_DOWN);
     delay(100);
     Keyboard.release(KEY_PAGE_DOWN);
-  } else if (cmd.length() == 1) {
+  } else if (cmd == 'wheel_click') {
+     Mouse.press(MOUSE_MIDDLE);
+     delay(100);
+     Mouse.release(MOUSE_MIDDLE);
+   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
       Keyboard.press(ch);
