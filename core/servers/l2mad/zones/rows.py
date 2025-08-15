@@ -14,4 +14,9 @@ TEMPLATES: Dict[str, List[str]] = {
     "compass_n": ["world", "compass", "north.png"],
     "landmark_bridge": ["world", "landmarks", "bridge.png"],
     # ...
+
+    #Varka_1
+    "Varka_1_1": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "1.png"],
+    "Varka_1_2": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "2.png"],
+    "Varka_1_3": ["rows", "Goddard", "VarkaSilenosStronghold", "Varka_1", "3.png"],
 }

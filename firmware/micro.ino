@@ -88,7 +88,11 @@ void processCommand(String cmd) {
      Mouse.press(MOUSE_MIDDLE);
      delay(100);
      Mouse.release(MOUSE_MIDDLE);
-   } else if (cmd.length() == 1) {
+  } else if (cmd == "wheel_up") {
+   Mouse.move(0, 0, 1); // один щелчок колёсика вверх
+  } else if (cmd == "wheel_down") {
+   Mouse.move(0, 0, -1); // один щелчок колёсика вниз
+  } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
       Keyboard.press(ch);
