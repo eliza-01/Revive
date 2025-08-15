@@ -54,7 +54,7 @@ class FlowEngine:
                     time.sleep(delay_ms / 1000.0)
                 action = (step.get("retry_action") or "repeat").lower()
                 if action == "prev" and idx > 0:
-                    attempts[idx] = 0  # reset current attempts
+                    # attempts[idx] = 0  # тестовый. Попытки не прекращаются
                     idx -= 1
                 elif action == "restart":
                     attempts = [0] * total

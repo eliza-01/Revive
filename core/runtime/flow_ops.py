@@ -174,22 +174,42 @@ class FlowOpExecutor:
 
     def _click_by_resolver(self, zone_key: str, which: str, step: Dict, thr: float) -> bool:
         resolver = self.ctx.extras.get("resolver")
-        if not callable(resolver): return False
+        if not callable(resolver):
+            return False
+
         lang = self.ctx._lang()
-        cat = self.ctx.extras.get("category_id"); loc = self.ctx.extras.get("location_id")
+        cat = (self.ctx.extras.get("category_id") or "")
+        loc = (self.ctx.extras.get("location_id") or "")
+
+        # ── NEW: Hotspots не открывает «вилладж» (нет подменю) ──
+        if which == "village_png" and cat.lower() == "hotspots":
+            # считаем шаг успешным и идём дальше
+            return True
+
         if which == "village_png":
-            if not cat: return False
+            if not cat:
+                return False
             file = f"{cat}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
-            if not ok_res: self._on_status(f"[tp] village template missing: {cat}", False); return False
+            if not ok_res:
+                self._on_status(f"[tp] village template missing: {cat}", False)
+                return False
             parts = ["dashboard", "teleport", "villages", cat, file]
-        else:
-            if not (cat and loc): return False
+        else:  # location_png
+            if not (cat and loc):
+                return False
             file = f"{loc}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
-            if not ok_res: self._on_status(f"[tp] location template missing: {cat}/{loc}", False); return False
+            if not ok_res:
+                self._on_status(f"[tp] location template missing: {cat}/{loc}", False)
+                return False
             parts = ["dashboard", "teleport", "villages", cat, file]
-        return self.ctx._click_in(zone_key, parts, int(step.get("timeout_ms", 2500)), float(step.get("thr", 0.88)))
+
+        return self.ctx._click_in(
+            zone_key, parts,
+            int(step.get("timeout_ms", 2500)),
+            float(step.get("thr", 0.88)),
+        )
 
 def run_flow(flow: List[Dict], executor: FlowOpExecutor) -> bool:
     engine = FlowEngine(flow, executor.exec)
