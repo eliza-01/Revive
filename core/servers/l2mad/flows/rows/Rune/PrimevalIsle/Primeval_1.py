@@ -2,12 +2,42 @@
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
     {"op": "sleep", "ms": 2000},
-    { "op": "send_message", "text": "Привет гандоны", "layout": "ru" },
-    {"op": "sleep", "ms": 1000},
-    { "op": "set_layout", "layout": "ru" },
-    {"op": "sleep", "ms": 1000},
+    # { "op": "send_message", "text": "Привет гандоны", "layout": "ru" },
+    # {"op": "sleep", "ms": 1000},
+    # { "op": "set_layout", "layout": "ru" },
+
+    # {"op": "sleep", "ms": 1000},
     # { "op": "set_layout", "layout": "toggle", "count": 2, "delay_ms": 150 }
+
+    {"op": "send_arduino", "cmd": "pagedown", "delay_ms": 300},  # повернуть
+    {"op": "sleep", "ms": 500},
+    {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},  # повернуть
+    {"op": "sleep", "ms": 500},
     { "op": "send_message", "text": "/target Vervato", "layout": "en" },
+    {"op": "sleep", "ms": 500},
+    { "op": "send_message", "text": "/attack", "layout": "en" },
+    {"op": "sleep", "ms": 2000},
+    { "op": "send_message", "text": "/target Donate Shop", "layout": "en" },
+    {"op": "sleep", "ms": 500},
+    { "op": "send_message", "text": "/attack", "layout": "en" },
+    {"op": "sleep", "ms": 2000},
+    {"op": "send_arduino", "cmd": "-", "delay_ms": 1000},  # повернуть
+    {"op": "sleep", "ms": 1000},
+    {"op": "send_arduino", "cmd": "-", "delay_ms": 1000},  # повернуть
+    {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
+    {"op": "sleep", "ms": 500},
+    {"op": "send_arduino", "cmd": "r", "delay_ms": 300},  # повернуть
+    {"op": "sleep", "ms": 200},
+    {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 600},  #
+    {"op": "sleep", "ms": 7200},
+    {"op": "click_in", "zone": "fullscreen", "tpl": "Primeval_1_capt3", "timeout_ms": 2000, "thr": 0.87},
+    {"op": "sleep", "ms": 500},
+    {"op": "wait", "zone": "fullscreen", "tpl": "Primeval_1_capt3", "timeout_ms": 2000, "thr": 0.87, "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev"},
+    {"op": "sleep", "ms": 500},
+    {"op": "send_arduino", "cmd": "pagedown", "delay_ms": 300},  # повернуть
+    {"op": "sleep", "ms": 500},
+    {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},  # повернуть
+    {"op": "sleep", "ms": 500},
     # {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
     # {"op": "sleep", "ms": 900},
     # {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 85},  #
@@ -28,9 +58,9 @@ FLOW = [
 ]
 
 # Английский/сырой текст (ничего не конвертировать):
-{ "op": "send_message", "text": "Ready at spot.", "layout": "en" }
+# { "op": "send_message", "text": "Ready at spot.", "layout": "en" }
 # или
-{ "op": "send_message", "text": "Ready at spot.", "layout": "raw" }
+# { "op": "send_message", "text": "Ready at spot.", "layout": "raw" }
 
 # Русский (конвертация в US-клавиши под включённую RU-раскладку):
-{ "op": "send_message", "text": "Привет! Я на месте.", "layout": "ru" }
+# { "op": "send_message", "text": "Привет! Я на месте.", "layout": "ru" }
