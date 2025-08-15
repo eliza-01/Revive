@@ -8,7 +8,7 @@ ZoneDecl = Union[ZoneLTRB, dict]
 
 ZONES: Dict[str, ZoneDecl] = {
     # Зона, где ищем иконки/кнопки в дашборде
-    "dashboard_body": {"fullscreen": True },
+    "fullscreen": {"fullscreen": True },
     # "confirm": {"fullscreen": True },
     # иногда удобно искать по центру
     # "center_block": {"centered": True, "width": 500, "height": 400},
