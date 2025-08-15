@@ -1,7 +1,7 @@
-# core/servers/l2mad/flows/rows/Goddard/VarkaSilenosStronghold/Varka_1.py
+# core/servers/l2mad/flows/rows/Goddard/VarkaSilenosStronghold/Primeval_1.py
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
-    {"op": "sleep", "ms": 5000},
+    {"op": "sleep", "ms": 4000},
     {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
     {"op": "sleep", "ms": 900},
     {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 85},  #
