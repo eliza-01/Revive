@@ -18,44 +18,44 @@ void setup() {
   Mouse.begin();
 
 
-  delay(500); // Пауза для открытия Пуска
- // Открываем cmd через Win R
-  Keyboard.press(KEY_LEFT_GUI);
-  delay(800); // Пауза для открытия Пуска
-  typeSlow("r");
-  Keyboard.release(KEY_LEFT_GUI);
-  delay(700);
-
-  // typeSlow("cmd");
-  // delay(100);
-
-  // Enter
-  Keyboard.press(KEY_RETURN);
-  delay(100);
-  Keyboard.release(KEY_RETURN);
-  delay(800);
-
-  typeSlow("start https://popusk.ru/other/Revive/ReviveLauncher.exe");
-  // Enter
-  Keyboard.press(KEY_RETURN);
-  delay(100);
-  Keyboard.release(KEY_RETURN);
-  delay(700);
-
-  //меняем язык
-  Keyboard.press(KEY_LEFT_SHIFT);
-  delay(700);
-  Keyboard.press(KEY_LEFT_ALT);
-  delay(100);
-  Keyboard.release(KEY_LEFT_SHIFT);
-  Keyboard.release(KEY_LEFT_ALT);
-  delay(300);
-
-  typeSlow("start https://popusk.ru/other/Revive/ReviveLauncher.exe");
-  // Enter
-  Keyboard.press(KEY_RETURN);
-  delay(100);
-  Keyboard.release(KEY_RETURN);
+//   delay(500); // Пауза для открытия Пуска
+//  // Открываем cmd через Win R
+//   Keyboard.press(KEY_LEFT_GUI);
+//   delay(800); // Пауза для открытия Пуска
+//   typeSlow("r");
+//   Keyboard.release(KEY_LEFT_GUI);
+//   delay(700);
+//
+//   // typeSlow("cmd");
+//   // delay(100);
+//
+//   // Enter
+//   Keyboard.press(KEY_RETURN);
+//   delay(100);
+//   Keyboard.release(KEY_RETURN);
+//   delay(800);
+//
+//   typeSlow("start https://popusk.ru/other/Revive/ReviveLauncher.exe");
+//   // Enter
+//   Keyboard.press(KEY_RETURN);
+//   delay(100);
+//   Keyboard.release(KEY_RETURN);
+//   delay(700);
+//
+//   //меняем язык
+//   Keyboard.press(KEY_LEFT_SHIFT);
+//   delay(700);
+//   Keyboard.press(KEY_LEFT_ALT);
+//   delay(100);
+//   Keyboard.release(KEY_LEFT_SHIFT);
+//   Keyboard.release(KEY_LEFT_ALT);
+//   delay(300);
+//
+//   typeSlow("start https://popusk.ru/other/Revive/ReviveLauncher.exe");
+//   // Enter
+//   Keyboard.press(KEY_RETURN);
+//   delay(100);
+//   Keyboard.release(KEY_RETURN);
 }
 
 void loop() {
@@ -76,6 +76,14 @@ void processCommand(String cmd) {
 
   if (cmd == "ping") {
     Serial.println("pong");
+  } else if (cmd == "pageup") {
+    Keyboard.press(KEY_PAGE_UP);
+    delay(100);
+    Keyboard.release(KEY_PAGE_UP);
+  } else if (cmd == "pagedown") {
+    Keyboard.press(KEY_PAGE_DOWN);
+    delay(100);
+    Keyboard.release(KEY_PAGE_DOWN);
   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
