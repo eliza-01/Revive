@@ -23,6 +23,6 @@ TEMPLATES: Dict[str, List[str]] = {
 
     #Primeval_1
     "Primeval_1_capt1": ["rows", "Rune", "PrimevalIsle", "Primeval_1", "1.png"],
-    "Primeval_1_capt2": [1"rows", "Rune", "PrimevalIsle", "Primeval_1", "2.png"],
+    "Primeval_1_capt2": ["rows", "Rune", "PrimevalIsle", "Primeval_1", "2.png"],
     "Primeval_1_capt3": ["rows", "Rune", "PrimevalIsle", "Primeval_1", "3.png"],
 }
