@@ -570,6 +570,7 @@ class ReviveLauncherUI:
     def _rows_watch(self):
         get_sel = getattr(self.tp, "get_selected_destination", None)
         dest = get_sel() if callable(get_sel) else ("", "")
+        print("[rows] dest:", dest)  # ← увидеть ("cat_id","loc_id")
         if dest != self._last_row_dest:
             self._last_row_dest = dest
             self._reload_rows()
