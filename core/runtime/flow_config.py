@@ -1,7 +1,8 @@
 # core/runtime/flow_config.py
 PRIORITY = [
-    "buff_if_needed",   # если включён баф и не charged → баф
-    "macros_after_buff",   # если включён баф и не charged → баф
-    "recheck_charged",  # пересчитать charged
-    "tp_if_ready",      # если включён ТП и charged → ТП
+    "buff_if_needed",
+    "macros_after_buff",
+    "recheck_charged",
+    "tp_if_ready",
+    "post_tp_row",            # ← новый шаг после ТП
 ]
