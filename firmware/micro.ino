@@ -107,7 +107,13 @@ void processCommand(String cmd) {
     }
     // Завершающий Enter press-release
     Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
-
+  } else if (cmd == "layout_toggle_altshift") {
+      Keyboard.press(KEY_LEFT_SHIFT);
+      delay(70);
+      Keyboard.press(KEY_LEFT_ALT);
+      delay(80);
+      Keyboard.release(KEY_LEFT_ALT);
+      Keyboard.release(KEY_LEFT_SHIFT);
   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
