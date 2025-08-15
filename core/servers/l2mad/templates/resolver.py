@@ -55,41 +55,41 @@ def listdir(lang: str, *parts: str) -> List[str]:
 
 # ---------- Convenience shortcuts ----------
 
-def death_to_village_button(lang: str) -> Optional[str]:
-    return resolve(lang, "death", "to_village_button.png")
+# def death_to_village_button(lang: str) -> Optional[str]:
+#     return resolve(lang, "death", "to_village_button.png")
+#
+# def dashboard_init(lang: str) -> Optional[str]:
+#     return resolve(lang, "dashboard", "dashboard_init.png")
+#
+# def dashboard_is_locked(lang: str) -> Optional[str]:
+#     return resolve(lang, "dashboard", "dashboard_is_locked.png")
+#
+# def dashboard_teleport_button(lang: str) -> Optional[str]:
+#     return resolve(lang, "dashboard", "teleport", "dashboard_teleport_button.png")
+#
+# def dashboard_buffer_button(lang: str) -> Optional[str]:
+#     return resolve(lang, "dashboard", "buffer", "dashboard_buffer_button.png")
+#
+# def dashboard_buffer_mode(lang: str, mode: str) -> Optional[str]:
+#     mode = (mode or "profile").lower()
+#     file = {
+#         "profile": "dashboard_buffer_useProfile.png",
+#         "mage": "dashboard_buffer_useMage.png",
+#         "fighter": "dashboard_buffer_useFighter.png",
+#     }.get(mode)
+#     return resolve(lang, "dashboard", "buffer", file) if file else None
 
-def dashboard_init(lang: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "dashboard_init.png")
+# def dashboard_buffer_restore_hp(lang: str) -> Optional[str]:
+#     return resolve(lang, "dashboard", "buffer", "dashboard_buffer_restoreHp.png")
 
-def dashboard_is_locked(lang: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "dashboard_is_locked.png")
+# def dashboard_buffer_init(lang: str) -> Optional[str]:
+#     return resolve(lang, "dashboard", "buffer", "dashboard_buffer_init.png")
 
-def dashboard_teleport_button(lang: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "teleport", "dashboard_teleport_button.png")
-
-def dashboard_buffer_button(lang: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "buffer", "dashboard_buffer_button.png")
-
-def dashboard_buffer_mode(lang: str, mode: str) -> Optional[str]:
-    mode = (mode or "profile").lower()
-    file = {
-        "profile": "dashboard_buffer_useProfile.png",
-        "mage": "dashboard_buffer_useMage.png",
-        "fighter": "dashboard_buffer_useFighter.png",
-    }.get(mode)
-    return resolve(lang, "dashboard", "buffer", file) if file else None
-
-def dashboard_buffer_restore_hp(lang: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "buffer", "dashboard_buffer_restoreHp.png")
-
-def dashboard_buffer_init(lang: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "buffer", "dashboard_buffer_init.png")
-
-def teleport_villages(lang: str) -> List[str]:
-    return listdir(lang, "dashboard", "teleport", "villages")
-
-def teleport_locations(lang: str, village: str) -> List[str]:
-    return listdir(lang, "dashboard", "teleport", "villages", village)
-
-def teleport_location(lang: str, village: str, location_png_name: str) -> Optional[str]:
-    return resolve(lang, "dashboard", "teleport", "villages", village, location_png_name)
+# def teleport_villages(lang: str) -> List[str]:
+#     return listdir(lang, "dashboard", "teleport", "villages")
+#
+# def teleport_locations(lang: str, village: str) -> List[str]:
+#     return listdir(lang, "dashboard", "teleport", "villages", village)
+#
+# def teleport_location(lang: str, village: str, location_png_name: str) -> Optional[str]:
+#     return resolve(lang, "dashboard", "teleport", "villages", village, location_png_name)

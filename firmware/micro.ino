@@ -76,44 +76,60 @@ void processCommand(String cmd) {
 
   if (cmd == "ping") {
     Serial.println("pong");
+
   } else if (cmd == "pageup") {
-    Keyboard.press(KEY_PAGE_UP);
-    delay(100);
-    Keyboard.release(KEY_PAGE_UP);
+    Keyboard.press(KEY_PAGE_UP); delay(100); Keyboard.release(KEY_PAGE_UP);
+
   } else if (cmd == "pagedown") {
-    Keyboard.press(KEY_PAGE_DOWN);
-    delay(100);
-    Keyboard.release(KEY_PAGE_DOWN);
+    Keyboard.press(KEY_PAGE_DOWN); delay(100); Keyboard.release(KEY_PAGE_DOWN);
+
+  } else if (cmd == "wheel_click") {
+    Mouse.press(MOUSE_MIDDLE); delay(100); Mouse.release(MOUSE_MIDDLE);
+
+  } else if (cmd == "wheel_up") {
+    Mouse.move(0, 0, 1);
+
+  } else if (cmd == "wheel_down") {
+    Mouse.move(0, 0, -1);
+
+  } else if (cmd == "enter" || cmd.startsWith("enter ")) {
+    String payload = "";
+    if (cmd.startsWith("enter ") && cmd.length() > 6) {
+      payload = cmd.substring(6); // всё после "enter "
+    }
+    // Enter press-release
+    Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
+    // Пауза перед вводом текста
+    delay(200);
+    // Ввод текста, если он есть
+    if (payload.length() > 0) {
+      typeSlow(payload.c_str());
+    }
+    // Завершающий Enter press-release
+    Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
+  } else if (cmd == "layout_toggle_altshift") {
+      Keyboard.press(KEY_LEFT_SHIFT);
+      delay(70);
+      Keyboard.press(KEY_LEFT_ALT);
+      delay(80);
+      Keyboard.release(KEY_LEFT_ALT);
+      Keyboard.release(KEY_LEFT_SHIFT);
   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
-      Keyboard.press(ch);
-      delay(100);
-      Keyboard.release(ch);
-    } else if (ch == '0') {
-      Keyboard.press('0');
-      delay(100);
-      Keyboard.release('0');
+      Keyboard.press(ch); delay(100); Keyboard.release(ch);
     } else if (ch == 't') {
-      Keyboard.press(KEY_TAB);
-      delay(100);
-      Keyboard.release(KEY_TAB);
+      Keyboard.press(KEY_TAB); delay(100); Keyboard.release(KEY_TAB);
     } else if (ch == 'c') {
-      Keyboard.press(KEY_LEFT_CTRL);
-      delay(100);
-      Keyboard.release(KEY_LEFT_CTRL);
+      Keyboard.press(KEY_LEFT_CTRL); delay(100); Keyboard.release(KEY_LEFT_CTRL);
     } else if (ch == 'l') {
       Mouse.click(MOUSE_LEFT);
     } else if (ch == 'r') {
       Mouse.click(MOUSE_RIGHT);
     } else if (ch == 'L') {
-      Mouse.press(MOUSE_LEFT);
-      delay(800);
-      Mouse.release(MOUSE_LEFT);
+      Mouse.press(MOUSE_LEFT); delay(800); Mouse.release(MOUSE_LEFT);
     } else if (ch == 'R') {
-      Mouse.press(MOUSE_RIGHT);
-      delay(800);
-      Mouse.release(MOUSE_RIGHT);
+      Mouse.press(MOUSE_RIGHT); delay(800); Mouse.release(MOUSE_RIGHT);
     } else if (ch == 'b') {
       typeSlow("b");
     }

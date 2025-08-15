@@ -6,6 +6,35 @@ from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
 from core.runtime.flow_engine import FlowEngine
 from core.vision.matching.template_matcher import match_in_zone
 
+_RU2US = {
+    # верхний ряд
+    "й":"q","ц":"w","у":"e","к":"r","е":"t","н":"y","г":"u","ш":"i","щ":"o","з":"p","х":"[","ъ":"]",
+    # средний
+    "ф":"a","ы":"s","в":"d","а":"f","п":"g","р":"h","о":"j","л":"k","д":"l","ж":";","э":"'",
+    # нижний
+    "я":"z","ч":"x","с":"c","м":"v","и":"b","т":"n","ь":"m","б":",","ю":".","ё":"`",
+    # прочее
+    " ":" ","-":"-",
+}
+_SHIFT_PUNCT = {"[":"{","]":"}",";":":","'":'"',",":"<",".":">","`":"~"}
+
+def _ru_to_us_keys(text: str) -> str:
+    out = []
+    for ch in text:
+        lo = ch.lower()
+        if lo in _RU2US:
+            key = _RU2US[lo]
+            if ch.isupper():
+                if "a" <= key <= "z":
+                    out.append(key.upper())
+                else:
+                    out.append(_SHIFT_PUNCT.get(key, key))
+            else:
+                out.append(key)
+        else:
+            out.append(ch)  # оставить ASCII и прочее как есть
+    return "".join(out)
+
 ZoneLTRB = Tuple[int, int, int, int]
 
 class FlowCtx:
@@ -117,15 +146,67 @@ class FlowOpExecutor:
             elif op == "while_visible_send":
                 ok = self._while_visible_send(step, thr)
             elif op == "send_arduino":
-                try: self.ctx.controller.send(step.get("cmd", ""))
-                except: pass
-                time.sleep(int(step.get("delay_ms", 100)) / 1000.0); ok = True
+                cmd = step.get("cmd", "")
+                delay_ms = int(step.get("delay_ms", 100))
+                count = int(step.get("count", 1))
+                if count <= 0:
+                    count = 1
+                for i in range(count):
+                    try:
+                        self.ctx.controller.send(cmd)
+                    except:
+                        pass
+                    if delay_ms > 0 and i < count - 1:
+                        time.sleep(delay_ms / 1000.0)
+                ok = True
+            elif op == "send_message":
+                text = str(step.get("text", ""))
+                layout = (step.get("layout") or "auto").lower()
+                # auto: если есть не-ASCII — считаем, что это русское и конвертим
+                if layout == "ru" or (layout == "auto" and any(ord(c) > 127 for c in text)):
+                    text = _ru_to_us_keys(text)
+                # прошивка уже умеет "enter <payload>": Enter → печать → Enter
+                self.ctx.controller.send(f"enter {text}")
+                ok = True
+            elif op == "set_layout":
+                # Только Alt+Shift
+                target = (step.get("layout") or step.get("value") or "toggle").lower()  # "toggle" | "ru" | "en"
+                count = int(step.get("count", 1))
+                delay_ms = int(step.get("delay_ms", 120))
+
+                def _toggle_once():
+                    try:
+                        self.ctx.controller.send("layout_toggle_altshift")
+                    except:
+                        pass
+                    if delay_ms > 0:
+                        time.sleep(delay_ms / 1000.0)
+
+                cur = getattr(self, "_kb_layout", None)
+
+                if target in ("toggle", "switch"):
+                    if count <= 0:
+                        count = 1
+                    for _ in range(count):
+                        _toggle_once()
+                    ok = True
+                elif target in ("ru", "en"):
+                    if cur == target:
+                        ok = True
+                    else:
+                        _toggle_once()
+                        self._kb_layout = target
+                        ok = True
+                else:
+                    self._on_status(f"[flow] set_layout: unknown layout '{target}'", False)
+                    ok = False
+
             elif op == "sleep":
                 time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
             elif op == "click_village":
-                ok = self._click_by_resolver("dashboard_body", "village_png", step, thr)
+                ok = self._click_by_resolver(step["zone"], "village_png", step, thr)
             elif op == "click_location":
-                ok = self._click_by_resolver("dashboard_body", "location_png", step, thr)
+                ok = self._click_by_resolver(step["zone"], "location_png", step, thr)
             else:
                 self._on_status(f"[flow] unknown op: {op}", False); ok = False
         except Exception as e:
@@ -164,22 +245,42 @@ class FlowOpExecutor:
 
     def _click_by_resolver(self, zone_key: str, which: str, step: Dict, thr: float) -> bool:
         resolver = self.ctx.extras.get("resolver")
-        if not callable(resolver): return False
+        if not callable(resolver):
+            return False
+
         lang = self.ctx._lang()
-        cat = self.ctx.extras.get("category_id"); loc = self.ctx.extras.get("location_id")
+        cat = (self.ctx.extras.get("category_id") or "")
+        loc = (self.ctx.extras.get("location_id") or "")
+
+        # ── NEW: Hotspots не открывает «вилладж» (нет подменю) ──
+        if which == "village_png" and cat.lower() == "hotspots":
+            # считаем шаг успешным и идём дальше
+            return True
+
         if which == "village_png":
-            if not cat: return False
+            if not cat:
+                return False
             file = f"{cat}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
-            if not ok_res: self._on_status(f"[tp] village template missing: {cat}", False); return False
+            if not ok_res:
+                self._on_status(f"[tp] village template missing: {cat}", False)
+                return False
             parts = ["dashboard", "teleport", "villages", cat, file]
-        else:
-            if not (cat and loc): return False
+        else:  # location_png
+            if not (cat and loc):
+                return False
             file = f"{loc}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
-            if not ok_res: self._on_status(f"[tp] location template missing: {cat}/{loc}", False); return False
+            if not ok_res:
+                self._on_status(f"[tp] location template missing: {cat}/{loc}", False)
+                return False
             parts = ["dashboard", "teleport", "villages", cat, file]
-        return self.ctx._click_in(zone_key, parts, int(step.get("timeout_ms", 2500)), float(step.get("thr", 0.88)))
+
+        return self.ctx._click_in(
+            zone_key, parts,
+            int(step.get("timeout_ms", 2500)),
+            float(step.get("thr", 0.88)),
+        )
 
 def run_flow(flow: List[Dict], executor: FlowOpExecutor) -> bool:
     engine = FlowEngine(flow, executor.exec)
