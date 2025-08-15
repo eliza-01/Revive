@@ -3,8 +3,10 @@ FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
     {"op": "sleep", "ms": 5000},
     {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
-    {"op": "sleep", "ms": 5000},
-    {"op": "click_in", "zone": "fullscreen", "tpl": "Varka_1_1", "timeout_ms": 2000, "thr": 0.87},
+    {"op": "sleep", "ms": 900},
+    {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 85},  #
+    {"op": "sleep", "ms": 2000},
+    {"op": "click_in", "zone": "fullscreen", "tpl": "Varka_1_capt1", "timeout_ms": 2000, "thr": 0.87},
     {"op": "sleep", "ms": 900},
     # {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},
     # {"op": "sleep", "ms": 2000},

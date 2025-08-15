@@ -117,9 +117,19 @@ class FlowOpExecutor:
             elif op == "while_visible_send":
                 ok = self._while_visible_send(step, thr)
             elif op == "send_arduino":
-                try: self.ctx.controller.send(step.get("cmd", ""))
-                except: pass
-                time.sleep(int(step.get("delay_ms", 100)) / 1000.0); ok = True
+                cmd = step.get("cmd", "")
+                delay_ms = int(step.get("delay_ms", 100))
+                count = int(step.get("count", 1))
+                if count <= 0:
+                    count = 1
+                for i in range(count):
+                    try:
+                        self.ctx.controller.send(cmd)
+                    except:
+                        pass
+                    if delay_ms > 0 and i < count - 1:
+                        time.sleep(delay_ms / 1000.0)
+                ok = True
             elif op == "sleep":
                 time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
             elif op == "click_village":
