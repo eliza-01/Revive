@@ -130,6 +130,17 @@ class FlowOpExecutor:
                     if delay_ms > 0 and i < count - 1:
                         time.sleep(delay_ms / 1000.0)
                 ok = True
+            elif op == "send_message":
+                # отправить текст в чат: Enter → текст → Enter
+                text = str(step.get("text", "")).strip()
+                delay_ms = int(step.get("delay_ms", 150))
+                try:
+                    self.ctx.controller.send(f"enter {text}")
+                except:
+                    pass
+                if delay_ms > 0:
+                    time.sleep(delay_ms / 1000.0)
+                ok = True
             elif op == "sleep":
                 time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
             elif op == "click_village":

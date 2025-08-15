@@ -1,17 +1,18 @@
-# core/servers/l2mad/flows/rows/Goddard/VarkaSilenosStronghold/Primeval_1.py
+# core/servers/l2mad/flows/rows/Rune/PrimevalIsle/Primeval_1.py
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
     {"op": "sleep", "ms": 4000},
-    {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
-    {"op": "sleep", "ms": 900},
-    {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 85},  #
-    {"op": "wait", "zone": "fullscreen", "tpl": "Varka_1_capt1", "timeout_ms": 2000, "thr": 0.87, "retry_count": 1, "retry_delay_ms": 1000, "retry_action": "prev"},
-    {"op": "sleep", "ms": 1500},
-    {"op": "click_in", "zone": "fullscreen", "tpl": "Varka_1_capt1", "timeout_ms": 2000, "thr": 0.87},
-    {"op": "sleep", "ms": 900},
-    {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 1000, "thr": 0.87},
-    {"op": "sleep", "ms": 500},
-    {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 1000, "thr": 0.87},
+    {"op": "send_message", "text": "Привет гaндoны", "delay_ms": 200},
+    # {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
+    # {"op": "sleep", "ms": 900},
+    # {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 85},  #
+    # {"op": "wait", "zone": "fullscreen", "tpl": "Varka_1_capt1", "timeout_ms": 2000, "thr": 0.87, "retry_count": 1, "retry_delay_ms": 1000, "retry_action": "prev"},
+    # {"op": "sleep", "ms": 1500},
+    # {"op": "click_in", "zone": "fullscreen", "tpl": "Varka_1_capt1", "timeout_ms": 2000, "thr": 0.87},
+    # {"op": "sleep", "ms": 900},
+    # {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 1000, "thr": 0.87},
+    # {"op": "sleep", "ms": 500},
+    # {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 1000, "thr": 0.87},
 
 
     # {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},
