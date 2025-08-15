@@ -16,7 +16,7 @@ from core.servers.registry import get_server_profile
 from core.runtime.state_watcher import StateWatcher
 from core.runtime.poller import RepeaterThread
 
-from core.features.auto_respawn_runner import AutoRespawnRunner
+# from core.features.auto_respawn_runner import AutoRespawnRunner
 from core.features.to_village import ToVillage
 from core.features.afterbuff_macros import AfterBuffMacroRunner
 
@@ -143,15 +143,15 @@ class ReviveLauncherUI:
         self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
 
         # --- auto respawn runner (старый, отдельно) ---
-        self.respawn = AutoRespawnRunner(
-            controller=self.controller,
-            window_title="Lineage",
-            language=self.language,
-            server=self.server,
-            poll_interval=0.5,
-            debug=True,
-            window_provider=lambda: self._safe_window(),
-        )
+        # self.respawn = AutoRespawnRunner(
+        #     controller=self.controller,
+        #     window_title="Lineage",
+        #     language=self.language,
+        #     server=self.server,
+        #     poll_interval=0.5,
+        #     debug=True,
+        #     window_provider=lambda: self._safe_window(),
+        # )
 
         # --- watcher: только мониторинг состояния ---
         self.watcher = StateWatcher(
