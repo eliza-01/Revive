@@ -9,6 +9,3 @@ FLOW = [
     {"op": "sleep", "ms": 2000},
     {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
 ]
-
-git fetch origin
-git reset --hard origin/post_tp_rows

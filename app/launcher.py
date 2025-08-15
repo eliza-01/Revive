@@ -8,7 +8,6 @@ import tkinter.ttk as ttk
 import logging
 import time  # ← вот это
 
-
 from core.connection import ReviveController
 from core.connection_test import run_test_command
 
@@ -37,6 +36,7 @@ from app.ui.afterbuff_macros import AfterBuffMacrosControls
 from core.runtime.flow_config import PRIORITY
 from core.runtime.flow_runner import FlowRunner
 
+
 class _Collapsible(tk.Frame):
     def __init__(self, parent, title: str, opened: bool = True):
         super().__init__(parent)
@@ -60,11 +60,14 @@ class _Collapsible(tk.Frame):
     def body(self) -> tk.Frame:
         return self._body
 
+
 # ---------------- Logging ----------------
 def _init_logging():
     LOG_PATH = "revive.log"
     logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
     return LOG_PATH
+
+
 _init_logging()
 
 
@@ -89,9 +92,9 @@ class ReviveLauncherUI:
 
         # --- post-TP rows UI state ---
         self._row_var = tk.StringVar(value="")
-        self._rows_menu = None
-        self._rows_cache = []           # [(id, title)]
-        self._last_row_dest = ("", "")  # (village_id, location_id)
+        self._rows_menu: ttk.Combobox | None = None
+        self._rows_cache: list[tuple[str, str]] = []   # [(id, title)]
+        self._last_row_dest = ("", "")                 # (village_id, location_id)
 
         self.checker = ChargeChecker(interval_minutes=10, mode="ANY")
         self.checker.register_probe(
@@ -123,7 +126,6 @@ class ReviveLauncherUI:
         # агрегатор «заряженности» (заглушка проверки)
         def _probe_is_buffed_stub() -> bool:
             return False
-
 
         # флаг и поллер для автобафов по интервалу
         self._autobuff_enabled = False
@@ -161,17 +163,6 @@ class ReviveLauncherUI:
         # --- window probe ---
         self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
 
-        # --- auto respawn runner (старый, отдельно) ---
-        # self.respawn = AutoRespawnRunner(
-        #     controller=self.controller,
-        #     window_title="Lineage",
-        #     language=self.language,
-        #     server=self.server,
-        #     poll_interval=0.5,
-        #     debug=True,
-        #     window_provider=lambda: self._safe_window(),
-        # )
-
         # --- watcher: только мониторинг состояния ---
         self.watcher = StateWatcher(
             server=self.server,
@@ -195,7 +186,7 @@ class ReviveLauncherUI:
                 "macros_after_buff": self._flow_step_macros_after_buff,
                 "recheck_charged": self._flow_step_recheck_charged,
                 "tp_if_ready": self._flow_step_tp_if_ready,
-                "post_tp_row": self._flow_step_post_tp_row,   # ←
+                "post_tp_row": self._flow_step_post_tp_row,  # ←
             },
             order=PRIORITY,
         )
@@ -209,7 +200,6 @@ class ReviveLauncherUI:
             print(f"[×] Ошибка связи с Arduino: {e}")
 
         self.update_window_ref = None
-
 
     # ----------------  Charge Flow  ----------------
     def _flow_step_buff_if_needed(self):
@@ -270,18 +260,18 @@ class ReviveLauncherUI:
         tp_enabled = getattr(self.tp, "is_enabled", lambda: False)()
         if not tp_enabled:
             print("[flow] tp_if_ready → skip (disabled)")
-            self._tp_success = False        # ← подстрахуемся
+            self._tp_success = False
             return
 
         if self._charged_flag is not True:
             print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
-            self._tp_success = False        # ← подстрахуемся
+            self._tp_success = False
             return
 
-        self._tp_success = False            # ← СБРОС ПЕРЕД ВЫЗОВОМ
+        self._tp_success = False  # сброс перед попыткой
         fn = getattr(self.tp, "teleport_now_selected", None)
         ok_tp = bool(fn()) if callable(fn) else False
-        self._tp_success = ok_tp            # ← ФИКСИРУЕМ ТОЛЬКО УСПЕХ
+        self._tp_success = ok_tp  # фиксируем только успех
         print(f"[flow] tp_if_ready → {ok_tp}")
         self._tp_after_death = False
 
@@ -313,7 +303,6 @@ class ReviveLauncherUI:
         except Exception as e:
             print(f"[buff] interval tick error: {e}")
 
-
     # ----------------  State Watcher ----------------
     def _on_state_ui(self, st):
         pass
@@ -322,12 +311,12 @@ class ReviveLauncherUI:
         try:
             ok = self.to_village.run_once(timeout_ms=4000)
             print(f"[to_village] run: {ok}")
-            self._tp_after_death = bool(ok)   # True только если реально нажали и поднялись
+            self._tp_after_death = bool(ok)  # True только если реально нажали и поднялись
         except Exception as e:
             print(f"[to_village] error in thread: {e}")
             self._tp_after_death = False
         finally:
-            self._revive_decided = True       # решение принято в любом случае
+            self._revive_decided = True  # решение принято в любом случае
 
     def _on_dead_ui(self, st):
         self._alive_flag = False
@@ -335,7 +324,7 @@ class ReviveLauncherUI:
         self._tp_success = False
         print("[state] death detected → charged=None")
         try:
-            self.checker.invalidate()          # ← ВАЖНО: сбросить кеш при смерти
+            self.checker.invalidate()  # ← ВАЖНО: сбросить кеш при смерти
         except Exception:
             pass
         print("[state] death detected → charged=None (cache invalidated)")
@@ -371,11 +360,14 @@ class ReviveLauncherUI:
 
         if ui_wants_raise and not getattr(self, "_revive_decided", True):
             # небольшая задержка и пробуем снова
-            try: self.root.after(300, self._run_alive_flow)
-            except Exception: time.sleep(0.3); self._run_alive_flow()
+            try:
+                self.root.after(300, self._run_alive_flow)
+            except Exception:
+                time.sleep(0.3)
+                self._run_alive_flow()
             return
 
-        self._buff_was_success = False   # ← ДОБАВЬ сбросить результат бафа текущего цикла?
+        self._buff_was_success = False
         self.flow.run()
 
     # ---------------- respawn controls ----------------
@@ -415,36 +407,52 @@ class ReviveLauncherUI:
         top.pack(fill="x", padx=8, pady=4)
 
         # язык
-        lang_frame = tk.Frame(top.body()); lang_frame.pack(pady=(5, 2), anchor="center")
+        lang_frame = tk.Frame(top.body())
+        lang_frame.pack(pady=(5, 2), anchor="center")
         tk.Label(lang_frame, text="Язык интерфейса:", font=("Arial", 10)).pack(side="left", padx=(0, 6))
-        ttk.OptionMenu(lang_frame, self.language_var, self.language_var.get(), "rus", "eng", command=self.set_language).pack(side="left", padx=(0, 20))
+        ttk.OptionMenu(
+            lang_frame, self.language_var, self.language_var.get(), "rus", "eng", command=self.set_language
+        ).pack(side="left", padx=(0, 20))
 
         # сервер
-        server_frame = tk.Frame(top.body()); server_frame.pack(pady=(2, 6), anchor="center")
+        server_frame = tk.Frame(top.body())
+        server_frame.pack(pady=(2, 6), anchor="center")
         tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 12))
-        ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(side="left", padx=(0, 20))
+        ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(
+            side="left", padx=(0, 20)
+        )
 
         # окно
-        window_frame = tk.Frame(top.body()); window_frame.pack(pady=(2, 10), anchor="center")
-        tk.Button(window_frame, text="🔍 Найти окно Lineage", command=self.winprobe.try_find_window_again).pack(side="left", padx=(0, 8))
-        ws_label = tk.Label(window_frame, text="[?] Поиск окна...", font=("Arial", 9), fg="gray"); ws_label.pack(side="left")
+        window_frame = tk.Frame(top.body())
+        window_frame.pack(pady=(2, 10), anchor="center")
+        tk.Button(window_frame, text="🔍 Найти окно Lineage", command=self.winprobe.try_find_window_again).pack(
+            side="left", padx=(0, 8)
+        )
+        ws_label = tk.Label(top.body(), text="[?] Поиск окна...", font=("Arial", 9), fg="gray")
+        ws_label.pack()
         self.winprobe.attach_status(ws_label)
 
         # связь
         self.driver_status = tk.Label(top.body(), text="Состояние связи: неизвестно", fg="gray")
-        tk.Button(top.body(), text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)).pack(pady=5)
+        tk.Button(
+            top.body(), text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)
+        ).pack(pady=5)
         self.driver_status.pack(pady=(0, 5))
 
         # версия + апдейтер
         tk.Label(top.body(), text=f"Версия: {local_version}", font=("Arial", 10)).pack()
-        self.version_status_label = tk.Label(top.body(), text="", font=("Arial", 9), fg="orange"); self.version_status_label.pack()
-        tk.Button(top.body(), text="🔄 Проверить обновление",
-                  command=lambda: run_update_check(local_version, self.version_status_label, self.root, self)).pack()
+        self.version_status_label = tk.Label(top.body(), text="", font=("Arial", 9), fg="orange")
+        self.version_status_label.pack()
+        tk.Button(
+            top.body(),
+            text="🔄 Проверить обновление",
+            command=lambda: run_update_check(local_version, self.version_status_label, self.root, self),
+        ).pack()
 
         # выход
         tk.Button(top.body(), text="Выход", fg="red", command=self.exit_program).pack(pady=10)
 
-        # Блок 2: рабочий поток — отслеживание состояния · баф · макросы · ТП
+        # Блок 2: рабочий поток — отслеживание состояния · Баф · Макросы · ТП
         flow = _Collapsible(parent, "Отслеживать состояние · Баф · Макросы · ТП", opened=True)
         flow.pack(fill="x", padx=8, pady=4)
 
@@ -470,8 +478,6 @@ class ReviveLauncherUI:
         )
 
         # 3) Макросы после бафа
-        from app.ui.afterbuff_macros import AfterBuffMacrosControls
-        from core.features.afterbuff_macros import AfterBuffMacroRunner
         self.afterbuff_ui = AfterBuffMacrosControls(flow.body())
         self.afterbuff_runner = AfterBuffMacroRunner(
             controller=self.controller,
@@ -504,6 +510,7 @@ class ReviveLauncherUI:
             values=[],
         )
         self._rows_menu.pack(side="left")
+        self._rows_menu.bind("<<ComboboxSelected>>", self._on_row_selected)
         ttk.Button(rows_frame, text="Очистить", command=self._clear_row).pack(side="left", padx=6)
 
         # автоподгрузка маршрутов при смене пункта ТП
@@ -513,6 +520,7 @@ class ReviveLauncherUI:
         def _schedule_update_check():
             run_update_check(local_version, self.version_status_label, self.root, self)
             self.root.after(600_000, _schedule_update_check)
+
         _schedule_update_check()
 
     # ---------------- window probe callbacks ----------------
@@ -558,39 +566,28 @@ class ReviveLauncherUI:
         except Exception:
             pass
 
-    def _flow_step_post_tp_row(self):
-        try:
-            if not getattr(self, "_tp_success", False):
-                print("[rows] skip (tp not successful)")
-                return
-            get_sel = getattr(self.tp, "get_selected_destination", None)
-            get_row = getattr(self.tp, "get_selected_row_id", None)
-            if not callable(get_sel) or not callable(get_row):
-                print("[rows] UI does not expose selection"); return
-
-            cat, loc = get_sel()
-            row_id = get_row()
-            if not (cat and loc and row_id):
-                print("[rows] skip (no row selected)"); return
-
-            ok = self.postrow.run_row(cat, loc, row_id)
-            print(f"[rows] run → {ok}")
-        except Exception as e:
-            print(f"[rows] error: {e}")
-        finally:
-            self._tp_success = False   # ← чтобы маршрут не повторился в следующем цикле
-
+    # ---------------- rows (post-TP) ----------------
     def _rows_watch(self):
         get_sel = getattr(self.tp, "get_selected_destination", None)
-        if callable(get_sel):
-            dest = get_sel()  # (village_id, location_id)
-        else:
-            dest = ("", "")
+        dest = get_sel() if callable(get_sel) else ("", "")
         if dest != self._last_row_dest:
             self._last_row_dest = dest
             self._reload_rows()
         try:
             self.root.after(400, self._rows_watch)
+        except Exception:
+            pass
+
+    def _row_id_from_title(self, title: str):
+        for rid, t in self._rows_cache:
+            if t == title:
+                return rid
+        return None
+
+    def _on_row_selected(self, *_):
+        rid = self._row_id_from_title(self._row_var.get() or "")
+        try:
+            self.tp.set_selected_row_id(rid or "")
         except Exception:
             pass
 
@@ -602,32 +599,59 @@ class ReviveLauncherUI:
             rows = []
 
         lang = (self.language or "rus").lower()
+
         def title_of(r):
             if lang == "rus":
                 return r.get("title_rus") or r.get("id")
             return r.get("title_eng") or r.get("title_rus") or r.get("id")
 
         self._rows_cache = [(r["id"], title_of(r)) for r in rows if r.get("id")]
-        values = [t for (_id, t) in self._rows_cache]
+        values_list = [t for (_id, t) in self._rows_cache]
 
         if self._rows_menu:
-            self._rows_menu["values"] = values
+            try:
+                self._rows_menu["values"] = values_list
+            except Exception:
+                pass
 
         cur_id = self._row_id_from_title(self._row_var.get() or "")
         valid_ids = [rid for (rid, _t) in self._rows_cache]
-        if not values:
-            self._row_var.set("")
-        elif cur_id not in valid_ids:
-            self._row_var.set(values[0])
 
-    def _row_id_from_title(self, title: str):
-        for rid, t in self._rows_cache:
-            if t == title:
-                return rid
-        return None
+        if not values_list:
+            self._row_var.set("")
+            self._on_row_selected()
+        elif cur_id not in valid_ids:
+            self._row_var.set(values_list[0])
+            self._on_row_selected()
+
+    def _flow_step_post_tp_row(self):
+        try:
+            if not getattr(self, "_tp_success", False):
+                print("[rows] skip (tp not successful)")
+                return
+
+            get_sel = getattr(self.tp, "get_selected_destination", None)
+            get_row = getattr(self.tp, "get_selected_row_id", None)
+            if not callable(get_sel) or not callable(get_row):
+                print("[rows] UI does not expose selection")
+                return
+
+            cat, loc = get_sel()
+            row_id = get_row()
+            if not (cat and loc and row_id):
+                print("[rows] skip (no row selected)")
+                return
+
+            ok = self.postrow.run_row(cat, loc, row_id)
+            print(f"[rows] run → {ok}")
+        except Exception as e:
+            print(f"[rows] error: {e}")
+        finally:
+            self._tp_success = False  # чтобы маршрут не повторился в следующем цикле
 
     def _clear_row(self):
         self._row_var.set("")
+        self._on_row_selected()
 
     # ---------------- shutdown ----------------
     def exit_program(self):
@@ -668,7 +692,8 @@ def launch_gui(local_version: str):
     tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
     tk.Label(root, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5))
 
-    parent = tk.Frame(root); parent.pack(pady=10, fill="both")
+    parent = tk.Frame(root)
+    parent.pack(pady=10, fill="both")
 
     app = ReviveLauncherUI(root)
     app.build_ui(parent, local_version)
