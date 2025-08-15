@@ -16,7 +16,7 @@ class PostTPRowRunner:
 
     def run_row(self, village_id: str, location_id: str, row_id: str) -> bool:
         try:
-            zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.tp")
+            zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.rows")
             zones = getattr(zones_mod, "ZONES", {})
             templates = getattr(zones_mod, "TEMPLATES", {})
         except Exception:
