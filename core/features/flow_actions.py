@@ -74,3 +74,37 @@ class FlowActions:
 
     def dashboard_reset(self) -> bool:
         return self._run("dashboard_reset", extras={}, guard=True)
+
+    def post_tp_row(self, village_id: str, location_id: str, row_id: str) -> bool:
+        # зоны/шаблоны общие для rows
+        try:
+            zmod = importlib.import_module(f"core.servers.{self.server}.zones.rows")
+            zones = getattr(zmod, "ZONES", {})
+            templates = getattr(zmod, "TEMPLATES", {})
+        except Exception as e:
+            self.on_status(f"[rows] zones/templates load error: {e}", False)
+            return False
+        # сам flow берём из файлов локации
+        try:
+            mod = importlib.import_module(
+                f"core.servers.{self.server}.flows.rows.{village_id}.{location_id}.{row_id}"
+            )
+            flow = getattr(mod, "FLOW", None)
+        except Exception as e:
+            self.on_status(f"[rows] flow load error: {e}", False)
+            return False
+        if not flow:
+            self.on_status("[rows] flow missing", False)
+            return False
+
+        ctx = FlowCtx(
+            server=self.server,
+            controller=self.controller,
+            get_window=self.get_window,
+            get_language=self.get_language,
+            zones=zones,
+            templates=templates,
+            extras={"village_id": village_id, "location_id": location_id, "row_id": row_id},
+        )
+        execu = FlowOpExecutor(ctx, on_status=self.on_status, logger=self.log)
+        return run_flow(flow, execu)

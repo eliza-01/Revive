@@ -11,7 +11,9 @@ import time  # ← вот это
 
 from core.connection import ReviveController
 from core.connection_test import run_test_command
+
 from core.servers.registry import get_server_profile
+from core.servers.l2mad.flows.rows.registry import list_rows
 
 from core.runtime.state_watcher import StateWatcher
 from core.runtime.poller import RepeaterThread
@@ -19,6 +21,7 @@ from core.runtime.poller import RepeaterThread
 # from core.features.auto_respawn_runner import AutoRespawnRunner
 from core.features.to_village import ToVillage
 from core.features.afterbuff_macros import AfterBuffMacroRunner
+from core.features.post_tp_row import PostTPRowRunner
 
 from core.checks.charged import ChargeChecker, BuffTemplateProbe
 
@@ -84,6 +87,12 @@ class ReviveLauncherUI:
         # --- server profile FIRST ---
         self.profile = get_server_profile(self.server)
 
+        # --- post-TP rows UI state ---
+        self._row_var = tk.StringVar(value="")
+        self._rows_menu = None
+        self._rows_cache = []           # [(id, title)]
+        self._last_row_dest = ("", "")  # (village_id, location_id)
+
         self.checker = ChargeChecker(interval_minutes=10, mode="ANY")
         self.checker.register_probe(
             "autobuff_icons",
@@ -101,6 +110,14 @@ class ReviveLauncherUI:
                 debug=True,
             ),
             enabled=True,
+        )
+
+        self.postrow = PostTPRowRunner(
+            controller=self.controller,
+            server=self.server,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            on_status=lambda msg, ok: print(msg),
         )
 
         # агрегатор «заряженности» (заглушка проверки)
@@ -176,6 +193,7 @@ class ReviveLauncherUI:
                 "macros_after_buff": self._flow_step_macros_after_buff,
                 "recheck_charged": self._flow_step_recheck_charged,
                 "tp_if_ready": self._flow_step_tp_if_ready,
+                "post_tp_row": self._flow_step_post_tp_row,   # ←
             },
             order=PRIORITY,
         )
@@ -467,6 +485,24 @@ class ReviveLauncherUI:
             check_is_dead=self._check_is_dead,
         )
 
+        # --- блок: маршрут после ТП ---
+        rows_frame = tk.Frame(tp_frame)  # ← привязываем к секции ТП
+        rows_frame.pack(fill="x", padx=6, pady=(4, 6), anchor="w")
+
+        tk.Label(rows_frame, text="Маршрут после ТП:").pack(side="left", padx=(0, 8))
+        self._rows_menu = ttk.Combobox(
+            rows_frame,
+            textvariable=self._row_var,
+            state="readonly",
+            width=28,
+            values=[],
+        )
+        self._rows_menu.pack(side="left")
+        ttk.Button(rows_frame, text="Очистить", command=self._clear_row).pack(side="left", padx=6)
+
+        # автоподгрузка маршрутов при смене пункта ТП
+        self.root.after(200, self._rows_watch)
+
         # авто-проверка обновлений
         def _schedule_update_check():
             run_update_check(local_version, self.version_status_label, self.root, self)
@@ -484,12 +520,11 @@ class ReviveLauncherUI:
     def set_language(self, lang):
         self.language = (lang or "rus").lower()
         print(f"[UI] Язык интерфейса установлен: {self.language}")
-        self.respawn.set_language(self.language)
+        # watcher берет язык через callback, ничего делать не нужно
 
     def set_server(self, server):
         self.server = (server or "l2mad").lower()
         print(f"[UI] Сервер установлен: {self.server}")
-        self.respawn.set_server(self.server)
         self.profile = get_server_profile(self.server)
 
         br = getattr(self, "buff_runner", None)
@@ -516,6 +551,69 @@ class ReviveLauncherUI:
             self.buff.refresh_enabled(self.profile)
         except Exception:
             pass
+
+    def _flow_step_post_tp_row(self):
+        try:
+            get_sel = getattr(self.tp, "get_selected_destination", None)
+            if not callable(get_sel):
+                print("[rows] UI does not expose destination"); return
+            cat, loc = get_sel()  # (village_id, location_id)
+            row_id = self._row_id_from_title(self._row_var.get() or "")
+            if not (cat and loc and row_id):
+                print("[rows] skip (no row selected)"); return
+            ok = self.postrow.run_row(cat, loc, row_id)
+            print(f"[rows] run → {ok}")
+        except Exception as e:
+            print(f"[rows] error: {e}")
+
+    def _rows_watch(self):
+        get_sel = getattr(self.tp, "get_selected_destination", None)
+        if callable(get_sel):
+            dest = get_sel()  # (village_id, location_id)
+        else:
+            dest = ("", "")
+        if dest != self._last_row_dest:
+            self._last_row_dest = dest
+            self._reload_rows()
+        try:
+            self.root.after(400, self._rows_watch)
+        except Exception:
+            pass
+
+    def _reload_rows(self):
+        cat, loc = self._last_row_dest
+        try:
+            rows = list_rows(cat, loc) if (cat and loc) else []
+        except Exception:
+            rows = []
+
+        lang = (self.language or "rus").lower()
+        def title_of(r):
+            if lang == "rus":
+                return r.get("title_rus") or r.get("id")
+            return r.get("title_eng") or r.get("title_rus") or r.get("id")
+
+        self._rows_cache = [(r["id"], title_of(r)) for r in rows if r.get("id")]
+        values = [t for (_id, t) in self._rows_cache]
+
+        if self._rows_menu:
+            self._rows_menu["values"] = values
+
+        cur_id = self._row_id_from_title(self._row_var.get() or "")
+        valid_ids = [rid for (rid, _t) in self._rows_cache]
+        if not values:
+            self._row_var.set("")
+        elif cur_id not in valid_ids:
+            self._row_var.set(values[0])
+
+    def _row_id_from_title(self, title: str):
+        for rid, t in self._rows_cache:
+            if t == title:
+                return rid
+        return None
+
+    def _clear_row(self):
+        self._row_var.set("")
 
     # ---------------- shutdown ----------------
     def exit_program(self):
