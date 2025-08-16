@@ -6,15 +6,11 @@ pytesseract
 pyserial
 pyinstaller
 pynput
-
 pyusb
 requests
-
 mss
-
 pywin32
-win32gui
-win32con
-
-atexit
 future
+# НЕ ставь: win32gui, win32con, atexit (это либо часть pywin32, либо модуль стандартной библиотеки)
+# python -m pip install -U pip setuptools wheel
+# python -m pip install -r documents\requirements.txt --no-input --prefer-binary -U

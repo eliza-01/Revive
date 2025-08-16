@@ -1,3 +1,6 @@
+#requirements
+python -m pip install -r documents/requirements.txt
+
 #create venv
 cd C:/sv/Projects/Revive
 python -m venv venv
