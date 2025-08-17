@@ -1,4 +1,4 @@
-# core/servers/dash_only/profile.py
+﻿# core/servers/ketrawars/profile.py
 # Пример профиля сервера с ТОЛЬКО dashboard-ТП и dashboard-бафом.
 from typing import List
 from core.servers.registry import (
