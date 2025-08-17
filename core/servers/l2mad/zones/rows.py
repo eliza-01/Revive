@@ -9,6 +9,7 @@ ZONES: Dict[str, ZoneDecl] = {
     "center_block": {"centered": True, "width": 600, "height": 400},
     # добавляй зоны миникарты, компаса и т.п.
     "Primeval_1_zone1": {"right_offset": 5, "width": 5, "top_ratio": 0.15, "height": 5,},
+    "left_ratio_50_top_ratio15": {"left_ratio": 0.5, "width": 5, "top_ratio": 0.15, "height": 5,},
 }
 
 TEMPLATES: Dict[str, List[str]] = {

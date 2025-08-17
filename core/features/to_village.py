@@ -158,7 +158,7 @@ class ToVillage:
 
             # если видна — кликаем, но не чаще антидребезга
             now = time.time()
-            if now - last_click_ts >= 0.6:
+            if now - last_click_ts >= 0.6: # интервал между кликами
                 self._log(f"[to_village] click @ {pt[0]},{pt[1]}")
                 self._click(pt[0], pt[1])
                 last_click_ts = now
