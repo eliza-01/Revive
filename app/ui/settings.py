@@ -1,3 +1,4 @@
+﻿# app/ui/settings.py
 import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable, Iterable

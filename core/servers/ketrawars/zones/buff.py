@@ -1,4 +1,4 @@
-# core/servers/l2mad/zones/buff.py
+﻿# core/servers/ketrawars/zones/buff.py
 # Описывает зоны и последовательности для бафа. Две ветки: dashboard | npc
 from typing import Dict, Tuple, List
 

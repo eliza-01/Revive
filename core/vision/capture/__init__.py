@@ -1,0 +1,1 @@
+﻿# core/vision/capture/__init__.py

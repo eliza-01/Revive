@@ -1,4 +1,4 @@
-# core/servers/l2mad/zones/respawn.py
+﻿# core/servers/ketrawars/zones/respawn.py
 # Только "встать": дождаться баннера смерти, клик "В деревню", опционально подтверждение
 from typing import Dict, Tuple, List
 

@@ -1,0 +1,180 @@
+Root: C:\Projects\Revive
+Generated: 2025-08-17 21:54:52
+
+Revive
+├── app
+│   ├── ui
+│   │   ├── __init__.py
+│   │   ├── afterbuff_macros.py
+│   │   ├── buff_controls.py
+│   │   ├── respawn_controls.py
+│   │   ├── settings.py
+│   │   ├── state_controls.py
+│   │   ├── tp_controls.py
+│   │   ├── updater_dialog.py
+│   │   └── window_probe.py
+│   ├── __init__.py
+│   └── launcher.py
+├── assets
+│   ├── upx
+│   └── icon.ico
+├── core
+│   ├── arduino
+│   │   ├── safe_serial.py
+│   │   ├── send_command.py
+│   │   ├── send_safe.py
+│   │   └── serial_port.py
+│   ├── checks
+│   │   └── charged.py
+│   ├── features
+│   │   ├── archive
+│   │   │   └── auto_respawn_runner.py
+│   │   ├── __init__.py
+│   │   ├── afterbuff_macros.py
+│   │   ├── buff_after_respawn.py
+│   │   ├── flow_actions.py
+│   │   ├── player_state.py
+│   │   ├── post_tp_row.py
+│   │   ├── to_village.py
+│   │   └── tp_after_respawn.py
+│   ├── os
+│   │   └── win
+│   │       ├── mouse.py
+│   │       └── window.py
+│   ├── runtime
+│   │   ├── archive
+│   │   │   ├── __init__.py
+│   │   │   ├── cycle_flow.py
+│   │   │   └── state_bus.py
+│   │   ├── __init__.py
+│   │   ├── dashboard_guard.py
+│   │   ├── flow_config.py
+│   │   ├── flow_engine.py
+│   │   ├── flow_ops.py
+│   │   ├── flow_runner.py
+│   │   ├── poller.py
+│   │   └── state_watcher.py
+│   ├── servers
+│   │   ├── euro-pvp
+│   │   ├── ketrawars
+│   │   ├── l2mad
+│   │   │   ├── flows
+│   │   │   │   ├── rows
+│   │   │   │   │   ├── Goddard
+│   │   │   │   │   │   └── VarkaSilenosStronghold
+│   │   │   │   │   │       └── Varka_1.py
+│   │   │   │   │   ├── Rune
+│   │   │   │   │   │   └── PrimevalIsle
+│   │   │   │   │   │       └── Primeval_1.py
+│   │   │   │   │   └── registry.py
+│   │   │   │   ├── README.md
+│   │   │   │   ├── buff.py
+│   │   │   │   ├── dashboard_reset.py
+│   │   │   │   └── tp.py
+│   │   │   ├── templates
+│   │   │   │   ├── eng
+│   │   │   │   │   ├── dashboard
+│   │   │   │   │   │   ├── buffer
+│   │   │   │   │   │   └── teleport
+│   │   │   │   │   └── death
+│   │   │   │   ├── rus
+│   │   │   │   │   ├── buffs
+│   │   │   │   │   │   └── icons
+│   │   │   │   │   │       ├── blessedBody.png
+│   │   │   │   │   │       └── shield.png
+│   │   │   │   │   ├── dashboard
+│   │   │   │   │   │   ├── buffer
+│   │   │   │   │   │   │   ├── dashboard_buffer_button.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_fighter.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_init.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_mage.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_profile.png
+│   │   │   │   │   │   │   └── dashboard_buffer_restoreHp.png
+│   │   │   │   │   │   ├── teleport
+│   │   │   │   │   │   │   ├── villages
+│   │   │   │   │   │   │   │   ├── Goddard
+│   │   │   │   │   │   │   │   │   ├── Goddard.png
+│   │   │   │   │   │   │   │   │   └── VarkaSilenosStronghold.png
+│   │   │   │   │   │   │   │   └── Rune
+│   │   │   │   │   │   │   │       ├── PrimevalIsle.png
+│   │   │   │   │   │   │   │       └── Rune.png
+│   │   │   │   │   │   │   ├── dashboard_teleport_button.png
+│   │   │   │   │   │   │   └── dashboard_teleport_init.png
+│   │   │   │   │   │   ├── dashboard_init.png
+│   │   │   │   │   │   └── dashboard_is_locked.png
+│   │   │   │   │   ├── death
+│   │   │   │   │   │   └── to_village_button.png
+│   │   │   │   │   ├── interface
+│   │   │   │   │   │   └── autofarm.png
+│   │   │   │   │   └── rows
+│   │   │   │   │       ├── Goddard
+│   │   │   │   │       │   └── VarkaSilenosStronghold
+│   │   │   │   │       │       └── Varka_1
+│   │   │   │   │       │           └── 1.png
+│   │   │   │   │       └── Rune
+│   │   │   │   │           └── PrimevalIsle
+│   │   │   │   │               └── Primeval_1
+│   │   │   │   │                   ├── 1.png
+│   │   │   │   │                   ├── 2.png
+│   │   │   │   │                   └── 3.png
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── resolver.py
+│   │   │   ├── zones
+│   │   │   │   ├── buff.py
+│   │   │   │   ├── buffs_state.py
+│   │   │   │   ├── dashboard_reset.py
+│   │   │   │   ├── respawn.py
+│   │   │   │   ├── rows.py
+│   │   │   │   ├── state.py
+│   │   │   │   └── tp.py
+│   │   │   ├── __init__.py
+│   │   │   ├── locations_map.py
+│   │   │   └── profile.py
+│   │   ├── __init__.py
+│   │   ├── base_config.py
+│   │   └── registry.py
+│   ├── vision
+│   │   ├── capture
+│   │   │   ├── __init__.py
+│   │   │   ├── gdi.py
+│   │   │   └── window_bgr_capture.py
+│   │   ├── matching
+│   │   │   ├── __init__.py
+│   │   │   └── template_matcher.py
+│   │   ├── utils
+│   │   │   └── colors.py
+│   │   ├── win32
+│   │   │   └── gdi_backend.py
+│   │   ├── __init__.py
+│   │   └── matching.py
+│   ├── __init__.py
+│   ├── connection.py
+│   ├── connection_test.py
+│   ├── logging_setup.py
+│   ├── revive.log
+│   └── updater.py
+├── dist
+│   └── Revive.exe
+├── documents
+│   ├── test_cases
+│   │   ├── revive_buff_macro_tp.md
+│   │   └── revive_buff_marco_tp.txt
+│   ├── NOTES.md
+│   ├── README.md
+│   ├── is_dead.png
+│   ├── latest_version.txt
+│   └── Общие положения.txt
+├── firmware
+│   ├── keys_test.py
+│   └── micro.ino
+├── .gitignore
+├── Revive.spec
+├── bool
+├── build.bat
+├── dump_tree.py
+├── main.py
+├── release.bat
+├── requirements.build.txt
+├── requirements.txt
+├── revive.log
+└── run_release.bat
