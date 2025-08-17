@@ -32,7 +32,7 @@ set DATA_OPTS=^
 
 rem 4) Сборка onefile
 if exist "%ICON%" (set ICON_OPT=--icon "%ICON%") else (set ICON_OPT=)
-pyinstaller --onefile --noconsole --uac-admin %ICON_OPT% %UPXDIR% ^
+pyinstaller --onefile --noconsole %ICON_OPT% %UPXDIR% ^
  --name "%NAME%" %DATA_OPTS% main.py
 
 rem 5) Результат
