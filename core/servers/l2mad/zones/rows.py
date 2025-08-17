@@ -7,6 +7,12 @@ ZONES: Dict[str, ZoneDecl] = {
     "fullscreen": {"fullscreen": True},
     "center_block": {"centered": True, "width": 600, "height": 400},
     # добавляй зоны миникарты, компаса и т.п.
+    "Primeval_1_zone1": {
+        "right_offset": 5,     # от правого края 5 px
+        "width": 5,            # ширина полосы 5 px
+        "top_ratio": 0.15,     # старт на 25% высоты окна
+        "height": 5,  # высота = 25% окна (была тут height_ratio 0.25)
+    },
 }
 
 TEMPLATES: Dict[str, List[str]] = {

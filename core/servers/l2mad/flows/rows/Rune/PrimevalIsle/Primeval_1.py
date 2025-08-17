@@ -31,7 +31,8 @@ FLOW = [
     {"op": "sleep", "ms": 200},
     {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 350},  #
     {"op": "sleep", "ms": 1200},
-    {"op": "click_in", "zone": "fullscreen", "tpl": "Primeval_1_capt1", "timeout_ms": 2000, "thr": 0.87},
+    # {"op": "click_in", "zone": "fullscreen", "tpl": "Primeval_1_capt1", "timeout_ms": 2000, "thr": 0.50},
+    {"op":"click_zone_center","zone":"Primeval_1_zone1","delay_ms":300},
     #фэйлит потому что мы уже сдвинулись
     # {"op": "wait", "zone": "fullscreen", "tpl": "Primeval_1_capt1", "timeout_ms": 2000, "thr": 0.87, "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev"},
     {"op": "sleep", "ms": 2000},
@@ -41,7 +42,7 @@ FLOW = [
     {"op": "send_arduino", "cmd": "pagedown", "delay_ms": 300},  # повернуть
     {"op": "sleep", "ms": 500},
     {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},  # повернуть
-    {"op": "sleep", "ms": 10500},
+    {"op": "sleep", "ms": 13500},
     {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 2000, "thr": 0.87},
     {"op": "sleep", "ms": 500},
     # {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
