@@ -62,21 +62,44 @@ class FlowCtx:
 
     def _win(self) -> Dict: return self.get_window() or {}
 
+
     def _zone_ltrb(self, zone_decl) -> ZoneLTRB:
         win = self._win()
         if isinstance(zone_decl, tuple) and len(zone_decl) == 4:
             return tuple(map(int, zone_decl))
         if isinstance(zone_decl, dict):
             ww, wh = int(win.get("width", 0)), int(win.get("height", 0))
-            if zone_decl.get("fullscreen"): return (0, 0, ww, wh)
+            if zone_decl.get("fullscreen"):
+                return (0, 0, ww, wh)
             if zone_decl.get("centered"):
                 w, h = int(zone_decl["width"]), int(zone_decl["height"])
                 l = ww // 2 - w // 2; t = wh // 2 - h // 2
                 return (l, t, l + w, t + h)
-            l = int(zone_decl.get("left", 0)); t = int(zone_decl.get("top", 0))
-            w = int(zone_decl.get("width", 0)); h = int(zone_decl.get("height", 0))
+
+            # размеры: либо абсолют, либо доля
+            w = int(ww * float(zone_decl["width_ratio"])) if "width_ratio" in zone_decl else int(zone_decl.get("width", 0))
+            h = int(wh * float(zone_decl["height_ratio"])) if "height_ratio" in zone_decl else int(zone_decl.get("height", 0))
+
+            # горизонталь: left_ratio | right_offset | left
+            if "left_ratio" in zone_decl:
+                l = int(ww * float(zone_decl["left_ratio"]))
+            elif "right_offset" in zone_decl:
+                l = ww - int(zone_decl["right_offset"]) - w
+            else:
+                l = int(zone_decl.get("left", 0))
+
+            # вертикаль: top_ratio | bottom_offset | top
+            if "top_ratio" in zone_decl:
+                t = int(wh * float(zone_decl["top_ratio"]))
+            elif "bottom_offset" in zone_decl:
+                t = wh - int(zone_decl["bottom_offset"]) - h
+            else:
+                t = int(zone_decl.get("top", 0))
+
             return (l, t, l + w, t + h)
+
         return (0, 0, int(self._win().get("width", 0)), int(self._win().get("height", 0)))
+
 
     def _parts(self, tpl_key_or_parts: Sequence[str] | str) -> Optional[List[str]]:
         if isinstance(tpl_key_or_parts, str):
@@ -141,6 +164,20 @@ class FlowOpExecutor:
                     time.sleep(0.05)
             elif op == "optional_click":
                 _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr); ok = True
+            elif op == "click_zone_center":
+                zone_key = step["zone"]
+                zone = self.ctx.zones.get(zone_key)
+                if not zone: ok = False
+                else:
+                    l, t, r, b = self.ctx._zone_ltrb(zone)
+                    x = (l + r) // 2
+                    y = (t + b) // 2
+                    try:
+                        self.ctx.controller.send(f"click:{x},{y}")
+                    except:
+                        pass
+                    time.sleep(int(step.get("delay_ms", 80)) / 1000.0)
+                    ok = True
             elif op == "dashboard_is_locked":
                 ok = self._dashboard_is_locked(step, thr)
             elif op == "while_visible_send":
