@@ -1,8 +1,10 @@
 #requirements
-python -m pip install -r documents/requirements.txt
+python -m pip install -U pip setuptools wheel
+python -m pip install -r requirements.txt --no-input --prefer-binary -U
+
 
 #create venv
-cd C:/sv/Projects/Revive
+cd C:/Projects/Revive
 python -m venv venv
 venv\Scripts\activate
 
