@@ -287,29 +287,31 @@ class ReviveLauncherUI:
         if not tp_enabled:
             print("[flow] tp_if_ready → skip (disabled)")
             self._tp_success = False
-            self.reset_and_run("tp_disabled")
+            # ТП не требуется — цикл считаем успешным (баф прошёл)
+            self._mark_cycle_success("tp_disabled")
             return
 
         if self._charged_flag is not True:
             print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
             self._tp_success = False
-            self.reset_and_run("not_charged_for_tp")
+            self.reset_and_run(reason="not_charged_for_tp")
             return
 
-        self._tp_success = False  # сброс перед попыткой
+        self._tp_success = False
         fn = getattr(self.tp, "teleport_now_selected", None)
         ok_tp = bool(fn()) if callable(fn) else False
         self._tp_success = ok_tp
         print(f"[flow] tp_if_ready → {ok_tp}")
+        self._tp_after_death = False
 
         if not ok_tp:
-            self.reset_and_run("tp_failed")
+            self.reset_and_run(reason="tp_failed")
             return
 
+        # Успешное ТП, а маршрут может быть не выбран — это тоже успех цикла
         if ok_tp and not self._is_row_selected():
             self._mark_cycle_success("tp_only")
 
-        self._tp_after_death = False
 
     def _flow_step_post_tp_row(self):
         try:
