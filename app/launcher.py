@@ -287,7 +287,6 @@ class ReviveLauncherUI:
         if not tp_enabled:
             print("[flow] tp_if_ready → skip (disabled)")
             self._tp_success = False
-            # ТП не требуется — цикл считаем успешным (баф прошёл)
             self._mark_cycle_success("tp_disabled")
             return
 
@@ -308,7 +307,6 @@ class ReviveLauncherUI:
             self.reset_and_run(reason="tp_failed")
             return
 
-        # Успешное ТП, а маршрут может быть не выбран — это тоже успех цикла
         if ok_tp and not self._is_row_selected():
             self._mark_cycle_success("tp_only")
 
@@ -590,9 +588,11 @@ class ReviveLauncherUI:
         return ok
 
     def restart_account(self):
-        """Рестарт аккаунта: на время рестарта останавливаем StateWatcher."""
+        """Рестарт аккаунта: на время рестарта останавливаем StateWatcher.
+           Если рестарт неудачный — watcher остаётся OFF и цикл не перезапускаем."""
         print("[reset] restart_account …")
 
+        ok = False
         was_running = False
         try:
             # 1) стопим watcher
@@ -601,7 +601,7 @@ class ReviveLauncherUI:
                 self.watcher.stop()
                 print("[reset] watcher OFF during restart")
 
-            # 2) грузим flow и zones для рестарта
+            # 2) грузим flow/zones
             try:
                 flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.restart")
                 flow = getattr(flow_mod, "FLOW", [])
@@ -631,18 +631,34 @@ class ReviveLauncherUI:
             ok = run_flow(flow, execu)
             print(f"[restart] flow → {ok}")
 
+            if not ok:
+                # заглушка: можно попробовать мягкий сброс UI, но watcher НЕ включаем
+                print("[restart] failed → stub fallback: try dashboard_reset (watcher stays OFF)")
+                try:
+                    self._run_dashboard_reset()
+                except Exception as e:
+                    print(f"[restart] fallback dashboard_reset error: {e}")
+
         finally:
-            # 4) возвращаем watcher
-            if was_running:
+            # 4) возвращаем watcher ТОЛЬКО если рестарт успешен
+            try:
+                self.watcher._alive_flag = None  # форсим edge-детекцию только сейчас
+            except:
+                pass
+            if was_running and ok:
                 self.watcher.start()
                 print("[reset] watcher ON after restart")
+            elif was_running and not ok:
+                print("[reset] watcher remains OFF (restart failed)")
 
-            # сбросим стрик и перезапустим цикл
-            self._fail_streak = 0
-            try:
-                self.root.after(0, self._run_alive_flow)
-            except Exception:
-                self._run_alive_flow()
+            # 5) перезапуск цикла — только после успешного рестарта
+            if ok:
+                self._fail_streak = 0
+                try:
+                    self.root.after(0, self._run_alive_flow)
+                except Exception:
+                    self._run_alive_flow()
+
 
 
     def _is_row_selected(self) -> bool:
