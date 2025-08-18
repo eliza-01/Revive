@@ -57,7 +57,10 @@ class FlowEngine:
                     # attempts[idx] = 0  # тестовый. Попытки не прекращаются
                     idx -= 1
                 elif action == "restart":
-                    attempts = [0] * total
+                    fail_idx = idx
+                    keep = attempts[fail_idx]           # сколько раз уже падали на этом шаге
+                    attempts = [0] * total              # обнуляем остальные
+                    attempts[fail_idx] = keep           # но НЕ сбрасываем счётчик виновника
                     idx = 0
                 else:  # default: repeat current step
                     pass

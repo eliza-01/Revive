@@ -1,4 +1,4 @@
-# core/servers/gk_only/profile.py
+﻿# core/servers/euro-pvp/profile.py
 # Пример профиля сервера с ТОЛЬКО gatekeeper-ТП и бафом через NPC.
 from typing import List
 from core.servers.registry import (

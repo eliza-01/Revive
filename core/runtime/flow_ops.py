@@ -76,29 +76,32 @@ class FlowCtx:
                 l = ww // 2 - w // 2; t = wh // 2 - h // 2
                 return (l, t, l + w, t + h)
 
-            # размеры: либо абсолют, либо доля
+            # размеры: абсолют или доля
             w = int(ww * float(zone_decl["width_ratio"])) if "width_ratio" in zone_decl else int(zone_decl.get("width", 0))
             h = int(wh * float(zone_decl["height_ratio"])) if "height_ratio" in zone_decl else int(zone_decl.get("height", 0))
 
-            # горизонталь: left_ratio | right_offset | left
+            # горизонталь: left_ratio | right_offset|right | left
             if "left_ratio" in zone_decl:
                 l = int(ww * float(zone_decl["left_ratio"]))
-            elif "right_offset" in zone_decl:
-                l = ww - int(zone_decl["right_offset"]) - w
+            elif "right_offset" in zone_decl or "right" in zone_decl:
+                ro = int(zone_decl.get("right_offset", zone_decl.get("right", 0)))
+                l = ww - ro - w
             else:
                 l = int(zone_decl.get("left", 0))
 
-            # вертикаль: top_ratio | bottom_offset | top
+            # вертикаль: top_ratio | bottom_offset|bottom | top
             if "top_ratio" in zone_decl:
                 t = int(wh * float(zone_decl["top_ratio"]))
-            elif "bottom_offset" in zone_decl:
-                t = wh - int(zone_decl["bottom_offset"]) - h
+            elif "bottom_offset" in zone_decl or "bottom" in zone_decl:
+                bo = int(zone_decl.get("bottom_offset", zone_decl.get("bottom", 0)))
+                t = wh - bo - h
             else:
                 t = int(zone_decl.get("top", 0))
 
             return (l, t, l + w, t + h)
 
         return (0, 0, int(self._win().get("width", 0)), int(self._win().get("height", 0)))
+
 
 
     def _parts(self, tpl_key_or_parts: Sequence[str] | str) -> Optional[List[str]]:
@@ -178,6 +181,21 @@ class FlowOpExecutor:
                         pass
                     time.sleep(int(step.get("delay_ms", 80)) / 1000.0)
                     ok = True
+            elif op == "move_zone_center":
+                zone_key = step["zone"]
+                zone = self.ctx.zones.get(zone_key)
+                if not zone:
+                    ok = False
+                else:
+                    l, t, r, b = self.ctx._zone_ltrb(zone)
+                    x = (l + r) // 2
+                    y = (t + b) // 2
+                    try:
+                        self.ctx.controller.send(f"move:{x},{y}")
+                    except:
+                        pass
+                    time.sleep(int(step.get("delay_ms", 50)) / 1000.0)
+                    ok = True
             elif op == "dashboard_is_locked":
                 ok = self._dashboard_is_locked(step, thr)
             elif op == "while_visible_send":
@@ -247,8 +265,19 @@ class FlowOpExecutor:
             else:
                 self._on_status(f"[flow] unknown op: {op}", False); ok = False
         except Exception as e:
-            self._on_status(f"[flow] op error {op}: {e}", False); ok = False
-        self._log(f"[flow][step {idx}] result: {'OK' if ok else 'FAIL'}"); return ok
+            self._on_status(f"[flow] op error {op}: {e}", False)
+            ok = False
+
+        # ← ЕДИНЫЙ ПОСТ-ОЖИДАТЕЛЬ ДЛЯ ЛЮБОГО ШАГА
+        try:
+            post_wait = int(step.get("wait_ms", 0))
+        except Exception:
+            post_wait = 0
+        if post_wait > 0 and op != "sleep":  # для sleep не дублируем
+            time.sleep(post_wait / 1000.0)
+
+        self._log(f"[flow][step {idx}] result: {'OK' if ok else 'FAIL'}")
+        return ok
 
     def _dashboard_is_locked(self, step: Dict, thr: float) -> bool:
         zone_key = step["zone"]; tpl_key = step["tpl"]

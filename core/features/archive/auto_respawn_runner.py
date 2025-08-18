@@ -1,4 +1,4 @@
-# core/features/auto_respawn_runner.py
+﻿# core/features/archive/auto_respawn_runner.py
 # Автореспавн: только "встать" по шаблонам сервера. После успеха вызывает post_hook.
 import importlib
 import threading
