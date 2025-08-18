@@ -7,6 +7,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 import logging
 import time  # ← вот это
+import importlib
 
 from core.connection import ReviveController
 from core.connection_test import run_test_command
@@ -16,11 +17,13 @@ from core.servers.l2mad.flows.rows.registry import list_rows
 
 from core.runtime.state_watcher import StateWatcher
 from core.runtime.poller import RepeaterThread
+from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 
 # from core.features.auto_respawn_runner import AutoRespawnRunner
 from core.features.to_village import ToVillage
 from core.features.afterbuff_macros import AfterBuffMacroRunner
 from core.features.post_tp_row import PostTPRowRunner
+from core.features.dashboard_reset import DashboardResetRunner
 
 from core.checks.charged import ChargeChecker, BuffTemplateProbe
 
@@ -59,6 +62,58 @@ class _Collapsible(tk.Frame):
 
     def body(self) -> tk.Frame:
         return self._body
+
+
+class _VScrollFrame(tk.Frame):
+    """
+    Вертикально прокручиваемый контейнер. Внутреннюю область берите как .interior
+    """
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
+        self._vsb = ttk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._vsb.set)
+
+        self._vsb.pack(side="right", fill="y")
+        self._canvas.pack(side="left", fill="both", expand=True)
+
+        self.interior = tk.Frame(self._canvas)
+        self._win_id = self._canvas.create_window((0, 0), window=self.interior, anchor="nw")
+
+        def _on_interior_configure(_evt=None):
+            self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+            # подгоняем ширину внутреннего фрейма под канвас
+            try:
+                self._canvas.itemconfigure(self._win_id, width=self._canvas.winfo_width())
+            except Exception:
+                pass
+
+        def _on_canvas_configure(evt):
+            try:
+                self._canvas.itemconfigure(self._win_id, width=evt.width)
+            except Exception:
+                pass
+
+        self.interior.bind("<Configure>", _on_interior_configure)
+        self._canvas.bind("<Configure>", _on_canvas_configure)
+
+        # колёсико мыши
+        def _on_mousewheel(event):
+            delta = 0
+            if hasattr(event, "delta") and event.delta:
+                delta = int(-event.delta / 120)
+            elif getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            if delta:
+                self._canvas.yview_scroll(delta, "units")
+
+        # Windows/macOS
+        self._canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        # X11
+        self._canvas.bind_all("<Button-4>", _on_mousewheel)
+        self._canvas.bind_all("<Button-5>", _on_mousewheel)
 
 
 # ---------------- Logging ----------------
@@ -191,6 +246,22 @@ class ReviveLauncherUI:
             order=PRIORITY,
         )
 
+        #reset_and_run
+        self._tp_success = False
+
+        # ── NEW: счётчик подряд неудачных циклов и лимит
+        self._fail_streak = 0
+        self._max_resets = 3
+        self._flow_interrupted = False
+        self._cycle_success_marked = False
+
+        self._reset_in_progress = False
+        self._awaiting_alive_restart = False
+        # ---------------------------------------------------------------------
+
+        # --- window probe ---
+        self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
+
         # ping arduino
         try:
             self.controller.send("ping")
@@ -203,6 +274,12 @@ class ReviveLauncherUI:
 
     # ----------------  Charge Flow  ----------------
     def _flow_step_buff_if_needed(self):
+        # ← новый гард
+        if not self.watcher.is_alive():
+            print("[buff] skip (dead)")
+            self._buff_was_success = False
+            return
+
         charged_now = bool(self.checker.is_charged(None))
         buff_enabled = getattr(self.buff, "is_enabled", lambda: False)()
         need_buff = buff_enabled and not charged_now
@@ -261,19 +338,65 @@ class ReviveLauncherUI:
         if not tp_enabled:
             print("[flow] tp_if_ready → skip (disabled)")
             self._tp_success = False
+            self._mark_cycle_success("tp_disabled")
             return
 
         if self._charged_flag is not True:
             print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
             self._tp_success = False
+            self.reset_and_run(reason="not_charged_for_tp")
             return
 
-        self._tp_success = False  # сброс перед попыткой
+        self._tp_success = False
         fn = getattr(self.tp, "teleport_now_selected", None)
         ok_tp = bool(fn()) if callable(fn) else False
-        self._tp_success = ok_tp  # фиксируем только успех
+        self._tp_success = ok_tp
         print(f"[flow] tp_if_ready → {ok_tp}")
         self._tp_after_death = False
+
+        if not ok_tp:
+            self.reset_and_run(reason="tp_failed")
+            return
+
+        if ok_tp and not self._is_row_selected():
+            self._mark_cycle_success("tp_only")
+
+    def _flow_step_post_tp_row(self):
+        try:
+            if not getattr(self, "_tp_success", False):
+                print("[rows] skip (tp not successful)")
+                return
+
+            get_sel = getattr(self.tp, "get_selected_destination", None)
+            get_row = getattr(self.tp, "get_selected_row_id", None)
+            if not callable(get_sel) or not callable(get_row):
+                print("[rows] UI does not expose selection")
+                return
+
+            cat, loc = get_sel()
+            row_id = get_row()
+
+            if not (cat and loc):
+                print("[rows] no destination → treat as success")
+                self._mark_cycle_success("tp_only")
+                return
+
+            if not row_id:
+                print("[rows] no row selected → treat as success")
+                self._mark_cycle_success("tp_no_row")
+                return
+
+            ok = self.postrow.run_row(cat, loc, row_id)
+            print(f"[rows] run → {ok}")
+            if ok:
+                self._mark_cycle_success("post_tp_row")
+            else:
+                self.reset_and_run("row_failed")
+        except Exception as e:
+            print(f"[rows] error: {e}")
+            self.reset_and_run("row_exception")
+        finally:
+            self._tp_success = False
 
     # ----------------  Buff Interval Checker ----------------
     def _buff_interval_tick(self):
@@ -311,14 +434,18 @@ class ReviveLauncherUI:
         try:
             ok = self.to_village.run_once(timeout_ms=4000)
             print(f"[to_village] run: {ok}")
-            self._tp_after_death = bool(ok)  # True только если реально нажали и поднялись
+            self._tp_after_death = bool(ok)
+            if not ok:
+                # <<< важно: тянем общий ресет
+                self.reset_and_run(reason="to_village_failed")
         except Exception as e:
             print(f"[to_village] error in thread: {e}")
             self._tp_after_death = False
         finally:
-            self._revive_decided = True  # решение принято в любом случае
+            self._revive_decided = True
 
     def _on_dead_ui(self, st):
+        self._cycle_success_marked = False
         self._alive_flag = False
         self._charged_flag = None
         self._tp_success = False
@@ -330,9 +457,9 @@ class ReviveLauncherUI:
         print("[state] death detected → charged=None (cache invalidated)")
         try:
             ui_ok = (
-                    getattr(self, "respawn_ui", None)
-                    and getattr(self.respawn_ui, "is_enabled", None)
-                    and self.respawn_ui.is_enabled()
+                getattr(self, "respawn_ui", None)
+                and getattr(self.respawn_ui, "is_enabled", None)
+                and self.respawn_ui.is_enabled()
             )
             if ui_ok:
                 threading.Thread(target=self._raise_after_death, daemon=True).start()
@@ -352,23 +479,249 @@ class ReviveLauncherUI:
             self._run_alive_flow()
 
     def _run_alive_flow(self):
-        # если в UI включено «встать после смерти» — ждём решения, кто поднял
+        # не перезапускать завершённый цикл без триггера
+        if self._cycle_success_marked and not self._flow_interrupted:
+            print("[flow] skip: cycle already completed, waiting for next trigger")
+            return
+        # если мёртв — ждём оживления, не плодя таймеры
+        if not self.watcher.is_alive():
+            print("[flow] waiting alive to restart cycle…")
+            self._awaiting_alive_restart = True
+            try:
+                self.root.after(1000, self._run_alive_flow)
+            except Exception:
+                time.sleep(1); self._run_alive_flow()
+            return
+
+        # если включён «подъём после смерти» — ждём решения, кто поднял
         try:
             ui_wants_raise = getattr(self, "respawn_ui", None) and self.respawn_ui.is_enabled()
         except Exception:
             ui_wants_raise = False
 
         if ui_wants_raise and not getattr(self, "_revive_decided", True):
-            # небольшая задержка и пробуем снова
+            print("[flow] revive in progress, waiting…")
+            self._awaiting_alive_restart = True
             try:
                 self.root.after(300, self._run_alive_flow)
             except Exception:
-                time.sleep(0.3)
-                self._run_alive_flow()
+                time.sleep(0.3); self._run_alive_flow()
             return
 
+        # стартуем цикл (очищаем ожидание)
+        self._awaiting_alive_restart = False
+        if self._flow_interrupted:
+            self._flow_interrupted = False
+
         self._buff_was_success = False
+        self._cycle_success_marked = False
         self.flow.run()
+
+    # resets restarts
+    def reset_and_run(self, reason: str = "unknown"):
+        """Единая точка восстановления: увеличить счётчик провалов, выполнить dashboard_reset и перезапустить цикл.
+           После превышения лимита подряд провалов — уходим в restart_account()."""
+        # дебаунс: не допускаем параллельных reset
+        if getattr(self, "_reset_in_progress", False):
+            print(f"[reset] skip (already in progress), reason={reason}")
+            return
+        self._reset_in_progress = True
+
+        try:
+            # аккуратная проверка лимита, чтобы не было '4/3'
+            next_fail = self._fail_streak + 1
+            if next_fail >= self._max_resets:
+                self._fail_streak = self._max_resets
+                print(f"[reset] reason={reason}, streak={self._fail_streak}/{self._max_resets} (limit)")
+                print("[reset] max attempts reached → restart_account()")
+                self.restart_account()
+                return
+
+            # увеличиваем счётчик и продолжаем reset-процедуру
+            self._fail_streak = next_fail
+            print(f"[reset] reason={reason}, streak={self._fail_streak}/{self._max_resets}")
+
+            # 1) сброс дашборда
+            try:
+                self._run_dashboard_reset()
+            except Exception as e:
+                print(f"[reset] dashboard_reset error: {e}")
+
+            # 2) если всё ещё мёртвы — повторная попытка «В деревню»
+            try:
+                if not self.watcher.is_alive():
+                    self._revive_decided = False
+                    ui_ok = (
+                        getattr(self, "respawn_ui", None)
+                        and getattr(self.respawn_ui, "is_enabled", None)
+                        and self.respawn_ui.is_enabled()
+                    )
+                    if ui_ok:
+                        print("[reset] still dead → retry ToVillage")
+                        threading.Thread(target=self._raise_after_death, daemon=True).start()
+            except Exception as e:
+                print(f"[reset] revive retry error: {e}")
+
+            # 3) метки и запуск цикла
+            self._tp_success = False
+            self._buff_was_success = False
+            self._flow_interrupted = True
+
+            if not getattr(self, "_awaiting_alive_restart", False):
+                self._awaiting_alive_restart = True
+                try:
+                    self.root.after(0, self._run_alive_flow)
+                except Exception:
+                    self._run_alive_flow()
+
+        finally:
+            self._reset_in_progress = False
+
+    def _run_dashboard_reset(self) -> bool:
+        """Выполнить flow core/servers/<server>/flows/dashboard_reset.py
+           Зоны/шаблоны берём из zones.tp (там есть dashboard_body, dashboard_init)."""
+        try:
+            flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.dashboard_reset")
+            flow = getattr(flow_mod, "FLOW", [])
+        except Exception as e:
+            print(f"[reset] load flow error: {e}")
+            return False
+
+        try:
+            zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.tp")
+            zones = getattr(zones_mod, "ZONES", {})
+            templates = getattr(zones_mod, "TEMPLATES", {})
+        except Exception as e:
+            print(f"[reset] zones load error: {e}")
+            zones, templates = {}, {}
+
+        ctx = FlowCtx(
+            server=self.server,
+            controller=self.controller,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            zones=zones,
+            templates=templates,
+            extras={},
+        )
+        execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
+        ok = run_flow(flow, execu)
+        print(f"[reset] dashboard_reset → {ok}")
+        return ok
+
+    def _run_restart_flow(self) -> bool:
+        """Выполнить flow core/servers/<server>/flows/restart.py с зонами zones/restart.py."""
+        try:
+            flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.restart")
+            flow = getattr(flow_mod, "FLOW", [])
+        except Exception as e:
+            print(f"[restart] load flow error: {e}")
+            return False
+
+        try:
+            zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.restart")
+            zones = getattr(zones_mod, "ZONES", {})
+            templates = getattr(zones_mod, "TEMPLATES", {})
+        except Exception as e:
+            print(f"[restart] zones load error: {e}")
+            zones, templates = {}, {}
+
+        ctx = FlowCtx(
+            server=self.server,
+            controller=self.controller,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            zones=zones,
+            templates=templates,
+            extras={},
+        )
+        execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
+        ok = run_flow(flow, execu)
+        print(f"[restart] flow → {ok}")
+        return ok
+
+    def restart_account(self):
+        """Рестарт аккаунта: на время рестарта останавливаем StateWatcher.
+           Если рестарт неудачный — watcher остаётся OFF и цикл не перезапускаем."""
+        print("[reset] restart_account …")
+
+        ok = False
+        was_running = False
+        try:
+            # 1) стопим watcher
+            was_running = self.watcher.is_running()
+            if was_running:
+                self.watcher.stop()
+                print("[reset] watcher OFF during restart")
+
+            # 2) грузим flow/zones
+            try:
+                flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.restart")
+                flow = getattr(flow_mod, "FLOW", [])
+            except Exception as e:
+                print(f"[restart] load flow error: {e}")
+                flow = []
+
+            try:
+                zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.restart")
+                zones = getattr(zones_mod, "ZONES", {})
+                templates = getattr(zones_mod, "TEMPLATES", {})
+            except Exception as e:
+                print(f"[restart] load zones error: {e}")
+                zones, templates = {}, {}
+
+            # 3) выполняем рестарт-флоу
+            ctx = FlowCtx(
+                server=self.server,
+                controller=self.controller,
+                get_window=lambda: self._safe_window(),
+                get_language=lambda: self.language,
+                zones=zones,
+                templates=templates,
+                extras={},
+            )
+            execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
+            ok = run_flow(flow, execu)
+            print(f"[restart] flow → {ok}")
+
+            if not ok:
+                # заглушка: можно попробовать мягкий сброс UI, но watcher НЕ включаем
+                print("[restart] failed → stub fallback: try dashboard_reset (watcher stays OFF)")
+                try:
+                    self._run_dashboard_reset()
+                except Exception as e:
+                    print(f"[restart] fallback dashboard_reset error: {e}")
+
+        finally:
+            # 4) возвращаем watcher ТОЛЬКО если рестарт успешен
+            try:
+                self.watcher._alive_flag = None  # форсим edge-детекцию только сейчас
+            except:
+                pass
+            if was_running and ok:
+                self.watcher.start()
+                print("[reset] watcher ON after restart")
+            elif was_running and not ok:
+                print("[reset] watcher remains OFF (restart failed)")
+
+            # 5) перезапуск цикла — только после успешного рестарта
+            if ok:
+                self._fail_streak = 0
+                try:
+                    self.root.after(0, self._run_alive_flow)
+                except Exception:
+                    self._run_alive_flow()
+
+    def _is_row_selected(self) -> bool:
+        get_row = getattr(self.tp, "get_selected_row_id", None)
+        return bool(callable(get_row) and get_row())
+
+    def _mark_cycle_success(self, where: str):
+        if self._fail_streak:
+            print(f"[reset] success at {where} → streak 0")
+        self._fail_streak = 0
+        self._flow_interrupted = False
+        self._cycle_success_marked = True
 
     # ---------------- respawn controls ----------------
     def _respawn_start(self):
@@ -625,31 +978,6 @@ class ReviveLauncherUI:
             self._row_var.set(values_list[0])
             self._on_row_selected()
 
-    def _flow_step_post_tp_row(self):
-        try:
-            if not getattr(self, "_tp_success", False):
-                print("[rows] skip (tp not successful)")
-                return
-
-            get_sel = getattr(self.tp, "get_selected_destination", None)
-            get_row = getattr(self.tp, "get_selected_row_id", None)
-            if not callable(get_sel) or not callable(get_row):
-                print("[rows] UI does not expose selection")
-                return
-
-            cat, loc = get_sel()
-            row_id = get_row()
-            if not (cat and loc and row_id):
-                print("[rows] skip (no row selected)")
-                return
-
-            ok = self.postrow.run_row(cat, loc, row_id)
-            print(f"[rows] run → {ok}")
-        except Exception as e:
-            print(f"[rows] error: {e}")
-        finally:
-            self._tp_success = False  # чтобы маршрут не повторился в следующем цикле
-
     def _clear_row(self):
         self._row_var.set("")
         self._on_row_selected()
@@ -687,14 +1015,20 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("620x1180")
+    root.geometry("620x700")  # фиксированная высота 700
     root.resizable(False, False)
 
-    tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
-    tk.Label(root, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5))
+    # прокручиваемая область для всего контента ниже заголовка
+    header = tk.Frame(root)
+    header.pack(fill="x")
+    tk.Label(header, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
+    tk.Label(header, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5))
 
-    parent = tk.Frame(root)
-    parent.pack(pady=10, fill="both")
+    scroll = _VScrollFrame(root)
+    scroll.pack(fill="both", expand=True)
+
+    parent = tk.Frame(scroll.interior)
+    parent.pack(pady=10, fill="both", expand=True)
 
     app = ReviveLauncherUI(root)
     app.build_ui(parent, local_version)

@@ -21,15 +21,13 @@ FLOW = [
     {"op": "sleep", "ms": 500},
     { "op": "send_message", "text": "/attack", "layout": "en" },
     {"op": "sleep", "ms": 2000},
-    {"op": "send_arduino", "cmd": "-", "delay_ms": 1500},  # повернуть
-    {"op": "sleep", "ms": 3000},
-    {"op": "send_arduino", "cmd": "-", "delay_ms": 1500},  # повернуть
-    {"op": "sleep", "ms": 1000},
+    { "op": "send_message", "text": "/sit", "layout": "en", "delay_ms": 1500, "wait_ms": 3000 },
+    { "op": "send_message", "text": "/stand", "layout": "en", "delay_ms": 1500, "wait_ms": 1000 },
     {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
     {"op": "sleep", "ms": 500},
     {"op": "send_arduino", "cmd": "r", "delay_ms": 300},  # повернуть
     {"op": "sleep", "ms": 200},
-    {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 350},  #
+    {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 3550},  #
     {"op": "sleep", "ms": 1200},
     # {"op": "click_in", "zone": "fullscreen", "tpl": "Primeval_1_capt1", "timeout_ms": 2000, "thr": 0.50},
     {"op":"click_zone_center","zone":"Primeval_1_zone1","delay_ms":300},
@@ -42,10 +40,11 @@ FLOW = [
     {"op": "send_arduino", "cmd": "pagedown", "delay_ms": 300},  # повернуть
     {"op": "sleep", "ms": 500},
     {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},  # повернуть
-    {"op": "sleep", "ms": 13500},
+    {"op": "sleep", "ms": 21000},
+    {"op":"click_zone_center","zone":"left_ratio_50_top_ratio15","delay_ms":300},
+    {"op": "sleep", "ms": 300},
+    {"op": "send_arduino", "cmd": "l", "delay_ms": 300},  # клик на подтверждение
     {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 2000, "thr": 0.87},
-    {"op": "sleep", "ms": 500},
-    # {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
     # {"op": "sleep", "ms": 900},
     # {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 85},  #
     # {"op": "wait", "zone": "fullscreen", "tpl": "Varka_1_capt1", "timeout_ms": 2000, "thr": 0.87, "retry_count": 1, "retry_delay_ms": 1000, "retry_action": "prev"},

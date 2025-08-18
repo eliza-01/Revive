@@ -92,32 +92,35 @@ void processCommand(String cmd) {
   } else if (cmd == "wheel_down") {
     Mouse.move(0, 0, -1);
 
+  } else if (cmd == "backspace_click") {
+    Keyboard.press(KEY_BACKSPACE); delay(50); Keyboard.release(KEY_BACKSPACE);
+
   } else if (cmd == "enter" || cmd.startsWith("enter ")) {
     String payload = "";
     if (cmd.startsWith("enter ") && cmd.length() > 6) {
       payload = cmd.substring(6); // всё после "enter "
     }
-    // Enter press-release
     Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
-    // Пауза перед вводом текста
     delay(200);
-    // Ввод текста, если он есть
     if (payload.length() > 0) {
       typeSlow(payload.c_str());
     }
-    // Завершающий Enter press-release
     Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
+
   } else if (cmd == "layout_toggle_altshift") {
-      Keyboard.press(KEY_LEFT_SHIFT);
-      delay(70);
-      Keyboard.press(KEY_LEFT_ALT);
-      delay(80);
-      Keyboard.release(KEY_LEFT_ALT);
-      Keyboard.release(KEY_LEFT_SHIFT);
+    Keyboard.press(KEY_LEFT_SHIFT);
+    delay(70);
+    Keyboard.press(KEY_LEFT_ALT);
+    delay(80);
+    Keyboard.release(KEY_LEFT_ALT);
+    Keyboard.release(KEY_LEFT_SHIFT);
+
   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
       Keyboard.press(ch); delay(100); Keyboard.release(ch);
+    } else if (ch == '0') {
+      Keyboard.press('0'); delay(100); Keyboard.release('0');
     } else if (ch == 't') {
       Keyboard.press(KEY_TAB); delay(100); Keyboard.release(KEY_TAB);
     } else if (ch == 'c') {
@@ -135,3 +138,4 @@ void processCommand(String cmd) {
     }
   }
 }
+

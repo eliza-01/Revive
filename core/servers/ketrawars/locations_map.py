@@ -1,4 +1,4 @@
-# core/servers/l2mad/locations_map.py
+﻿# core/servers/ketrawars/locations_map.py
 def get_categories():
     return [
         {"id": "catacombs", "display_rus": "Катакомбы2", "display_eng": "Catacombs"},

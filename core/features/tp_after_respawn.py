@@ -34,10 +34,13 @@ class TPAfterDeathWorker:
                 if not self._check_is_dead(): return True
             except Exception:
                 return True
-            time.sleep(5)
+            time.sleep(1)
         return False
 
     def teleport_now(self, category_id: str, location_id: str, method: Optional[str] = None) -> bool:
+        if not (category_id and location_id):
+            on_status("[tp] destination not selected", False)
+            return False
         if method: self._method = (method or TP_METHOD_DASHBOARD).lower()
         self._category_id = category_id; self._location_id = location_id
         if not self._wait_until_alive(timeout_s=self._wait_alive_timeout_s): return False

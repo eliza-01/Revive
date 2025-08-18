@@ -1,4 +1,4 @@
-# test_arduino_driver.py
+﻿# firmware/keys_test.py
 # Требует: pip install pyserial
 import argparse
 import sys

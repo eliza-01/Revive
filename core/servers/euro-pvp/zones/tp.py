@@ -1,4 +1,4 @@
-# core/servers/l2mad/zones/tp.py
+﻿# core/servers/euro-pvp/zones/tp.py
 # Зоны и последовательности для ТП: dashboard | gatekeeper
 from typing import Dict, Tuple, List
 
