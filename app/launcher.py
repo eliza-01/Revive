@@ -25,7 +25,6 @@ from core.features.afterbuff_macros import AfterBuffMacroRunner
 from core.features.post_tp_row import PostTPRowRunner
 from core.features.dashboard_reset import DashboardResetRunner
 
-
 from core.checks.charged import ChargeChecker, BuffTemplateProbe
 
 from app.ui.window_probe import WindowProbe
@@ -63,6 +62,58 @@ class _Collapsible(tk.Frame):
 
     def body(self) -> tk.Frame:
         return self._body
+
+
+class _VScrollFrame(tk.Frame):
+    """
+    Вертикально прокручиваемый контейнер. Внутреннюю область берите как .interior
+    """
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
+        self._vsb = ttk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._vsb.set)
+
+        self._vsb.pack(side="right", fill="y")
+        self._canvas.pack(side="left", fill="both", expand=True)
+
+        self.interior = tk.Frame(self._canvas)
+        self._win_id = self._canvas.create_window((0, 0), window=self.interior, anchor="nw")
+
+        def _on_interior_configure(_evt=None):
+            self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+            # подгоняем ширину внутреннего фрейма под канвас
+            try:
+                self._canvas.itemconfigure(self._win_id, width=self._canvas.winfo_width())
+            except Exception:
+                pass
+
+        def _on_canvas_configure(evt):
+            try:
+                self._canvas.itemconfigure(self._win_id, width=evt.width)
+            except Exception:
+                pass
+
+        self.interior.bind("<Configure>", _on_interior_configure)
+        self._canvas.bind("<Configure>", _on_canvas_configure)
+
+        # колёсико мыши
+        def _on_mousewheel(event):
+            delta = 0
+            if hasattr(event, "delta") and event.delta:
+                delta = int(-event.delta / 120)
+            elif getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            if delta:
+                self._canvas.yview_scroll(delta, "units")
+
+        # Windows/macOS
+        self._canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        # X11
+        self._canvas.bind_all("<Button-4>", _on_mousewheel)
+        self._canvas.bind_all("<Button-5>", _on_mousewheel)
 
 
 # ---------------- Logging ----------------
@@ -310,7 +361,6 @@ class ReviveLauncherUI:
         if ok_tp and not self._is_row_selected():
             self._mark_cycle_success("tp_only")
 
-
     def _flow_step_post_tp_row(self):
         try:
             if not getattr(self, "_tp_success", False):
@@ -347,7 +397,6 @@ class ReviveLauncherUI:
             self.reset_and_run("row_exception")
         finally:
             self._tp_success = False
-
 
     # ----------------  Buff Interval Checker ----------------
     def _buff_interval_tick(self):
@@ -396,6 +445,7 @@ class ReviveLauncherUI:
             self._revive_decided = True
 
     def _on_dead_ui(self, st):
+        self._cycle_success_marked = False
         self._alive_flag = False
         self._charged_flag = None
         self._tp_success = False
@@ -407,9 +457,9 @@ class ReviveLauncherUI:
         print("[state] death detected → charged=None (cache invalidated)")
         try:
             ui_ok = (
-                    getattr(self, "respawn_ui", None)
-                    and getattr(self.respawn_ui, "is_enabled", None)
-                    and self.respawn_ui.is_enabled()
+                getattr(self, "respawn_ui", None)
+                and getattr(self.respawn_ui, "is_enabled", None)
+                and self.respawn_ui.is_enabled()
             )
             if ui_ok:
                 threading.Thread(target=self._raise_after_death, daemon=True).start()
@@ -429,6 +479,10 @@ class ReviveLauncherUI:
             self._run_alive_flow()
 
     def _run_alive_flow(self):
+        # не перезапускать завершённый цикл без триггера
+        if self._cycle_success_marked and not self._flow_interrupted:
+            print("[flow] skip: cycle already completed, waiting for next trigger")
+            return
         # если мёртв — ждём оживления, не плодя таймеры
         if not self.watcher.is_alive():
             print("[flow] waiting alive to restart cycle…")
@@ -522,7 +576,6 @@ class ReviveLauncherUI:
 
         finally:
             self._reset_in_progress = False
-
 
     def _run_dashboard_reset(self) -> bool:
         """Выполнить flow core/servers/<server>/flows/dashboard_reset.py
@@ -659,8 +712,6 @@ class ReviveLauncherUI:
                 except Exception:
                     self._run_alive_flow()
 
-
-
     def _is_row_selected(self) -> bool:
         get_row = getattr(self.tp, "get_selected_row_id", None)
         return bool(callable(get_row) and get_row())
@@ -671,6 +722,7 @@ class ReviveLauncherUI:
         self._fail_streak = 0
         self._flow_interrupted = False
         self._cycle_success_marked = True
+
     # ---------------- respawn controls ----------------
     def _respawn_start(self):
         if not self.watcher.is_running():
@@ -926,7 +978,6 @@ class ReviveLauncherUI:
             self._row_var.set(values_list[0])
             self._on_row_selected()
 
-
     def _clear_row(self):
         self._row_var.set("")
         self._on_row_selected()
@@ -964,14 +1015,20 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("620x1180")
+    root.geometry("620x700")  # фиксированная высота 700
     root.resizable(False, False)
 
-    tk.Label(root, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
-    tk.Label(root, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5))
+    # прокручиваемая область для всего контента ниже заголовка
+    header = tk.Frame(root)
+    header.pack(fill="x")
+    tk.Label(header, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
+    tk.Label(header, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5))
 
-    parent = tk.Frame(root)
-    parent.pack(pady=10, fill="both")
+    scroll = _VScrollFrame(root)
+    scroll.pack(fill="both", expand=True)
+
+    parent = tk.Frame(scroll.interior)
+    parent.pack(pady=10, fill="both", expand=True)
 
     app = ReviveLauncherUI(root)
     app.build_ui(parent, local_version)
