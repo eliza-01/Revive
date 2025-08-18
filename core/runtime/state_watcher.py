@@ -38,10 +38,24 @@ class StateWatcher:
 
         self._last: PlayerState = PlayerState()
         self._alive_flag: Optional[bool] = None  # неизвестно
+        self._running = False          # ← инициализируем флаг
 
     # lifecycle
-    def start(self): self._thr.start()
-    def stop(self): self._thr.stop()
+    def start(self):
+        self._thr.start()
+        self._running = True           # ← фикс
+
+    def stop(self):
+        self._thr.stop()
+        self._running = False          # ← фикс
+
+    def is_running(self) -> bool:
+        try:
+            return bool(self._thr.is_running())  # если у монитора есть метод
+        except Exception:
+            # иначе читаем наш флаг; при первом вызове до start() вернёт False
+            return bool(self._running or getattr(self._thr, "_running", False))
+
     def set_server(self, server: str):
         self.server = server
         self._thr.set_server(server)
@@ -50,9 +64,6 @@ class StateWatcher:
     def last(self) -> PlayerState: return self._last
     def is_alive(self) -> bool: return bool(getattr(self._last, "hp_ratio", 1.0) > self._zero)
 
-    def is_running(self) -> bool:
-        # универсально, даже если _running ещё не создан
-        return bool(getattr(self, "_running", False))
 
     # internals
     def _on_update(self, st: PlayerState):

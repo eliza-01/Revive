@@ -20,8 +20,8 @@ TEMPLATES: Dict[str, List[str]] = {
     "apply_button": ["interface", "apply_button.png"],
     "relogin_button": ["interface", "relogin_button.png"],
     "enterGame_button": ["interface", "enterGame_button.png"],
-    "accept_button": ["interface", "accept_button.png"],
-    "yes_button": ["interface", "yes_button.png"],
+    "login_accept_button": ["interface", "login_accept_button.png"],
+    "enterServerOk_button": ["interface", "enterServerOk_button.png"],
     "start_button": ["interface", "start_button.png"],
     "closeCross_button": ["interface", "closeCross_button.png"],
 }
