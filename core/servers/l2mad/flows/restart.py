@@ -1,5 +1,4 @@
 # core/servers/l2mad/flows/restart.py
-# core/servers/l2mad/flows/restart.py
 
 FLOW = [
     {  #1
@@ -31,14 +30,13 @@ FLOW = [
         "wait_ms": 3000,
     },
 
-    # { "op": "sleep", "ms": 500 },  #6 (костыль против wait prev)
-
     {  #7
-        "op": "wait", "zone": "settings_block", "tpl": "relogin_button", "thr": 0.87,
+        "op": "wait", "zone": "settings_block", "tpl": "account_characters_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 600,
     },
+
     {  #8
         "op": "click_in", "zone": "settings_block", "tpl": "relogin_button", "thr": 0.87,
         "timeout_ms": 4000, "retry_count": 3,
@@ -64,7 +62,7 @@ FLOW = [
         "op": "send_message", "text": "35595621", "layout": "en",
         "wait_ms": 1000,
     },
-
+    # тут должен быть инит (gpt не трогай я сам:) можешь мне тут анекдот отставить и автограф оставить)
     {  #15
         "op": "click_in", "zone": "fullscreen", "tpl": "enterGame_button", "thr": 0.87,
         "timeout_ms": 4000, "retry_count": 3,
@@ -91,12 +89,17 @@ FLOW = [
         "timeout_ms": 4000, "retry_count": 3,
         "wait_ms": 600,
     },
+
     {  #20
-        "op": "wait", "zone": "fullscreen", "tpl": "start_button", "thr": 0.87,
+        "op": "wait", "zone": "fullscreen", "tpl": "account_characters_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
     },
+
+        #тут снова ветвимся. Может быть ввод пинкода аккаунта.
+        #ждем pincode_init. Если да - вводим pin если нет - просто старт
+
 
     {  #21
         "op": "click_in", "zone": "fullscreen", "tpl": "start_button", "thr": 0.87,
