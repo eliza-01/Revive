@@ -1,6 +1,9 @@
 # core/runtime/flow_ops.py
 from __future__ import annotations
+
 import time
+import re
+
 from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
 
 from core.runtime.flow_engine import FlowEngine
@@ -215,6 +218,7 @@ class FlowOpExecutor:
                         time.sleep(delay_ms / 1000.0)
                 ok = True
             elif op == "send_message":
+                text = self._expand_text(str(step.get("text", "")))
                 text = str(step.get("text", ""))
                 layout = (step.get("layout") or "auto").lower()
                 # auto: если есть не-ASCII — считаем, что это русское и конвертим
@@ -347,6 +351,11 @@ class FlowOpExecutor:
             int(step.get("timeout_ms", 2500)),
             float(step.get("thr", 0.88)),
         )
+
+    def _expand_text(self, text: str) -> str:
+        if not isinstance(text, str):
+            return text
+        return re.sub(r"\{([A-Za-z0-9_]+)\}", lambda m: str(self.ctx.extras.get(m.group(1), "")), text)
 
 def run_flow(flow: List[Dict], executor: FlowOpExecutor) -> bool:
     engine = FlowEngine(flow, executor.exec)

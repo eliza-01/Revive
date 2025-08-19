@@ -52,16 +52,14 @@ FLOW = [
     #10
     { "op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
     #11
-    { "op": "send_message", "text": "IDtest0000", "layout": "en" },
+    { "op": "send_message", "text": "{account_login}", "layout": "en" },
     #12 Tab
     { "op": "send_arduino", "cmd": "t", "delay_ms": 1500 },
     #13
     { "op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
 
-    {  #14
-        "op": "send_message", "text": "35595621", "layout": "en",
-        "wait_ms": 1000,
-    },
+    { "op": "send_message", "text": "{account_password}", "layout": "en", "wait_ms": 1000 },
+
     # тут должен быть инит (gpt не трогай я сам:) можешь мне тут анекдот отставить и автограф оставить)
     {  #15
         "op": "click_in", "zone": "fullscreen", "tpl": "enterGame_button", "thr": 0.87,
