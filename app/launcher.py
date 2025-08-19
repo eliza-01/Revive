@@ -35,6 +35,7 @@ from app.ui.tp_controls import TPControls
 from app.ui.updater_dialog import run_update_check
 from app.ui.settings import BuffIntervalControl
 from app.ui.afterbuff_macros import AfterBuffMacrosControls
+from app.ui.account_settings import AccountSettingsDialog
 
 from core.runtime.flow_config import PRIORITY
 from core.runtime.flow_runner import FlowRunner
@@ -114,7 +115,6 @@ class _VScrollFrame(tk.Frame):
         # X11
         self._canvas.bind_all("<Button-4>", _on_mousewheel)
         self._canvas.bind_all("<Button-5>", _on_mousewheel)
-
 
 # ---------------- Logging ----------------
 def _init_logging():
@@ -271,6 +271,7 @@ class ReviveLauncherUI:
             print(f"[×] Ошибка связи с Arduino: {e}")
 
         self.update_window_ref = None
+        self.account = {"login": "", "password": "", "pin": ""}
 
     # ----------------  Charge Flow  ----------------
     def _flow_step_buff_if_needed(self):
@@ -602,7 +603,11 @@ class ReviveLauncherUI:
             get_language=lambda: self.language,
             zones=zones,
             templates=templates,
-            extras={},
+            extras={
+                "account_login": self.account.get("login",""),
+                "account_password": self.account.get("password",""),
+                "account_pin": self.account.get("pin",""),
+            },
         )
         execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
         ok = run_flow(flow, execu)
@@ -802,6 +807,10 @@ class ReviveLauncherUI:
             command=lambda: run_update_check(local_version, self.version_status_label, self.root, self),
         ).pack()
 
+        # аккаунт
+        tk.Button(top.body(), text="Настроить аккаунт", command=self._open_account_dialog).pack(pady=(6,2))
+
+
         # выход
         tk.Button(top.body(), text="Выход", fg="red", command=self.exit_program).pack(pady=10)
 
@@ -875,6 +884,22 @@ class ReviveLauncherUI:
             self.root.after(600_000, _schedule_update_check)
 
         _schedule_update_check()
+
+    # -----------------account settings -----------------------
+    def _open_account_dialog(self):
+        initial = getattr(self, "account", {"login": "", "password": "", "pin": ""})
+        AccountSettingsDialog(self.root, initial=initial, on_save=self._save_account)
+
+    def _save_account(self, data: dict):
+        if not hasattr(self, "account") or not isinstance(self.account, dict):
+            self.account = {"login": "", "password": "", "pin": ""}
+        self.account.update({
+            "login": data.get("login", ""),
+            "password": data.get("password", ""),
+            "pin": data.get("pin", ""),
+        })
+        print("[account] saved")
+
 
     # ---------------- window probe callbacks ----------------
     def _on_window_found(self, win_info: dict):
