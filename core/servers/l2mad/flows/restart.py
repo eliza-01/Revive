@@ -60,7 +60,7 @@ FLOW = [
 
     { "op": "send_message", "text": "{account_password}", "layout": "en", "wait_ms": 1000 },
 
-    # тут должен быть инит (gpt не трогай я сам:) можешь мне тут анекдот отставить и автограф оставить)
+
     {  #15
         "op": "click_in", "zone": "fullscreen", "tpl": "enterGame_button", "thr": 0.87,
         "timeout_ms": 4000, "retry_count": 3,
@@ -87,13 +87,29 @@ FLOW = [
         "timeout_ms": 4000, "retry_count": 3,
         "wait_ms": 600,
     },
-
     {  #20
         "op": "wait", "zone": "fullscreen", "tpl": "account_characters_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
     },
+
+
+    # Зашли в выбор персонажа
+    {  #20
+        "op": "wait", "zone": "fullscreen", "tpl": "pincode_init", "thr": 0.87,
+        "timeout_ms": 2000,
+        "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
+        "wait_ms": 1000,
+    },
+    { "op": "enter_pincode", "zone": "fullscreen", "digit_delay_ms": 120, "timeout_ms": 1500,
+      "wait_ms": 1000, },
+
+    {  #15
+        "op": "click_in", "zone": "fullscreen", "tpl": "enter_pincode", "thr": 0.87,
+        "timeout_ms": 4000, "retry_count": 3,
+    },
+
 
         #тут снова ветвимся. Может быть ввод пинкода аккаунта.
         #ждем pincode_init. Если да - вводим pin если нет - просто старт
@@ -103,6 +119,13 @@ FLOW = [
         "op": "click_in", "zone": "fullscreen", "tpl": "start_button", "thr": 0.87,
         "timeout_ms": 4000,
         "wait_ms": 4000,
+    },
+
+    {  #20
+        "op": "wait", "zone": "settings_block", "tpl": "settings_button", "thr": 0.87,
+        "timeout_ms": 2000,
+        "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
+        "wait_ms": 1000,
     },
 
     {  #22
