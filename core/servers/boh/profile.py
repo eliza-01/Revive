@@ -7,15 +7,18 @@ from core.servers.registry import (
 
 class ServerProfile:
     id = "boh"
-    name = "BOH"
+    name = "boh"
 
     def __init__(self):
-        self._buff_mode = BUFF_METHOD_DASHBOARD
+        self._buff_mode = BUFF_METHOD_DASHBOARD  # дефолт
 
+    # --- TP ---
     def tp_supported_methods(self) -> List[str]:
-        return [TP_METHOD_DASHBOARD]
+        return [TP_METHOD_DASHBOARD]  # при необходимости расширите
 
+    # --- Buff ---
     def buff_supported_methods(self) -> List[str]:
+        # пример: сервер умеет баф через дашборд и NPC
         return [BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC]
 
     def supports_buffing(self) -> bool:
@@ -28,3 +31,8 @@ class ServerProfile:
 
     def get_buff_mode(self) -> str:
         return self._buff_mode
+
+    # ---- (если есть профильные тикеры) ----
+    # def buff_tick(self, win, controller, language: str, debug: bool):
+    #     # тут можно ветвить логику по self._buff_mode
+    #     ...
