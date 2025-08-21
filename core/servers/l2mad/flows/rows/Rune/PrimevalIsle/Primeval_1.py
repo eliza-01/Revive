@@ -41,7 +41,7 @@ FLOW = [
     {"op": "sleep", "ms": 500},
     {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},  # повернуть
     {"op": "sleep", "ms": 21000},
-    {"op":"click_zone_center","zone":"left_ratio_50_top_ratio15","delay_ms":300},
+    {"op": "click_zone_center","zone":"left_ratio_50_top_ratio20","delay_ms":300},
     {"op": "sleep", "ms": 300},
     {"op": "send_arduino", "cmd": "l", "delay_ms": 300},  # клик на подтверждение
     {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 2000, "thr": 0.87},
