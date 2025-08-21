@@ -178,6 +178,16 @@ class FlowOpExecutor:
         try:
             if op == "wait":
                 ok = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+
+            elif op == "wait_optional":
+                # мягкое ожидание: если не найдено после таймаута/ретраев — всё равно ОК
+                seen = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+                if not seen:
+                    try:
+                        self._on_status(f"[flow] wait_optional: '{step['tpl']}' not found → continue", True)
+                    except:
+                        pass
+                ok = True
             elif op == "click_in":
                 tpl = step["tpl"]
                 if tpl == "{mode_key}":
@@ -194,18 +204,27 @@ class FlowOpExecutor:
             elif op == "optional_click":
                 _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr); ok = True
             elif op == "enter_pincode":
-                acc = self.ctx.extras.get("account") or {}
-                pin = str(acc.get("pin") or self.ctx.extras.get("account_pin") or "")
+                # МЯГКИЙ PIN: если панели нет или PIN пуст — считаем шаг успешным и идём дальше
                 zone = step.get("zone", "fullscreen")
-                digit_delay = int(step.get("digit_delay_ms", 120))
-                ok = True
-                for d in pin:
-                    tpl_key = f"num{d}"
-                    if not self.ctx._click_in(zone, tpl_key, int(step.get("timeout_ms", 1500)), thr):
-                        ok = False
-                        break
-                    if digit_delay > 0:
-                        time.sleep(digit_delay / 1000.0)
+                visible_tpl = step.get("visible_tpl", "enter_pincode")  # можно переопределить в flow
+                # панель видна?
+                if not self.ctx._visible(zone, visible_tpl, thr):
+                    ok = True
+                else:
+                    acc = self.ctx.extras.get("account") or {}
+                    pin = str(acc.get("pin") or self.ctx.extras.get("account_pin") or "")
+                    if not pin:
+                        ok = True  # нечего вводить → мягко пропускаем
+                    else:
+                        digit_delay = int(step.get("digit_delay_ms", 120))
+                        ok = True
+                        for d in pin:
+                            tpl_key = f"num{d}"
+                            if not self.ctx._click_in(zone, tpl_key, int(step.get("timeout_ms", 1500)), thr):
+                                ok = False
+                                break
+                            if digit_delay > 0:
+                                time.sleep(digit_delay / 1000.0)
 
             elif op == "click_zone_center":
                 zone_key = step["zone"]

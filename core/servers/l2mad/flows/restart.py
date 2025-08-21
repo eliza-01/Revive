@@ -95,19 +95,30 @@ FLOW = [
     },
 
 
-    # Зашли в выбор персонажа
+    # Зашли в выбор персонажа wait_optional - ожидание с положительным результатом (ок) при всех провалах
     {  #20
-        "op": "wait", "zone": "fullscreen", "tpl": "pincode_init", "thr": 0.87,
+        "op": "wait_optional", "zone": "fullscreen", "tpl": "pincode_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
     },
-    { "op": "enter_pincode", "zone": "fullscreen", "digit_delay_ms": 120, "timeout_ms": 1500,
-      "wait_ms": 1000, },
+    {
+        "op": "enter_pincode",
+        "zone": "fullscreen",
+        "digit_delay_ms": 120,
+        "timeout_ms": 1500,
+        "wait_ms": 600,
+        # опционально можно подсказать какой tpl считать «признаком» панели:
+        # "visible_tpl": "enter_pincode",
+    },
 
-    {  #15
-        "op": "click_in", "zone": "fullscreen", "tpl": "enter_pincode", "thr": 0.87,
-        "timeout_ms": 4000, "retry_count": 3,
+    {  # подтверждение PIN — мягко (если кнопки нет, шаг всегда OK)
+        "op": "optional_click",
+        "zone": "fullscreen",
+        "tpl": "enter_pincode",
+        "timeout_ms": 1500,
+        "thr": 0.87,
+        "wait_ms": 300,
     },
 
 
