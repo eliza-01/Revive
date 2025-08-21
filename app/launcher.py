@@ -35,6 +35,7 @@ from app.ui.tp_controls import TPControls
 from app.ui.updater_dialog import run_update_check
 from app.ui.settings import BuffIntervalControl
 from app.ui.afterbuff_macros import AfterBuffMacrosControls
+from app.ui.account_settings import AccountSettingsDialog
 
 from core.runtime.flow_config import PRIORITY
 from core.runtime.flow_runner import FlowRunner
@@ -114,7 +115,6 @@ class _VScrollFrame(tk.Frame):
         # X11
         self._canvas.bind_all("<Button-4>", _on_mousewheel)
         self._canvas.bind_all("<Button-5>", _on_mousewheel)
-
 
 # ---------------- Logging ----------------
 def _init_logging():
@@ -273,6 +273,15 @@ class ReviveLauncherUI:
         self.update_window_ref = None
 
     # ----------------  Charge Flow  ----------------
+    def _flow_extras(self):
+        acc = getattr(self, "account", {"login":"", "password":"", "pin":""})
+        return {
+            "account": acc,  # для {account.login}
+            "account_login": acc.get("login",""),         # для {account_login}
+            "account_password": acc.get("password",""),   # для {account_password}
+            "account_pin": acc.get("pin",""),             # для enter_pincode
+        }
+
     def _flow_step_buff_if_needed(self):
         # ← новый гард
         if not self.watcher.is_alive():
@@ -602,7 +611,7 @@ class ReviveLauncherUI:
             get_language=lambda: self.language,
             zones=zones,
             templates=templates,
-            extras={},
+            extras=self._flow_extras(),   # ← тут
         )
         execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
         ok = run_flow(flow, execu)
@@ -633,7 +642,7 @@ class ReviveLauncherUI:
             get_language=lambda: self.language,
             zones=zones,
             templates=templates,
-            extras={},
+            extras=self._flow_extras(),   # ← было {"account": self.account}
         )
         execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
         ok = run_flow(flow, execu)
@@ -678,8 +687,9 @@ class ReviveLauncherUI:
                 get_language=lambda: self.language,
                 zones=zones,
                 templates=templates,
-                extras={},
+                extras=self._flow_extras(),   # ← было {"account": self.account}
             )
+
             execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
             ok = run_flow(flow, execu)
             print(f"[restart] flow → {ok}")
@@ -802,6 +812,10 @@ class ReviveLauncherUI:
             command=lambda: run_update_check(local_version, self.version_status_label, self.root, self),
         ).pack()
 
+        # аккаунт
+        tk.Button(top.body(), text="Настроить аккаунт", command=self._open_account_dialog).pack(pady=(6,2))
+
+
         # выход
         tk.Button(top.body(), text="Выход", fg="red", command=self.exit_program).pack(pady=10)
 
@@ -875,6 +889,24 @@ class ReviveLauncherUI:
             self.root.after(600_000, _schedule_update_check)
 
         _schedule_update_check()
+
+    # -----------------account settings -----------------------
+    def _open_account_dialog(self):
+        initial = getattr(self, "account", {"login": "", "password": "", "pin": ""})
+        AccountSettingsDialog(self.root, initial=initial, on_save=self._save_account)
+
+    def _save_account(self, data: dict):
+        if not hasattr(self, "account") or not isinstance(self.account, dict):
+            self.account = {"login": "", "password": "", "pin": ""}
+        self.account.update({
+            "login": data.get("login", ""),
+            "password": data.get("password", ""),
+            "pin": data.get("pin", ""),
+        })
+        print("[account] saved")
+        # self.account.update(data)
+        # print("[account] saved (login set, password masked, pin len:", len(self.account.get("pin","")), ")")
+
 
     # ---------------- window probe callbacks ----------------
     def _on_window_found(self, win_info: dict):
