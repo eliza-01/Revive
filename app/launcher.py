@@ -139,6 +139,11 @@ class ReviveLauncherUI:
         self._alive_flag = True
         self._charged_flag = None  # None/False/True
 
+        # --- restart guard & attempts ---
+        self._restart_in_progress = False      # пока идёт рестарт — основной цикл не трогаем
+        self._max_restart_attempts = 3         # сколько раз пробуем рестарт
+        self._restart_retry_delay_s = 1.0      # пауза между попытками
+
         # --- controller ---
         self.controller = ReviveController()
 
@@ -488,6 +493,10 @@ class ReviveLauncherUI:
             self._run_alive_flow()
 
     def _run_alive_flow(self):
+        # не трогаем цикл, если в процессе рестарта
+        if getattr(self, "_restart_in_progress", False):
+            print("[flow] skip: restart in progress")
+            return
         # не перезапускать завершённый цикл без триггера
         if self._cycle_success_marked and not self._flow_interrupted:
             print("[flow] skip: cycle already completed, waiting for next trigger")
@@ -649,78 +658,91 @@ class ReviveLauncherUI:
         print(f"[restart] flow → {ok}")
         return ok
 
+
     def restart_account(self):
         """Рестарт аккаунта: на время рестарта останавливаем StateWatcher.
-           Если рестарт неудачный — watcher остаётся OFF и цикл не перезапускаем."""
+           Если рестарт неудачный — пробуем несколько раз; watcher включаем только при успехе."""
         print("[reset] restart_account …")
 
         ok = False
         was_running = False
+        self._restart_in_progress = True
+        self._flow_interrupted = True
+
         try:
-            # 1) стопим watcher
+            # 1) стопим watcher один раз
             was_running = self.watcher.is_running()
             if was_running:
                 self.watcher.stop()
                 print("[reset] watcher OFF during restart")
 
-            # 2) грузим flow/zones
-            try:
-                flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.restart")
-                flow = getattr(flow_mod, "FLOW", [])
-            except Exception as e:
-                print(f"[restart] load flow error: {e}")
-                flow = []
+            attempts = 0
+            while attempts < int(getattr(self, "_max_restart_attempts", 5)) and not ok:
+                attempts += 1
+                print(f"[restart] attempt {attempts}/{self._max_restart_attempts}")
 
-            try:
-                zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.restart")
-                zones = getattr(zones_mod, "ZONES", {})
-                templates = getattr(zones_mod, "TEMPLATES", {})
-            except Exception as e:
-                print(f"[restart] load zones error: {e}")
-                zones, templates = {}, {}
-
-            # 3) выполняем рестарт-флоу
-            ctx = FlowCtx(
-                server=self.server,
-                controller=self.controller,
-                get_window=lambda: self._safe_window(),
-                get_language=lambda: self.language,
-                zones=zones,
-                templates=templates,
-                extras=self._flow_extras(),   # ← было {"account": self.account}
-            )
-
-            execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
-            ok = run_flow(flow, execu)
-            print(f"[restart] flow → {ok}")
-
-            if not ok:
-                # заглушка: можно попробовать мягкий сброс UI, но watcher НЕ включаем
-                print("[restart] failed → stub fallback: try dashboard_reset (watcher stays OFF)")
+                # 2) каждый раз заново подхватываем flow/zones
                 try:
-                    self._run_dashboard_reset()
+                    flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.restart")
+                    flow = getattr(flow_mod, "FLOW", [])
                 except Exception as e:
-                    print(f"[restart] fallback dashboard_reset error: {e}")
+                    print(f"[restart] load flow error: {e}")
+                    flow = []
+
+                try:
+                    zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.restart")
+                    zones = getattr(zones_mod, "ZONES", {})
+                    templates = getattr(zones_mod, "TEMPLATES", {})
+                except Exception as e:
+                    print(f"[restart] load zones error: {e}")
+                    zones, templates = {}, {}
+
+                # 3) запускаем рестарт-флоу
+                ctx = FlowCtx(
+                    server=self.server,
+                    controller=self.controller,
+                    get_window=lambda: self._safe_window(),
+                    get_language=lambda: self.language,
+                    zones=zones,
+                    templates=templates,
+                    extras=self._flow_extras(),  # логин/пароль/pin из UI
+                )
+                execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
+                ok = run_flow(flow, execu)
+                print(f"[restart] flow → {ok}")
+
+                if not ok and attempts < self._max_restart_attempts:
+                    # мягкий сброс + пауза между попытками
+                    try:
+                        self._run_dashboard_reset()
+                    except Exception as e:
+                        print(f"[restart] fallback dashboard_reset error: {e}")
+                    try:
+                        time.sleep(float(getattr(self, "_restart_retry_delay_s", 2.0)))
+                    except Exception:
+                        pass
 
         finally:
-            # 4) возвращаем watcher ТОЛЬКО если рестарт успешен
+            # 4) watcher включаем только при успехе
             try:
-                self.watcher._alive_flag = None  # форсим edge-детекцию только сейчас
+                self.watcher._alive_flag = None
             except:
                 pass
+
             if was_running and ok:
                 self.watcher.start()
                 print("[reset] watcher ON after restart")
-            elif was_running and not ok:
-                print("[reset] watcher remains OFF (restart failed)")
-
-            # 5) перезапуск цикла — только после успешного рестарта
-            if ok:
                 self._fail_streak = 0
                 try:
                     self.root.after(0, self._run_alive_flow)
                 except Exception:
                     self._run_alive_flow()
+            elif was_running and not ok:
+                print("[reset] watcher remains OFF (restart failed)")
+
+            self._restart_in_progress = False
+
+
 
     def _is_row_selected(self) -> bool:
         get_row = getattr(self.tp, "get_selected_row_id", None)

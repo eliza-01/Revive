@@ -15,6 +15,7 @@ TEMPLATES: Dict[str, List[str]] = {
     # клади реальные PNG в templates/ со своей структурой
 
     # Interface
+    "yes_button": ["interface", "yes_button.png"],
     "pincode_init": ["interface", "pincode_init.png"],
     "disconnect_window": ["interface", "disconnect_window.png"],
     "settings_button": ["interface", "settings_button.png"],
