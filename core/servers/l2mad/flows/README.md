@@ -42,13 +42,13 @@ Flow — это список шагов, описывающих последов
 {"op": "click_in", "zone": "dashboard_body", "tpl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87}
 ```
 
-### `optional_click`
+### `click_optional`
 То же, что click_in, но если элемент не найден — шаг считается успешным и сценарий продолжается.
 Используется для элементов, которые могут отсутствовать (например, кнопка восстановления HP).
 
 
 ```python
-{"op": "optional_click", "zone": "dashboard_body", "tpl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87}
+{"op": "click_optional", "zone": "dashboard_body", "tpl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87}
 ```
 
 ### wait

@@ -201,7 +201,7 @@ class FlowOpExecutor:
                         ok = self.ctx._click_in(zk, step["tpl"], 1, thr)
                         if ok: break
                     time.sleep(0.05)
-            elif op == "optional_click":
+            elif op == "click_optional":
                 _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr); ok = True
             elif op == "enter_pincode":
                 # МЯГКИЙ PIN: если панели нет или PIN пуст — считаем шаг успешным и идём дальше
