@@ -1,6 +1,9 @@
 # core/runtime/flow_ops.py
 from __future__ import annotations
+
 import time
+import re
+
 from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
 
 from core.runtime.flow_engine import FlowEngine
@@ -146,12 +149,45 @@ class FlowOpExecutor:
         self._on_status = on_status
         self._log = logger
 
+    def _subst(self, s: str) -> str:
+        if not isinstance(s, str):
+            return s
+        extras = self.ctx.extras or {}
+        acc = extras.get("account") or {}
+        login = acc.get("login", "") or extras.get("account_login", "")
+        pwd   = acc.get("password", "") or extras.get("account_password", "")
+
+        # 1) спец-алиасы
+        s = (s.replace("{account.login}", login)
+               .replace("{account.password}", pwd)
+               .replace("{account_login}", login)
+               .replace("{account_password}", pwd))
+
+        # 2) универсально: любые {key} → extras[key]
+        def repl(m):
+            k = m.group(1)
+            return str(extras.get(k, m.group(0)))
+        return re.sub(r"\{([A-Za-z0-9_]+)\}", repl, s)
+
     def exec(self, step: Dict, idx: int, total: int) -> bool:
         op = step.get("op"); thr = float(step.get("thr", 0.87))
-        self._log(f"[flow][step {idx}/{total}] {op}: {step}")
+        # безопасный лог: не светим 'text'
+        safe_step = {k: v for k, v in step.items() if k != "text"}
+        self._log(f"[flow][step {idx}/{total}] {op}: {safe_step}")
+
         try:
             if op == "wait":
                 ok = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+
+            elif op == "wait_optional":
+                # мягкое ожидание: если не найдено после таймаута/ретраев — всё равно ОК
+                seen = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
+                if not seen:
+                    try:
+                        self._on_status(f"[flow] wait_optional: '{step['tpl']}' not found → continue", True)
+                    except:
+                        pass
+                ok = True
             elif op == "click_in":
                 tpl = step["tpl"]
                 if tpl == "{mode_key}":
@@ -167,6 +203,29 @@ class FlowOpExecutor:
                     time.sleep(0.05)
             elif op == "optional_click":
                 _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr); ok = True
+            elif op == "enter_pincode":
+                # МЯГКИЙ PIN: если панели нет или PIN пуст — считаем шаг успешным и идём дальше
+                zone = step.get("zone", "fullscreen")
+                visible_tpl = step.get("visible_tpl", "enter_pincode")  # можно переопределить в flow
+                # панель видна?
+                if not self.ctx._visible(zone, visible_tpl, thr):
+                    ok = True
+                else:
+                    acc = self.ctx.extras.get("account") or {}
+                    pin = str(acc.get("pin") or self.ctx.extras.get("account_pin") or "")
+                    if not pin:
+                        ok = True  # нечего вводить → мягко пропускаем
+                    else:
+                        digit_delay = int(step.get("digit_delay_ms", 120))
+                        ok = True
+                        for d in pin:
+                            tpl_key = f"num{d}"
+                            if not self.ctx._click_in(zone, tpl_key, int(step.get("timeout_ms", 1500)), thr):
+                                ok = False
+                                break
+                            if digit_delay > 0:
+                                time.sleep(digit_delay / 1000.0)
+
             elif op == "click_zone_center":
                 zone_key = step["zone"]
                 zone = self.ctx.zones.get(zone_key)
@@ -215,12 +274,10 @@ class FlowOpExecutor:
                         time.sleep(delay_ms / 1000.0)
                 ok = True
             elif op == "send_message":
-                text = str(step.get("text", ""))
+                text = self._subst(str(step.get("text", "")))  # ← плейсхолдеры
                 layout = (step.get("layout") or "auto").lower()
-                # auto: если есть не-ASCII — считаем, что это русское и конвертим
                 if layout == "ru" or (layout == "auto" and any(ord(c) > 127 for c in text)):
                     text = _ru_to_us_keys(text)
-                # прошивка уже умеет "enter <payload>": Enter → печать → Enter
                 self.ctx.controller.send(f"enter {text}")
                 ok = True
             elif op == "set_layout":
@@ -347,6 +404,11 @@ class FlowOpExecutor:
             int(step.get("timeout_ms", 2500)),
             float(step.get("thr", 0.88)),
         )
+
+    def _expand_text(self, text: str) -> str:
+        if not isinstance(text, str):
+            return text
+        return re.sub(r"\{([A-Za-z0-9_]+)\}", lambda m: str(self.ctx.extras.get(m.group(1), "")), text)
 
 def run_flow(flow: List[Dict], executor: FlowOpExecutor) -> bool:
     engine = FlowEngine(flow, executor.exec)
