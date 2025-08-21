@@ -40,6 +40,7 @@ class BuffControls:
 
         self.enabled_var = tk.BooleanVar(value=False)
         self.mode_var = tk.StringVar(value=BUFF_MODE_PROFILE)
+        self.method_var = tk.StringVar(value="dashboard")  # не используется ниже, оставлено как было
 
         frame = tk.LabelFrame(parent, text="Баф после респавна")
         frame.pack(fill="x", padx=6, pady=6, anchor="w")
@@ -71,11 +72,39 @@ class BuffControls:
         self._status = tk.Label(frame, text="Отключено", fg="gray")
         self._status.pack(anchor="w", pady=(4, 2))
 
+        # --- Метод бафа (если сервер его экспонирует) ---
+        self._method_var = tk.StringVar(value="")
+        self._method_menu = None
+        try:
+            prof = self._get_profile()
+            methods = list(getattr(prof, "buff_supported_methods", lambda: [])())
+            cur = getattr(prof, "get_buff_mode", lambda: "")()
+            if methods:
+                row2 = tk.Frame(frame); row2.pack(fill="x", pady=(2, 2), anchor="w")
+                ttk.Label(row2, text="Метод бафа:").pack(side="left")
+                if not cur or cur not in methods:
+                    cur = methods[0]
+                self._method_var.set(cur)
+                self._method_menu = ttk.OptionMenu(
+                    row2,
+                    self._method_var,
+                    cur,
+                    *methods,
+                    command=lambda m: self._on_method_change(m)
+                )
+                self._method_menu.pack(side="left", padx=(6, 0))
+        except Exception:
+            pass
+
         # worker создаём лениво
         self._worker: Optional[BuffAfterRespawnWorker] = None
 
         # доступность по профилю
         self.refresh_enabled(self._get_profile())
+
+    def get_body(self):
+        """Корневой контейнер секции 'Баф'."""
+        return self._frame
 
     # -------- public --------
     def is_enabled(self) -> bool:
@@ -91,14 +120,67 @@ class BuffControls:
         state = ("normal" if supports else "disabled")
         self.enabled_var.set(False if not supports else self.enabled_var.get())
         try:
-            # чекбокс и селект
-            for w in (self._frame,):
-                pass
-            # только меню нужно дизейблить явно
             self._mode_menu.configure(state=state)
+            if self._method_menu:
+                self._method_menu.configure(state=state)
         except Exception:
             pass
+
+        # Обновим список/значение метода, если сервер сменился
+        try:
+            methods = list(getattr(profile, "buff_supported_methods", lambda: [])())
+            cur = getattr(profile, "get_buff_mode", lambda: "")()
+            if methods:
+                if not cur or cur not in methods:
+                    cur = methods[0]
+                self._method_var.set(cur)
+                # Пересоздавать меню не обязательно; достаточно обновить значения:
+                menu = self._method_menu["menu"] if self._method_menu else None
+                if menu is None:
+                    # если меню не было — создать
+                    row2 = tk.Frame(self._frame); row2.pack(fill="x", pady=(2, 2), anchor="w")
+                    ttk.Label(row2, text="Метод бафа:").pack(side="left")
+                    self._method_menu = ttk.OptionMenu(row2, self._method_var, cur, *methods, command=lambda m: self._on_method_change(m))
+                    self._method_menu.pack(side="left", padx=(6, 0))
+                else:
+                    menu.delete(0, "end")
+                    for m in methods:
+                        menu.add_command(label=m, command=tk._setit(self._method_var, m, self._on_method_change))
+                    self._method_var.set(cur)
+            else:
+                # если сервер не объявляет методы — спрячем меню, если оно было
+                if self._method_menu:
+                    try:
+                        self._method_menu.master.destroy()  # уничтожаем строку с меню
+                    except Exception:
+                        pass
+                    self._method_menu = None
+        except Exception:
+            pass
+
+        # ← ДОБАВЛЕНО: синхронизация выбранного метода с воркером
+        try:
+            if self._worker and self._method_var.get():
+                self._worker.set_method(self._method_var.get())
+        except Exception:
+            pass
+
         self._status.config(text=("Готово" if supports else "Сервер не поддерживает баф"), fg=("gray" if supports else "red"))
+
+    # Реакция на смену метода
+    def _on_method_change(self, method: str):
+        try:
+            prof = self._get_profile()
+            if hasattr(prof, "set_buff_mode"):
+                prof.set_buff_mode(method or "")
+        except Exception:
+            pass
+        # ← ДОБАВЛЕНО: сразу прокидываем метод в воркер
+        try:
+            if self._worker:
+                self._worker.set_method(method or "")
+        except Exception:
+            pass
 
     def run_once(self) -> bool:
         """
@@ -131,10 +213,22 @@ class BuffControls:
                 debug=True,
             )
             self._worker.set_mode(self.mode_var.get())
+            # ← ДОБАВЛЕНО: установить текущий метод сразу после создания
+            try:
+                if self._method_var.get():
+                    self._worker.set_method(self._method_var.get())
+            except Exception:
+                pass
         else:
             # обновим сервер и режим на случай смены
             self._worker.server = self._get_server()
             self._worker.set_mode(self.mode_var.get())
+            # ← ДОБАВЛЕНО: синхронизация метода при повторном использовании воркера
+            try:
+                if self._method_var.get():
+                    self._worker.set_method(self._method_var.get())
+            except Exception:
+                pass
         return self._worker
 
     def _on_toggle(self):

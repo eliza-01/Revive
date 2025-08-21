@@ -1,1 +1,0 @@
-﻿# core/servers/euro-pvp/__init__.py
