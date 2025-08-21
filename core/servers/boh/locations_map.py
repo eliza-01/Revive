@@ -1,7 +1,7 @@
 # core/servers/l2mad/locations_map.py
 # Категории/локации для ТП читаем из структуры templates.
 from typing import List, Dict
-from core.servers.l2mad.templates import resolver as tpl
+from core.servers.boh.templates import resolver as tpl
 
 def get_categories(lang: str = "rus") -> List[Dict]:
     out: List[Dict] = []
