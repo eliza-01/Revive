@@ -180,11 +180,26 @@ class FlowOpExecutor:
                 ok = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
 
             elif op == "wait_optional":
-                # мягкое ожидание: если не найдено после таймаута/ретраев — всё равно ОК
-                seen = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
-                if not seen:
+                # Мягкое ожидание с внутренними ретраями: пробуем retry_count+1 раз.
+                zone = step["zone"]
+                tpl  = step["tpl"]
+                timeout_ms = int(step.get("timeout_ms", 2000))
+                thr = float(step.get("thr", thr))
+                retries = int(step.get("retry_count", 0))
+                delay_ms = int(step.get("retry_delay_ms", 0))
+
+                found = False
+                total_tries = max(1, retries + 1)  # первая попытка + ретраи
+                for attempt in range(total_tries):
+                    if self.ctx.wait(zone, tpl, timeout_ms, thr):
+                        found = True
+                        break
+                    if attempt < total_tries - 1 and delay_ms > 0:
+                        time.sleep(delay_ms / 1000.0)
+
+                if not found:
                     try:
-                        self._on_status(f"[flow] wait_optional: '{step['tpl']}' not found → continue", True)
+                        self._on_status(f"[flow] wait_optional: '{tpl}' not found after {total_tries} tries → continue", True)
                     except:
                         pass
                 ok = True
@@ -202,7 +217,35 @@ class FlowOpExecutor:
                         if ok: break
                     time.sleep(0.05)
             elif op == "click_optional":
-                _ = self.ctx._click_in(step["zone"], step["tpl"], int(step.get("timeout_ms", 800)), thr); ok = True
+                # Мягкий клик с внутренними ретраями: пробуем retry_count+1 раз.
+                zone = step["zone"]
+                tpl  = step["tpl"]
+                if tpl == "{mode_key}":
+                    tpl = self.ctx.extras.get("mode_key_provider", lambda: None)() or "buffer_mode_profile"
+
+                timeout_ms = int(step.get("timeout_ms", 800))
+                thr = float(step.get("thr", thr))
+                retries = int(step.get("retry_count", 0))
+                delay_ms = int(step.get("retry_delay_ms", 0))
+
+                success = False
+                total_tries = max(1, retries + 1)  # первая попытка + ретраи
+                for attempt in range(total_tries):
+                    if self.ctx._click_in(zone, tpl, timeout_ms, thr):
+                        success = True
+                        break
+                    if attempt < total_tries - 1 and delay_ms > 0:
+                        time.sleep(delay_ms / 1000.0)
+
+                if not success:
+                    try:
+                        self._on_status(
+                            f"[flow] click_optional: '{tpl}' not clicked after {total_tries} tries → continue",
+                            True
+                        )
+                    except:
+                        pass
+                ok = True
             elif op == "enter_pincode":
                 # МЯГКИЙ PIN: если панели нет или PIN пуст — считаем шаг успешным и идём дальше
                 zone = step.get("zone", "fullscreen")
