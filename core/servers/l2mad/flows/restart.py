@@ -16,30 +16,51 @@ FLOW = [
     {  #3
         "op": "click_in", "zone": "settings_block", "tpl": "restart_button", "thr": 0.87,
         "timeout_ms": 4000,
+        "retry_count": 4, "retry_delay_ms": 2000, "retry_action": "prev",
+        "wait_ms": 1000,
     },
     {  #4
         "op": "wait", "zone": "fullscreen", "tpl": "apply_button", "thr": 0.87,
         "timeout_ms": 2000,
-        "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
-        "wait_ms": 600,
+        "retry_count": 4, "retry_delay_ms": 1000, "retry_action": "prev",
+        "wait_ms": 1000,
     },
+
 
     {  #5
         "op": "click_in", "zone": "fullscreen", "tpl": "apply_button", "thr": 0.87,
         "timeout_ms": 4000,
+        "retry_count": 4, "retry_delay_ms": 1000, "retry_action": "prev",
+        "wait_ms": 3000,
+    },
+    #проверяемся на дисконнект
+    {  #6
+        "op": "wait_optional", "zone": "fullscreen", "tpl": "disconnect_window", "thr": 0.87,
+        "timeout_ms": 2000,
+        "retry_count": 4, "retry_delay_ms": 1000, "retry_action": "prev",
+        "wait_ms": 1000,
+    },
+    {  # Да на Disconnect
+        "op": "click_optional",
+        "zone": "fullscreen",
+        "tpl": "yes_button",
+        "thr": 0.87,
+        "timeout_ms": 2000,
+        "retry_count": 4, "retry_delay_ms": 2000, "retry_action": "prev",
         "wait_ms": 3000,
     },
 
     {  #7
-        "op": "wait", "zone": "settings_block", "tpl": "account_characters_init", "thr": 0.87,
+        "op": "wait_optional", "zone": "settings_block", "tpl": "account_characters_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 600,
     },
 
     {  #8
-        "op": "click_in", "zone": "settings_block", "tpl": "relogin_button", "thr": 0.87,
-        "timeout_ms": 4000, "retry_count": 3,
+        "op": "click_optional", "zone": "settings_block", "tpl": "relogin_button", "thr": 0.87,
+        "timeout_ms": 4000,
+        "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 2000,
     },
     {  #9
@@ -113,7 +134,7 @@ FLOW = [
     },
 
     {  # подтверждение PIN — мягко (если кнопки нет, шаг всегда OK)
-        "op": "optional_click",
+        "op": "click_optional",
         "zone": "fullscreen",
         "tpl": "enter_pincode",
         "timeout_ms": 1500,
@@ -140,7 +161,7 @@ FLOW = [
     },
 
     {  #22
-        "op": "optional_click", "zone": "fullscreen", "tpl": "closeCross_button", "timeout_ms": 1500, "thr": 0.87,
+        "op": "click_optional", "zone": "fullscreen", "tpl": "closeCross_button", "timeout_ms": 1500, "thr": 0.87,
         "wait_ms": 1000,
     },
 
