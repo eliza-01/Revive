@@ -30,7 +30,7 @@ FLOW = [
     {"op": "send_arduino", "cmd": "wheel_up", "delay_ms": 12, "count": 400},  #
     {"op": "sleep", "ms": 1200},
     # {"op": "click_in", "zone": "fullscreen", "tpl": "Primeval_1_capt1", "timeout_ms": 2000, "thr": 0.50},
-    {"op": "click_zone_center","zone":"Primeval_1_zone1","delay_ms":300},
+    {"op":"click_zone_center","zone":"Primeval_1_zone1","delay_ms":300},
     #фэйлит потому что мы уже сдвинулись
     # {"op": "wait", "zone": "fullscreen", "tpl": "Primeval_1_capt1", "timeout_ms": 2000, "thr": 0.87, "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev"},
     {"op": "sleep", "ms": 2000},
@@ -41,7 +41,7 @@ FLOW = [
     {"op": "sleep", "ms": 500},
     {"op": "send_arduino", "cmd": "pageup", "delay_ms": 300},  # повернуть
     {"op": "sleep", "ms": 21000},
-    {"op":"click_zone_center","zone":"left_ratio_50_top_ratio20","delay_ms":300},
+    {"op": "click_zone_center","zone":"left_ratio_50_top_ratio20","delay_ms":300},
     {"op": "sleep", "ms": 300},
     {"op": "send_arduino", "cmd": "l", "delay_ms": 300},  # клик на подтверждение
     {"op": "click_in", "zone": "fullscreen", "tpl": "autofarm", "timeout_ms": 2000, "thr": 0.87},

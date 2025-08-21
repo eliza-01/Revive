@@ -1,3 +1,4 @@
+# core/servers/l2mad/profile.py
 from __future__ import annotations
 from typing import List
 from core.servers.registry import (
@@ -5,20 +6,26 @@ from core.servers.registry import (
     TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER,
 )
 
+def _server_id() -> str:
+    try:
+        # 'core.servers.<server_id>'
+        return (__package__ or "").split(".")[-1] or "l2mad"
+    except Exception:
+        return "l2mad"
+
 class ServerProfile:
-    id = "boh"
-    name = "boh"
+    id = _server_id()
+    name = id
 
     def __init__(self):
         self._buff_mode = BUFF_METHOD_DASHBOARD  # дефолт
 
     # --- TP ---
     def tp_supported_methods(self) -> List[str]:
-        return [TP_METHOD_DASHBOARD]  # при необходимости расширите
+        return [TP_METHOD_DASHBOARD]
 
     # --- Buff ---
     def buff_supported_methods(self) -> List[str]:
-        # пример: сервер умеет баф через дашборд и NPC
         return [BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC]
 
     def supports_buffing(self) -> bool:
@@ -31,8 +38,3 @@ class ServerProfile:
 
     def get_buff_mode(self) -> str:
         return self._buff_mode
-
-    # ---- (если есть профильные тикеры) ----
-    # def buff_tick(self, win, controller, language: str, debug: bool):
-    #     # тут можно ветвить логику по self._buff_mode
-    #     ...
