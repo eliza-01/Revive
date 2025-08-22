@@ -1,21 +1,36 @@
 Root: C:\Projects\Revive
-Generated: 2025-08-22 13:46:44
+Generated: 2025-08-22 16:20:38
 
 Revive
 ├── app
+│   ├── 1dep
+│   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
+│   ├── controllers
+│   │   └── rows_controller.py
 │   ├── ui
 │   │   ├── __init__.py
 │   │   ├── account_settings.py
 │   │   ├── afterbuff_macros.py
 │   │   ├── buff_controls.py
+│   │   ├── interval_buff.py
 │   │   ├── respawn_controls.py
-│   │   ├── settings.py
 │   │   ├── state_controls.py
 │   │   ├── tp_controls.py
 │   │   ├── updater_dialog.py
+│   │   ├── widgets.py
 │   │   └── window_probe.py
+│   ├── webui
+│   │   ├── assets
+│   │   │   └── icon.ico
+│   │   ├── css
+│   │   │   └── style.css
+│   │   ├── js
+│   │   │   └── main.js
+│   │   └── index.html
 │   ├── __init__.py
-│   └── launcher.py
+│   ├── launcher.py
+│   ├── launcher_bootstrap.py
+│   └── launcher_html.py
 ├── assets
 │   ├── upx
 │   │   ├── COPYING
@@ -41,11 +56,14 @@ Revive
 │   │   │   └── auto_respawn_runner.py
 │   │   ├── __init__.py
 │   │   ├── afterbuff_macros.py
+│   │   ├── autobuff_service.py
 │   │   ├── buff_after_respawn.py
 │   │   ├── dashboard_reset.py
 │   │   ├── flow_actions.py
+│   │   ├── flow_orchestrator.py
 │   │   ├── player_state.py
 │   │   ├── post_tp_row.py
+│   │   ├── restart_manager.py
 │   │   ├── to_village.py
 │   │   └── tp_after_respawn.py
 │   ├── os
@@ -307,8 +325,11 @@ Revive
 │   ├── dump_tree.py
 │   └── write_path_headers.py
 ├── .gitignore
+├── PROJECT_STRUCTURE.txt
+├── autofarm_settings_window.png
 ├── build.bat
 ├── main.py
 ├── release.bat
 ├── requirements.txt
+├── revive.log
 └── run_release.bat

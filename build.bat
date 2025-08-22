@@ -64,11 +64,13 @@ set "ICON_OPT="
 if exist "%ICON%" set "ICON_OPT=--icon %ICON%"
 
 set "DATA_OPTS="
-if exist assets               set "DATA_OPTS=%DATA_OPTS% --add-data assets;assets"
-if exist core\servers         set "DATA_OPTS=%DATA_OPTS% --add-data core\servers;core\servers"
-if exist app                  set "DATA_OPTS=%DATA_OPTS% --add-data app;app"
-if exist tools                set "DATA_OPTS=%DATA_OPTS% --add-data tools;tools"
-if exist latest_version.txt   set "DATA_OPTS=%DATA_OPTS% --add-data latest_version.txt;."
+if exist assets                        set "DATA_OPTS=%DATA_OPTS% --add-data assets;assets"
+if exist core\servers                  set "DATA_OPTS=%DATA_OPTS% --add-data core\servers;core\servers"
+if exist app\webui                     set "DATA_OPTS=%DATA_OPTS% --add-data app\webui;app\webui"
+if exist app\dep                       set "DATA_OPTS=%DATA_OPTS% --add-data app\dep;app\dep"
+if exist latest_version.txt            set "DATA_OPTS=%DATA_OPTS% --add-data latest_version.txt;."
+rem  если есть другие статические каталоги, добавь аналогично
+
 
 rem === 7) Сборка onefile (без UAC; добавь --uac-admin при необходимости) ===
 "%PY%" -m PyInstaller --clean --onefile --uac-admin --noconsole %ICON_OPT% ^

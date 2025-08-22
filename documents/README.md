@@ -1,3 +1,6 @@
+#запуск
+python -m app.launcher_bootstrap 1.0.0
+
 #requirements
 python -m pip install -U pip setuptools wheel
 python -m pip install -r requirements.txt --no-input --prefer-binary -U
