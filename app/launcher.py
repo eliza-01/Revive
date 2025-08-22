@@ -1,29 +1,15 @@
 # app/launcher.py
 from __future__ import annotations
-import traceback
 import sys
-import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 import logging
-import time  # ← вот это
-import importlib
 
 from core.connection import ReviveController
 from core.connection_test import run_test_command
 
-from core.servers.registry import get_server_profile, list_servers, BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC
-
+from core.servers.registry import get_server_profile, list_servers
 from core.runtime.state_watcher import StateWatcher
-from core.runtime.poller import RepeaterThread
-from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
-
-# from core.features.auto_respawn_runner import AutoRespawnRunner
-from core.features.to_village import ToVillage
-from core.features.afterbuff_macros import AfterBuffMacroRunner
-from core.features.post_tp_row import PostTPRowRunner
-from core.features.dashboard_reset import DashboardResetRunner
-
 from core.checks.charged import ChargeChecker, BuffTemplateProbe
 
 from app.ui.window_probe import WindowProbe
@@ -32,90 +18,21 @@ from app.ui.respawn_controls import RespawnControls
 from app.ui.buff_controls import BuffControls
 from app.ui.tp_controls import TPControls
 from app.ui.updater_dialog import run_update_check
-from app.ui.settings import BuffIntervalControl
+# from app.ui.interval_buff import BuffIntervalControl
 from app.ui.afterbuff_macros import AfterBuffMacrosControls
 from app.ui.account_settings import AccountSettingsDialog
+from app.ui.widgets import Collapsible, VScrollFrame
 
-from core.runtime.flow_config import PRIORITY
-from core.runtime.flow_runner import FlowRunner
+from core.features.afterbuff_macros import AfterBuffMacroRunner
+from core.features.post_tp_row import PostTPRowRunner
+from core.features.to_village import ToVillage
+from core.features.flow_orchestrator import FlowOrchestrator
+from core.features.restart_manager import RestartManager
+from core.features.autobuff_service import AutobuffService
 
-
-class _Collapsible(tk.Frame):
-    def __init__(self, parent, title: str, opened: bool = True):
-        super().__init__(parent)
-        self._open = tk.BooleanVar(value=opened)
-        self._btn = ttk.Button(self, text=("▼ " + title if opened else "► " + title), command=self._toggle)
-        self._btn.pack(fill="x", pady=(6, 2))
-        self._body = tk.Frame(self)
-        if opened:
-            self._body.pack(fill="x")
-
-    def _toggle(self):
-        if self._open.get():
-            self._open.set(False)
-            self._btn.config(text="► " + self._btn.cget("text")[2:])
-            self._body.forget()
-        else:
-            self._open.set(True)
-            self._btn.config(text="▼ " + self._btn.cget("text")[2:])
-            self._body.pack(fill="x")
-
-    def body(self) -> tk.Frame:
-        return self._body
+from app.controllers.rows_controller import RowsController
 
 
-class _VScrollFrame(tk.Frame):
-    """
-    Вертикально прокручиваемый контейнер. Внутреннюю область берите как .interior
-    """
-    def __init__(self, parent):
-        super().__init__(parent)
-        self._canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
-        self._vsb = ttk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
-        self._canvas.configure(yscrollcommand=self._vsb.set)
-
-        self._vsb.pack(side="right", fill="y")
-        self._canvas.pack(side="left", fill="both", expand=True)
-
-        self.interior = tk.Frame(self._canvas)
-        self._win_id = self._canvas.create_window((0, 0), window=self.interior, anchor="nw")
-
-        def _on_interior_configure(_evt=None):
-            self._canvas.configure(scrollregion=self._canvas.bbox("all"))
-            # подгоняем ширину внутреннего фрейма под канвас
-            try:
-                self._canvas.itemconfigure(self._win_id, width=self._canvas.winfo_width())
-            except Exception:
-                pass
-
-        def _on_canvas_configure(evt):
-            try:
-                self._canvas.itemconfigure(self._win_id, width=evt.width)
-            except Exception:
-                pass
-
-        self.interior.bind("<Configure>", _on_interior_configure)
-        self._canvas.bind("<Configure>", _on_canvas_configure)
-
-        # колёсико мыши
-        def _on_mousewheel(event):
-            delta = 0
-            if hasattr(event, "delta") and event.delta:
-                delta = int(-event.delta / 120)
-            elif getattr(event, "num", None) == 4:
-                delta = -1
-            elif getattr(event, "num", None) == 5:
-                delta = 1
-            if delta:
-                self._canvas.yview_scroll(delta, "units")
-
-        # Windows/macOS
-        self._canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        # X11
-        self._canvas.bind_all("<Button-4>", _on_mousewheel)
-        self._canvas.bind_all("<Button-5>", _on_mousewheel)
-
-# ---------------- Logging ----------------
 def _init_logging():
     LOG_PATH = "revive.log"
     logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
@@ -130,107 +47,21 @@ class ReviveLauncherUI:
         self.root = root
 
         # --- servers ---
-        servers = list_servers()
-        default_server = servers[0] if servers else "l2mad"
-        self.server = default_server
+        servers = list_servers() or ["l2mad"]
+        self.server = servers[0]
         self.server_var = tk.StringVar(value=self.server)
 
         # --- state ---
         self.language = "rus"
         self.language_var = tk.StringVar(value=self.language)
 
-        servers = list_servers()
-        self.server = servers[0] if servers else "l2mad"   # авто-первый найденный
-        self.server_var = tk.StringVar(value=self.server)
-
-        self._alive_flag = True
-        self._charged_flag = None  # None/False/True
-
-        # --- restart guard & attempts ---
-        self._restart_in_progress = False      # пока идёт рестарт — основной цикл не трогаем
-        self._max_restart_attempts = 3         # сколько раз пробуем рестарт
-        self._restart_retry_delay_s = 1.0      # пауза между попытками
+        self._charged_flag = None  # отображение, актуальное значение держит orchestrator/checker
 
         # --- controller ---
         self.controller = ReviveController()
 
         # --- server profile FIRST ---
         self.profile = get_server_profile(self.server)
-
-        # buff method
-        self.buff_method_var = tk.StringVar(value="")
-        self._buff_mode_menu = None
-        self._buff_mode_container = None
-
-        # --- post-TP rows UI state ---
-        self._row_var = tk.StringVar(value="")
-        self._rows_menu: ttk.Combobox | None = None
-        self._rows_cache: list[tuple[str, str]] = []   # [(id, title)]
-        self._last_row_dest = ("", "")                 # (village_id, location_id)
-
-        self.checker = ChargeChecker(interval_minutes=10, mode="ANY")
-        self.checker.register_probe(
-            "autobuff_icons",
-            BuffTemplateProbe(
-                name="autobuff_icons",
-                server_getter=lambda: self.server,
-                get_window=lambda: self._safe_window(),
-                get_language=lambda: self.language,
-                zone_key="buff_bar",
-                tpl_keys=[
-                    "buff_icon_shield",
-                    "buff_icon_blessedBody",
-                ],
-                threshold=0.85,
-                debug=True,
-            ),
-            enabled=True,
-        )
-
-        self.postrow = PostTPRowRunner(
-            controller=self.controller,
-            server=self.server,
-            get_window=lambda: self._safe_window(),
-            get_language=lambda: self.language,
-            on_status=lambda msg, ok: print(msg),
-        )
-
-        # агрегатор «заряженности» (заглушка проверки)
-        def _probe_is_buffed_stub() -> bool:
-            return False
-
-        # флаг и поллер для автобафов по интервалу
-        self._autobuff_enabled = False
-        self.charge_poller = RepeaterThread(fn=self._buff_interval_tick, interval=1.0, debug=False)
-        self.charge_poller.start()  # тикает всегда; действует только при включённом флаге
-
-        # исполнитель «В деревню»
-        self.to_village = ToVillage(
-            controller=self.controller,
-            server=self.server,
-            get_window=lambda: self._safe_window(),
-            get_language=lambda: self.language,
-            click_threshold=0.87,
-            debug=True,
-            is_alive=lambda: self.watcher.is_alive(),
-            confirm_timeout_s=3.0,
-        )
-        self._tp_after_death = False  # ТП запускать только если мы жали "В деревню"
-
-        # --- periodic buff tick placeholder (профильный) ---
-        self.buff_runner = None
-        if hasattr(self.profile, "buff_tick"):
-            self.buff_runner = RepeaterThread(
-                fn=lambda: self.profile.buff_tick(self._safe_window(), self.controller, language=self.language, debug=True),
-                interval=15.0,
-                debug=False,
-            )
-
-        # раннер макросов создадим позже, когда UI будет
-        self.afterbuff_ui = None
-        self.afterbuff_runner = None
-
-        self._tp_success = False
 
         # --- window probe ---
         self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
@@ -242,612 +73,102 @@ class ReviveLauncherUI:
             get_language=lambda: self.language,
             poll_interval=0.2,
             zero_hp_threshold=0.01,
-            on_state=self._on_state_ui,
-            on_dead=self._on_dead_ui,
-            on_alive=self._on_alive_ui,
+            on_state=lambda st: None,
+            on_dead=self._on_dead_proxy,
+            on_alive=self._on_alive_proxy,
             debug=True,
         )
 
-        # --- ui parts ---
-        self.driver_status = None
-        self.version_status_label = None
-
-        self.flow = FlowRunner(
-            steps={
-                "buff_if_needed": self._flow_step_buff_if_needed,
-                "macros_after_buff": self._flow_step_macros_after_buff,
-                "recheck_charged": self._flow_step_recheck_charged,
-                "tp_if_ready": self._flow_step_tp_if_ready,
-                "post_tp_row": self._flow_step_post_tp_row,  # ←
-            },
-            order=PRIORITY,
+        # --- checker + probes ---
+        self.checker = ChargeChecker(interval_minutes=10, mode="ANY")
+        self.checker.register_probe(
+            "autobuff_icons",
+            BuffTemplateProbe(
+                name="autobuff_icons",
+                server_getter=lambda: self.server,
+                get_window=lambda: self._safe_window(),
+                get_language=lambda: self.language,
+                zone_key="buff_bar",
+                tpl_keys=["buff_icon_shield", "buff_icon_blessedBody"],
+                threshold=0.85,
+                debug=True,
+            ),
+            enabled=True,
         )
 
-        #reset_and_run
-        self._tp_success = False
+        # --- workers / services ---
+        self.postrow = PostTPRowRunner(
+            controller=self.controller,
+            server=self.server,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            on_status=lambda msg, ok: print(msg),
+        )
+        self.to_village = ToVillage(
+            controller=self.controller,
+            server=self.server,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            click_threshold=0.87,
+            debug=True,
+            is_alive=lambda: self.watcher.is_alive(),
+            confirm_timeout_s=3.0,
+        )
 
-        # ── NEW: счётчик подряд неудачных циклов и лимит
-        self._fail_streak = 0
-        self._max_resets = 3
-        self._flow_interrupted = False
-        self._cycle_success_marked = False
+        # orchestrator + restart manager
+        self.restart = RestartManager(
+            controller=self.controller,
+            get_server=lambda: self.server,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            watcher=self.watcher,
+            account_getter=lambda: getattr(self, "account", {"login": "", "password": "", "pin": ""}),
+            max_restart_attempts=3,
+            retry_delay_s=1.0,
+            logger=print,
+        )
+        self.orch = FlowOrchestrator(
+            schedule=lambda fn, ms: self.root.after(ms, fn),
+            log=print,
+            checker=self.checker,
+            watcher=self.watcher,
+            to_village=self.to_village,
+            postrow_runner=self.postrow,
+            restart_manager=self.restart,
+            get_server=lambda: self.server,
+            get_language=lambda: self.language,
+        )
 
-        self._reset_in_progress = False
-        self._awaiting_alive_restart = False
-        # ---------------------------------------------------------------------
+        # --- UI placeholders (инициализируются в build_ui) ---
+        self.afterbuff_ui = None
+        self.afterbuff_runner = None
+        self.buff = None
+        self.tp = None
 
-        # --- window probe ---
-        self.winprobe = WindowProbe(root=self.root, on_found=self._on_window_found)
+        # autobuff service (вкл/выкл управляет UI виджет)
+        self.autobuff = AutobuffService(
+            checker=self.checker,
+            is_alive=lambda: self.watcher.is_alive(),
+            buff_is_enabled=lambda: (self.buff and self.buff.is_enabled()) or False,
+            buff_run_once=lambda: (self.buff and self.buff.run_once()) or False,
+            on_charged_update=lambda v: setattr(self, "_charged_flag", v),
+            tick_interval_s=1.0,
+            log=print,
+        )
 
-        # ping arduino
+        # rows controller (запустим после сборки UI)
+        self.rows_ctrl: RowsController | None = None
+        self._rows_menu: ttk.Combobox | None = None
+        self._row_var = tk.StringVar(value="")
+        self._rows_cache: list[tuple[str, str]] = []
+
+        # ping arduino (по кнопке есть отдельный тест, тут — опционально)
         try:
             self.controller.send("ping")
             response = self.controller.read()
             print("[✓] Arduino ответила" if response == "pong" else "[×] Нет ответа")
         except Exception as e:
             print(f"[×] Ошибка связи с Arduino: {e}")
-
-        self.update_window_ref = None
-
-    # ----------------  list_rows  ----------------
-    def _load_list_rows(self):
-        """Динамически подхватывает list_rows из core.servers.<server>.flows.rows.registry."""
-        try:
-            mod = importlib.import_module(f"core.servers.{self.server}.flows.rows.registry")
-            return getattr(mod, "list_rows", lambda *_: [])
-        except Exception:
-            return lambda *_: []
-    # ----------------  Charge Flow  ----------------
-    def _flow_extras(self):
-        acc = getattr(self, "account", {"login":"", "password":"", "pin":""})
-        return {
-            "account": acc,  # для {account.login}
-            "account_login": acc.get("login",""),         # для {account_login}
-            "account_password": acc.get("password",""),   # для {account_password}
-            "account_pin": acc.get("pin",""),             # для enter_pincode
-        }
-
-    def _flow_step_buff_if_needed(self):
-        # ← новый гард
-        if not self.watcher.is_alive():
-            print("[buff] skip (dead)")
-            self._buff_was_success = False
-            return
-
-        charged_now = bool(self.checker.is_charged(None))
-        buff_enabled = getattr(self.buff, "is_enabled", lambda: False)()
-        need_buff = buff_enabled and not charged_now
-
-        if need_buff:
-            ok_buff = self.buff.run_once()
-            print(f"[buff] auto-after-alive run: {ok_buff}")
-            self._buff_was_success = ok_buff
-        else:
-            reason = "disabled" if not buff_enabled else "already charged"
-            print(f"[buff] skip ({reason})")
-            self._buff_was_success = False
-
-    def _flow_step_macros_after_buff(self):
-        try:
-            # если UI выключен — сразу завершаем шаг
-            if not self.afterbuff_ui.is_enabled():
-                self._macros_done = True
-                print("[macros] skipped (UI disabled)")
-                return
-
-            # проверка: либо баф был, либо разрешено запускать без бафа
-            if not self._buff_was_success and not self.afterbuff_ui.run_always():
-                self._macros_done = True
-                print("[macros] skipped (buff not executed, run_always=False)")
-                return
-
-            ok_macros = self.afterbuff_runner.run_once()
-
-            try:
-                dur = float(self.afterbuff_ui.get_duration_s())
-            except Exception:
-                dur = 0.0
-
-            if dur > 0:
-                print(f"[macros] waiting {dur:.2f}s for completion window")
-                time.sleep(dur)
-
-            self._macros_done = True
-            print(f"[macros] after-buff run: {ok_macros}")
-
-        except Exception as e:
-            self._macros_done = True
-            print(f"[macros] error: {e}")
-
-    def _flow_step_recheck_charged(self):
-        try:
-            v = self.checker.force_check()
-            self._charged_flag = bool(v)
-            print(f"[flow] recheck_charged → {v}")
-        except Exception as e:
-            print(f"[flow] recheck_charged error: {e}")
-
-    def _flow_step_tp_if_ready(self):
-        tp_enabled = getattr(self.tp, "is_enabled", lambda: False)()
-        if not tp_enabled:
-            print("[flow] tp_if_ready → skip (disabled)")
-            self._tp_success = False
-            self._mark_cycle_success("tp_disabled")
-            return
-
-        if self._charged_flag is not True:
-            print(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
-            self._tp_success = False
-            self.reset_and_run(reason="not_charged_for_tp")
-            return
-
-        self._tp_success = False
-        fn = getattr(self.tp, "teleport_now_selected", None)
-        ok_tp = bool(fn()) if callable(fn) else False
-        self._tp_success = ok_tp
-        print(f"[flow] tp_if_ready → {ok_tp}")
-        self._tp_after_death = False
-
-        if not ok_tp:
-            self.reset_and_run(reason="tp_failed")
-            return
-
-        if ok_tp and not self._is_row_selected():
-            self._mark_cycle_success("tp_only")
-
-    def _flow_step_post_tp_row(self):
-        try:
-            if not getattr(self, "_tp_success", False):
-                print("[rows] skip (tp not successful)")
-                return
-
-            get_sel = getattr(self.tp, "get_selected_destination", None)
-            get_row = getattr(self.tp, "get_selected_row_id", None)
-            if not callable(get_sel) or not callable(get_row):
-                print("[rows] UI does not expose selection")
-                return
-
-            cat, loc = get_sel()
-            row_id = get_row()
-
-            if not (cat and loc):
-                print("[rows] no destination → treat as success")
-                self._mark_cycle_success("tp_only")
-                return
-
-            if not row_id:
-                print("[rows] no row selected → treat as success")
-                self._mark_cycle_success("tp_no_row")
-                return
-
-            ok = self.postrow.run_row(cat, loc, row_id)
-            print(f"[rows] run → {ok}")
-            if ok:
-                self._mark_cycle_success("post_tp_row")
-            else:
-                self.reset_and_run("row_failed")
-        except Exception as e:
-            print(f"[rows] error: {e}")
-            self.reset_and_run("row_exception")
-        finally:
-            self._tp_success = False
-
-    # ----------------  Buff Mode Changer  ----------------
-    def _on_buff_mode_change(self, value: str):
-        try:
-            self.profile.set_buff_mode(value)
-            self.buff_method_var.set(value)
-            print(f"[UI] buff mode set: {value}")
-        except Exception as e:
-            print(f"[UI] buff mode set error: {e}")
-
-    def _refresh_buff_methods(self):
-        # если контейнер ещё не создан — выходим
-        if not self._buff_mode_container:
-            return
-
-        # очистим старое меню (если было)
-        try:
-            if self._buff_mode_menu:
-                self._buff_mode_menu.destroy()
-        except Exception:
-            pass
-
-        # спросить у профиля поддерживаемые методы
-        try:
-            supported = list(self.profile.buff_supported_methods() or [])
-        except Exception:
-            supported = []
-
-        if not supported:
-            # нет бафа — показывать нечего
-            self._buff_mode_menu = ttk.Label(self._buff_mode_container, text="нет")
-            self._buff_mode_menu.pack(side="left")
-            self.buff_method_var.set("")
-            return
-
-        # текущее значение — из профиля (или первый метод)
-        try:
-            current = self.profile.get_buff_mode()
-        except Exception:
-            current = None
-        if current not in supported:
-            current = supported[0]
-            try:
-                self.profile.set_buff_mode(current)
-            except Exception:
-                pass
-        self.buff_method_var.set(current)
-
-        # построить OptionMenu
-        self._buff_mode_menu = ttk.OptionMenu(
-            self._buff_mode_container,
-            self.buff_method_var,
-            current,
-            *supported,
-            command=self._on_buff_mode_change
-        )
-        self._buff_mode_menu.pack(side="left")
-
-    # ----------------  Buff Interval Checker ----------------
-    def _buff_interval_tick(self):
-        # работает только при включённом флаге и когда живы
-        if not self._autobuff_enabled or not getattr(self, "_alive_flag", True):
-            return
-        try:
-            # опрос по интервалу; если рано — выходим
-            if not self.checker.tick():
-                return
-
-            cur = self.checker.is_charged(None)
-            print(f"[charged] interval → {cur}")
-            if cur is True:
-                self._charged_flag = True
-                return  # уже заряжены
-
-            # cur is False/None → пробуем баф
-            if getattr(self.buff, "is_enabled", lambda: False)():
-                ok = self.buff.run_once()
-                print(f"[buff] interval autobuff run: {ok}")
-                if ok:
-                    # мгновенная переоценка и обновление локального флага
-                    new_val = self.checker.force_check()
-                    self._charged_flag = bool(new_val)
-                    print(f"[charged] after buff → {new_val}")
-        except Exception as e:
-            print(f"[buff] interval tick error: {e}")
-
-    # ----------------  State Watcher ----------------
-    def _on_state_ui(self, st):
-        pass
-
-    def _raise_after_death(self):
-        try:
-            ok = self.to_village.run_once(timeout_ms=4000)
-            print(f"[to_village] run: {ok}")
-            self._tp_after_death = bool(ok)
-            if not ok:
-                # <<< важно: тянем общий ресет
-                self.reset_and_run(reason="to_village_failed")
-        except Exception as e:
-            print(f"[to_village] error in thread: {e}")
-            self._tp_after_death = False
-        finally:
-            self._revive_decided = True
-
-    def _on_dead_ui(self, st):
-        self._cycle_success_marked = False
-        self._alive_flag = False
-        self._charged_flag = None
-        self._tp_success = False
-        print("[state] death detected → charged=None")
-        try:
-            self.checker.invalidate()  # ← ВАЖНО: сбросить кеш при смерти
-        except Exception:
-            pass
-        print("[state] death detected → charged=None (cache invalidated)")
-        try:
-            ui_ok = (
-                getattr(self, "respawn_ui", None)
-                and getattr(self.respawn_ui, "is_enabled", None)
-                and self.respawn_ui.is_enabled()
-            )
-            if ui_ok:
-                threading.Thread(target=self._raise_after_death, daemon=True).start()
-            else:
-                print("[to_village] skipped (UI disabled or missing)")
-        except Exception as e:
-            print(f"[to_village] error: {e}")
-
-    def _on_alive_ui(self, st):
-        self._alive_flag = True
-        ch = self.checker.is_charged(None)
-        self._charged_flag = ch
-        print(f"[state] alive detected → charged={ch}")
-        try:
-            self.root.after(0, self._run_alive_flow)
-        except Exception:
-            self._run_alive_flow()
-
-    def _run_alive_flow(self):
-        # не трогаем цикл, если в процессе рестарта
-        if getattr(self, "_restart_in_progress", False):
-            print("[flow] skip: restart in progress")
-            return
-        # не перезапускать завершённый цикл без триггера
-        if self._cycle_success_marked and not self._flow_interrupted:
-            print("[flow] skip: cycle already completed, waiting for next trigger")
-            return
-        # если мёртв — ждём оживления, не плодя таймеры
-        if not self.watcher.is_alive():
-            print("[flow] waiting alive to restart cycle…")
-            self._awaiting_alive_restart = True
-            try:
-                self.root.after(1000, self._run_alive_flow)
-            except Exception:
-                time.sleep(1); self._run_alive_flow()
-            return
-
-        # если включён «подъём после смерти» — ждём решения, кто поднял
-        try:
-            ui_wants_raise = getattr(self, "respawn_ui", None) and self.respawn_ui.is_enabled()
-        except Exception:
-            ui_wants_raise = False
-
-        if ui_wants_raise and not getattr(self, "_revive_decided", True):
-            print("[flow] revive in progress, waiting…")
-            self._awaiting_alive_restart = True
-            try:
-                self.root.after(300, self._run_alive_flow)
-            except Exception:
-                time.sleep(0.3); self._run_alive_flow()
-            return
-
-        # стартуем цикл (очищаем ожидание)
-        self._awaiting_alive_restart = False
-        if self._flow_interrupted:
-            self._flow_interrupted = False
-
-        self._buff_was_success = False
-        self._cycle_success_marked = False
-        self.flow.run()
-
-    # resets restarts
-    def reset_and_run(self, reason: str = "unknown"):
-        """Единая точка восстановления: увеличить счётчик провалов, выполнить dashboard_reset и перезапустить цикл.
-           После превышения лимита подряд провалов — уходим в restart_account()."""
-        # дебаунс: не допускаем параллельных reset
-        if getattr(self, "_reset_in_progress", False):
-            print(f"[reset] skip (already in progress), reason={reason}")
-            return
-        self._reset_in_progress = True
-
-        try:
-            # аккуратная проверка лимита, чтобы не было '4/3'
-            next_fail = self._fail_streak + 1
-            if next_fail >= self._max_resets:
-                self._fail_streak = self._max_resets
-                print(f"[reset] reason={reason}, streak={self._fail_streak}/{self._max_resets} (limit)")
-                print("[reset] max attempts reached → restart_account()")
-                self.restart_account()
-                return
-
-            # увеличиваем счётчик и продолжаем reset-процедуру
-            self._fail_streak = next_fail
-            print(f"[reset] reason={reason}, streak={self._fail_streak}/{self._max_resets}")
-
-            # 1) сброс дашборда
-            try:
-                self._run_dashboard_reset()
-            except Exception as e:
-                print(f"[reset] dashboard_reset error: {e}")
-
-            # 2) если всё ещё мёртвы — повторная попытка «В деревню»
-            try:
-                if not self.watcher.is_alive():
-                    self._revive_decided = False
-                    ui_ok = (
-                        getattr(self, "respawn_ui", None)
-                        and getattr(self.respawn_ui, "is_enabled", None)
-                        and self.respawn_ui.is_enabled()
-                    )
-                    if ui_ok:
-                        print("[reset] still dead → retry ToVillage")
-                        threading.Thread(target=self._raise_after_death, daemon=True).start()
-            except Exception as e:
-                print(f"[reset] revive retry error: {e}")
-
-            # 3) метки и запуск цикла
-            self._tp_success = False
-            self._buff_was_success = False
-            self._flow_interrupted = True
-
-            if not getattr(self, "_awaiting_alive_restart", False):
-                self._awaiting_alive_restart = True
-                try:
-                    self.root.after(0, self._run_alive_flow)
-                except Exception:
-                    self._run_alive_flow()
-
-        finally:
-            self._reset_in_progress = False
-
-    def _run_dashboard_reset(self) -> bool:
-        """Выполнить flow core/servers/<server>/flows/dashboard_reset.py
-           Зоны/шаблоны берём из zones.tp (там есть dashboard_body, dashboard_init)."""
-        try:
-            flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.dashboard_reset")
-            flow = getattr(flow_mod, "FLOW", [])
-        except Exception as e:
-            print(f"[reset] load flow error: {e}")
-            return False
-
-        try:
-            zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.tp")
-            zones = getattr(zones_mod, "ZONES", {})
-            templates = getattr(zones_mod, "TEMPLATES", {})
-        except Exception as e:
-            print(f"[reset] zones load error: {e}")
-            zones, templates = {}, {}
-
-        ctx = FlowCtx(
-            server=self.server,
-            controller=self.controller,
-            get_window=lambda: self._safe_window(),
-            get_language=lambda: self.language,
-            zones=zones,
-            templates=templates,
-            extras=self._flow_extras(),   # ← тут
-        )
-        execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
-        ok = run_flow(flow, execu)
-        print(f"[reset] dashboard_reset → {ok}")
-        return ok
-
-    def _run_restart_flow(self) -> bool:
-        """Выполнить flow core/servers/<server>/flows/restart.py с зонами zones/restart.py."""
-        try:
-            flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.restart")
-            flow = getattr(flow_mod, "FLOW", [])
-        except Exception as e:
-            print(f"[restart] load flow error: {e}")
-            return False
-
-        try:
-            zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.restart")
-            zones = getattr(zones_mod, "ZONES", {})
-            templates = getattr(zones_mod, "TEMPLATES", {})
-        except Exception as e:
-            print(f"[restart] zones load error: {e}")
-            zones, templates = {}, {}
-
-        ctx = FlowCtx(
-            server=self.server,
-            controller=self.controller,
-            get_window=lambda: self._safe_window(),
-            get_language=lambda: self.language,
-            zones=zones,
-            templates=templates,
-            extras=self._flow_extras(),   # ← было {"account": self.account}
-        )
-        execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
-        ok = run_flow(flow, execu)
-        print(f"[restart] flow → {ok}")
-        return ok
-
-
-    def restart_account(self):
-        """Рестарт аккаунта: на время рестарта останавливаем StateWatcher.
-           Если рестарт неудачный — пробуем несколько раз; watcher включаем только при успехе."""
-        print("[reset] restart_account …")
-
-        ok = False
-        was_running = False
-        self._restart_in_progress = True
-        self._flow_interrupted = True
-
-        try:
-            # 1) стопим watcher один раз
-            was_running = self.watcher.is_running()
-            if was_running:
-                self.watcher.stop()
-                print("[reset] watcher OFF during restart")
-
-            attempts = 0
-            while attempts < int(getattr(self, "_max_restart_attempts", 5)) and not ok:
-                attempts += 1
-                print(f"[restart] attempt {attempts}/{self._max_restart_attempts}")
-
-                # 2) каждый раз заново подхватываем flow/zones
-                try:
-                    flow_mod = importlib.import_module(f"core.servers.{self.server}.flows.restart")
-                    flow = getattr(flow_mod, "FLOW", [])
-                except Exception as e:
-                    print(f"[restart] load flow error: {e}")
-                    flow = []
-
-                try:
-                    zones_mod = importlib.import_module(f"core.servers.{self.server}.zones.restart")
-                    zones = getattr(zones_mod, "ZONES", {})
-                    templates = getattr(zones_mod, "TEMPLATES", {})
-                except Exception as e:
-                    print(f"[restart] load zones error: {e}")
-                    zones, templates = {}, {}
-
-                # 3) запускаем рестарт-флоу
-                ctx = FlowCtx(
-                    server=self.server,
-                    controller=self.controller,
-                    get_window=lambda: self._safe_window(),
-                    get_language=lambda: self.language,
-                    zones=zones,
-                    templates=templates,
-                    extras=self._flow_extras(),  # логин/пароль/pin из UI
-                )
-                execu = FlowOpExecutor(ctx, on_status=lambda msg, ok: print(msg), logger=lambda m: print(m))
-                ok = run_flow(flow, execu)
-                print(f"[restart] flow → {ok}")
-
-                if not ok and attempts < self._max_restart_attempts:
-                    # мягкий сброс + пауза между попытками
-                    try:
-                        self._run_dashboard_reset()
-                    except Exception as e:
-                        print(f"[restart] fallback dashboard_reset error: {e}")
-                    try:
-                        time.sleep(float(getattr(self, "_restart_retry_delay_s", 2.0)))
-                    except Exception:
-                        pass
-
-        finally:
-            # 4) watcher включаем только при успехе
-            try:
-                self.watcher._alive_flag = None
-            except:
-                pass
-
-            if was_running and ok:
-                self.watcher.start()
-                print("[reset] watcher ON after restart")
-                self._fail_streak = 0
-                try:
-                    self.root.after(0, self._run_alive_flow)
-                except Exception:
-                    self._run_alive_flow()
-            elif was_running and not ok:
-                print("[reset] watcher remains OFF (restart failed)")
-
-            self._restart_in_progress = False
-
-
-
-    def _is_row_selected(self) -> bool:
-        get_row = getattr(self.tp, "get_selected_row_id", None)
-        return bool(callable(get_row) and get_row())
-
-    def _mark_cycle_success(self, where: str):
-        if self._fail_streak:
-            print(f"[reset] success at {where} → streak 0")
-        self._fail_streak = 0
-        self._flow_interrupted = False
-        self._cycle_success_marked = True
-
-    # ---------------- respawn controls ----------------
-    def _respawn_start(self):
-        if not self.watcher.is_running():
-            self.watcher.start()
-            print("[state] watcher ON")
-        else:
-            print("[state] watcher already running")
-
-    def _respawn_stop(self):
-        if self.watcher.is_running():
-            self.watcher.stop()
-        print("[state] watcher OFF")
-
-    def _toggle_autobuff(self, enabled: bool):
-        self._autobuff_enabled = bool(enabled)
-        # поллер уже крутится; флаг управляет логикой в _buff_interval_tick
 
     # ---------------- helpers ----------------
     def _safe_window(self):
@@ -856,26 +177,17 @@ class ReviveLauncherUI:
         except Exception:
             return None
 
-    def _check_is_dead(self) -> bool:
-        try:
-            return not self.watcher.is_alive()
-        except Exception:
-            return False
+    # ---------------- watcher → orchestrator ----------------
+    def _on_dead_proxy(self, st):
+        self.orch.on_dead(st)
 
-    def _load_list_rows(self):
-        """Динамически подхватывает list_rows из core.servers.<server>.flows.rows.registry."""
-        try:
-            mod = importlib.import_module(f"core.servers.{self.server}.flows.rows.registry")
-            fn = getattr(mod, "list_rows", None)
-            if callable(fn):
-                return fn
-        except Exception as e:
-            print(f"[rows] resolver load error: {e}")
-        return lambda *_: []
+    def _on_alive_proxy(self, st):
+        self.orch.on_alive(st)
+
     # ---------------- UI build ----------------
     def build_ui(self, parent: tk.Widget, local_version: str):
-        # Блок 1: системные настройки (язык, сервер, поиск окна, коннект, версия, апдейт, выход)
-        top = _Collapsible(parent, "Системные настройки", opened=True)
+        # Системный блок
+        top = Collapsible(parent, "Системные настройки", opened=True)
         top.pack(fill="x", padx=8, pady=4)
 
         # язык
@@ -887,28 +199,17 @@ class ReviveLauncherUI:
         ).pack(side="left", padx=(0, 20))
 
         # сервер
-        server_frame = tk.Frame(top.body())
-        server_frame.pack(pady=(2, 6), anchor="center")
+        server_frame = tk.Frame(top.body()); server_frame.pack(pady=(2, 6), anchor="center")
         tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 12))
-        # ↓↓↓ добавь это
-        servers = list_servers()
-        if not servers:
-            servers = ["l2mad"]  # безопасный дефолт, если автопоиск ничего не вернул
+        servers = list_servers() or ["l2mad"]
         if self.server not in servers:
-            self.server = servers[0]
-            self.server_var.set(self.server)
-        # ↑↑↑
+            self.server = servers[0]; self.server_var.set(self.server)
         ttk.OptionMenu(
-            server_frame,
-            self.server_var,
-            self.server_var.get(),
-            *servers,
-            command=self.set_server
+            server_frame, self.server_var, self.server_var.get(), *servers, command=self.set_server
         ).pack(side="left", padx=(0, 20))
 
         # окно
-        window_frame = tk.Frame(top.body())
-        window_frame.pack(pady=(2, 10), anchor="center")
+        window_frame = tk.Frame(top.body()); window_frame.pack(pady=(2, 10), anchor="center")
         tk.Button(window_frame, text="🔍 Найти окно Lineage", command=self.winprobe.try_find_window_again).pack(
             side="left", padx=(0, 8)
         )
@@ -918,9 +219,7 @@ class ReviveLauncherUI:
 
         # связь
         self.driver_status = tk.Label(top.body(), text="Состояние связи: неизвестно", fg="gray")
-        tk.Button(
-            top.body(), text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)
-        ).pack(pady=5)
+        tk.Button(top.body(), text="🧪 Тест коннекта", command=lambda: run_test_command(self.controller, self.driver_status)).pack(pady=5)
         self.driver_status.pack(pady=(0, 5))
 
         # версия + апдейтер
@@ -934,21 +233,20 @@ class ReviveLauncherUI:
         ).pack()
 
         # аккаунт
-        tk.Button(top.body(), text="Настроить аккаунт", command=self._open_account_dialog).pack(pady=(6,2))
-
+        tk.Button(top.body(), text="Настроить аккаунт", command=self._open_account_dialog).pack(pady=(6, 2))
 
         # выход
         tk.Button(top.body(), text="Выход", fg="red", command=self.exit_program).pack(pady=10)
 
-        # Блок 2: рабочий поток — отслеживание состояния · Баф · Макросы · ТП
-        flow = _Collapsible(parent, "Отслеживать состояние · Баф · Макросы · ТП", opened=True)
+        # Рабочий поток
+        flow = Collapsible(parent, "Отслеживать состояние · Баф · Макросы · ТП", opened=True)
         flow.pack(fill="x", padx=8, pady=4)
 
         # 1) Мониторинг/подъём
         self.respawn_ui = RespawnControls(parent=flow.body(), start_fn=self._respawn_start, stop_fn=self._respawn_stop)
         StateControls(parent=self.respawn_ui.get_body(), state_getter=lambda: self.watcher.last())
 
-       # 2) Баф
+        # 2) Баф
         self.buff = BuffControls(
             parent=flow.body(),
             controller=self.controller,
@@ -958,14 +256,12 @@ class ReviveLauncherUI:
             profile_getter=lambda: self.profile,
             window_found_getter=lambda: bool(self.winprobe.window_found),
         )
-
-        BuffIntervalControl(
-            flow.body(),
-            checker=self.checker,
-            on_toggle_autobuff=self._toggle_autobuff,
-            intervals=(1, 5, 10, 20),
-        )
-
+        # BuffIntervalControl(
+        #     flow.body(),
+        #     checker=self.checker,
+        #     on_toggle_autobuff=lambda en: self.autobuff.set_enabled(bool(en)),
+        #     intervals=(1, 5, 10, 20),
+        # )
 
         # 3) Макросы после бафа
         self.afterbuff_ui = AfterBuffMacrosControls(flow.body())
@@ -984,34 +280,128 @@ class ReviveLauncherUI:
             get_language=lambda: self.language,
             get_window_info=lambda: self._safe_window(),
             profile_getter=lambda: self.profile,
-            check_is_dead=self._check_is_dead,
+            check_is_dead=lambda: (not self.watcher.is_alive()),
         )
-        self._list_rows_fn = self._load_list_rows()
-        # --- блок: маршрут после ТП ---
-        rows_frame = tk.Frame(tp_frame)  # ← привязываем к секции ТП
-        rows_frame.pack(fill="x", padx=6, pady=(4, 6), anchor="w")
 
-        tk.Label(rows_frame, text="Маршрут после ТП:").pack(side="left", padx=(0, 8))
-        self._rows_menu = ttk.Combobox(
-            rows_frame,
-            textvariable=self._row_var,
-            state="readonly",
-            width=28,
-            values=[],
+        # передаём UI в оркестратор
+        self.orch.set_ui(
+            buff_is_enabled=lambda: self.buff.is_enabled(),
+            buff_run_once=lambda: self.buff.run_once(),
+            macros_ui_is_enabled=lambda: self.afterbuff_ui.is_enabled(),
+            macros_ui_run_always=lambda: self.afterbuff_ui.run_always(),
+            macros_ui_get_duration_s=lambda: self.afterbuff_ui.get_duration_s(),
+            macros_run_once=lambda: self.afterbuff_runner.run_once(),
+            tp_is_enabled=lambda: self.tp.is_enabled(),
+            tp_teleport_now_selected=lambda: self.tp.teleport_now_selected(),
+            tp_get_selected_destination=lambda: self.tp.get_selected_destination(),
+            tp_get_selected_row_id=lambda: self.tp.get_selected_row_id(),
+            respawn_ui_is_enabled=lambda: self.respawn_ui.is_enabled(),
         )
+
+        # --- блок: маршрут после ТП ---
+        rows_frame = tk.Frame(tp_frame)
+        rows_frame.pack(fill="x", padx=6, pady=(4, 6), anchor="w")
+        tk.Label(rows_frame, text="Маршрут после ТП:").pack(side="left", padx=(0, 8))
+        self._rows_menu = ttk.Combobox(rows_frame, textvariable=self._row_var, state="readonly", width=28, values=[])
         self._rows_menu.pack(side="left")
-        self._rows_menu.bind("<<ComboboxSelected>>", self._on_row_selected)
+        self._rows_menu.bind("<<ComboboxSelected>>", lambda *_: self._on_row_selected_from_ui())
         ttk.Button(rows_frame, text="Очистить", command=self._clear_row).pack(side="left", padx=6)
 
-        # автоподгрузка маршрутов при смене пункта ТП
-        self.root.after(200, self._rows_watch)
+        # контроллер маршрутов
+        self.rows_ctrl = RowsController(
+            get_server=lambda: self.server,
+            get_language=lambda: self.language,
+            get_destination=lambda: self.tp.get_selected_destination(),
+            schedule=lambda fn, ms: self.root.after(ms, fn),
+            on_values=self._rows_set_values,
+            on_select_row_id=lambda rid: self.tp.set_selected_row_id(rid or ""),
+            log=print,
+        )
+        self.rows_ctrl.start()
 
-        # авто-проверка обновлений
+        # авто-проверка обновлений периодически
         def _schedule_update_check():
             run_update_check(local_version, self.version_status_label, self.root, self)
             self.root.after(600_000, _schedule_update_check)
 
         _schedule_update_check()
+
+    # ---------------- rows helpers ----------------
+    def _rows_set_values(self, rows: list[tuple[str, str]]):
+        """rows: [(row_id, title)]"""
+        self._rows_cache = rows[:]
+        titles = [t for (_id, t) in rows]
+        try:
+            self._rows_menu["values"] = titles
+        except Exception:
+            pass
+        # синхронизировать отображаемый текст
+        if not titles:
+            self._row_var.set("")
+        else:
+            # если текущий невалиден — выбрать первый
+            cur_id = self.tp.get_selected_row_id() or ""
+            if cur_id and any(rid == cur_id for (rid, _t) in rows):
+                # выставим соответствующий титул
+                for rid, t in rows:
+                    if rid == cur_id:
+                        self._row_var.set(t)
+                        break
+            else:
+                self._row_var.set(titles[0])
+
+    def _row_id_from_title(self, title: str) -> str | None:
+        for rid, t in self._rows_cache:
+            if t == title:
+                return rid
+        return None
+
+    def _on_row_selected_from_ui(self):
+        rid = self._row_id_from_title(self._row_var.get() or "")
+        try:
+            self.tp.set_selected_row_id(rid or "")
+        except Exception:
+            pass
+
+    def _clear_row(self):
+        self._row_var.set("")
+        self._on_row_selected_from_ui()
+
+    # ---------------- respawn controls ----------------
+    def _respawn_start(self):
+        if not self.watcher.is_running():
+            self.watcher.start()
+            print("[state] watcher ON")
+        else:
+            print("[state] watcher already running")
+
+    def _respawn_stop(self):
+        if self.watcher.is_running():
+            self.watcher.stop()
+        print("[state] watcher OFF")
+
+    # ---------------- setters ----------------
+    def set_language(self, lang):
+        self.language = (lang or "rus").lower()
+        print(f"[UI] Язык интерфейса установлен: {self.language}")
+
+    def set_server(self, server):
+        self.server = (server or "l2mad").lower()
+        print(f"[UI] Сервер установлен: {self.server}")
+        self.profile = get_server_profile(self.server)
+
+        try:
+            self.watcher.set_server(self.server)
+        except Exception:
+            pass
+        try:
+            self.to_village.set_server(self.server)
+        except Exception:
+            pass
+        try:
+            self.buff.refresh_enabled(self.profile)
+        except Exception:
+            pass
 
     # -----------------account settings -----------------------
     def _open_account_dialog(self):
@@ -1027,145 +417,19 @@ class ReviveLauncherUI:
             "pin": data.get("pin", ""),
         })
         print("[account] saved")
-        # self.account.update(data)
-        # print("[account] saved (login set, password masked, pin len:", len(self.account.get("pin","")), ")")
-
 
     # ---------------- window probe callbacks ----------------
-    def _on_window_found(self, win_info: dict):
-        br = getattr(self, "buff_runner", None)
-        supports = bool(getattr(self.profile, "supports_buffing", lambda: False)())
-        if br and supports and not br.is_running():
-            br.start()
-
-    # ---------------- setters ----------------
-    def set_language(self, lang):
-        self.language = (lang or "rus").lower()
-        print(f"[UI] Язык интерфейса установлен: {self.language}")
-        # watcher берет язык через callback, ничего делать не нужно
-
-    def set_server(self, server):
-        self.server = (server or "l2mad").lower()
-        print(f"[UI] Сервер установлен: {self.server}")
-        self.profile = get_server_profile(self.server)
-
-        self._list_rows_fn = None  # кэш резолвера list_rows
-
-        br = getattr(self, "buff_runner", None)
-        if br and br.is_running():
-            br.stop()
-        if hasattr(self.profile, "buff_tick"):
-            self.buff_runner = RepeaterThread(
-                fn=lambda: self.profile.buff_tick(self._safe_window(), self.controller, language=self.language, debug=True),
-                interval=15.0,
-                debug=False,
-            )
-        else:
-            self.buff_runner = None
-
-        try:
-            self.watcher.set_server(self.server)
-        except Exception:
-            pass
-        try:
-            self.to_village.set_server(self.server)
-        except Exception:
-            pass
-        try:
-            self.buff.refresh_enabled(self.profile)
-        except Exception:
-            pass
-        try:
-            self._refresh_buff_methods()
-        except Exception:
-            pass
-        try:
-            self._list_rows_fn = self._load_list_rows()
-        except Exception:
-            self._list_rows_fn = lambda *_: []
-    # ---------------- rows (post-TP) ----------------
-    def _rows_watch(self):
-        get_sel = getattr(self.tp, "get_selected_destination", None)
-        dest = get_sel() if callable(get_sel) else ("", "")
-        # print("[rows] dest:", dest)  # ← увидеть ("cat_id","loc_id")
-        if dest != self._last_row_dest:
-            self._last_row_dest = dest
-            self._reload_rows()
-        try:
-            self.root.after(400, self._rows_watch)
-        except Exception:
-            pass
-
-    def _row_id_from_title(self, title: str):
-        for rid, t in self._rows_cache:
-            if t == title:
-                return rid
-        return None
-
-    def _on_row_selected(self, *_):
-        rid = self._row_id_from_title(self._row_var.get() or "")
-        try:
-            self.tp.set_selected_row_id(rid or "")
-        except Exception:
-            pass
-
-    def _reload_rows(self):
-        cat, loc = self._last_row_dest
-        rows = []  # <- гарантированно определена
-
-        try:
-            fn = self._list_rows_fn or self._load_list_rows()
-            self._list_rows_fn = fn  # кэшируем на будущее
-            if cat and loc:
-                rows = fn(cat, loc) or []
-        except Exception as e:
-            print(f"[rows] fetch error: {e}")
-            rows = []
-
-        lang = (self.language or "rus").lower()
-
-        def title_of(r):
-            if lang == "rus":
-                return r.get("title_rus") or r.get("id")
-            return r.get("title_eng") or r.get("title_rus") or r.get("id")
-
-        self._rows_cache = [(r["id"], title_of(r)) for r in rows if r.get("id")]
-        values_list = [t for (_id, t) in self._rows_cache]
-
-        if self._rows_menu:
-            try:
-                self._rows_menu["values"] = values_list
-            except Exception:
-                pass
-
-        cur_id = self._row_id_from_title(self._row_var.get() or "")
-        valid_ids = [rid for (rid, _t) in self._rows_cache]
-
-        if not values_list:
-            self._row_var.set("")
-            self._on_row_selected()
-        elif cur_id not in valid_ids:
-            self._row_var.set(values_list[0])
-            self._on_row_selected()
-
-
-    def _clear_row(self):
-        self._row_var.set("")
-        self._on_row_selected()
+    def _on_window_found(self, _win_info: dict):
+        pass  # логика автозапуска профилированных тиков вынесена из launcher
 
     # ---------------- shutdown ----------------
     def exit_program(self):
         try:
-            self.respawn.stop()
-        except Exception:
-            pass
-        try:
-            if self.buff_runner:
-                self.buff_runner.stop()
-        except Exception:
-            pass
-        try:
             self.watcher.stop()
+        except Exception:
+            pass
+        try:
+            self.autobuff.stop()
         except Exception:
             pass
         if self.controller:
@@ -1173,11 +437,6 @@ class ReviveLauncherUI:
                 self.controller.close()
             except Exception:
                 pass
-        try:
-            if self.charge_poller:
-                self.charge_poller.stop()
-        except Exception:
-            pass
         self.root.destroy()
         sys.exit(0)
 
@@ -1186,20 +445,18 @@ class ReviveLauncherUI:
 def launch_gui(local_version: str):
     root = tk.Tk()
     root.title("Revive Launcher")
-    root.geometry("620x700")  # фиксированная высота 700
+    root.geometry("620x700")
     root.resizable(False, False)
 
-    # прокручиваемая область для всего контента ниже заголовка
     header = tk.Frame(root)
     header.pack(fill="x")
     tk.Label(header, text="Revive", font=("Arial", 20, "bold"), fg="orange").pack(pady=10)
-    tk.Label(header, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5))
+    tk.Label(header, text="Функции:", font=("Arial", 12, "bold")).pack(pady=(5,))
 
-    scroll = _VScrollFrame(root)
+    scroll = VScrollFrame(root)
     scroll.pack(fill="both", expand=True)
 
-    parent = tk.Frame(scroll.interior)
-    parent.pack(pady=10, fill="both", expand=True)
+    parent = tk.Frame(scroll.interior); parent.pack(pady=10, fill="both", expand=True)
 
     app = ReviveLauncherUI(root)
     app.build_ui(parent, local_version)
