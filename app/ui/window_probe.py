@@ -18,7 +18,7 @@ class WindowProbe:
     def __init__(self, root: tk.Tk, on_found: Callable[[Dict], None], titles: Optional[List[str]] = None, poll_ms: int = 3000):
         self.root = root
         self.on_found_cb = on_found
-        self.window_titles = titles or ["Lineage", "Lineage II", "L2MAD", "L2"]
+        self.window_titles = titles or ["Lineage", "Lineage II", "L2MAD", "L2", "BOHPTS"]
         self.window_poll_interval_ms = int(poll_ms)
 
         self.window_info: Optional[Dict] = None
