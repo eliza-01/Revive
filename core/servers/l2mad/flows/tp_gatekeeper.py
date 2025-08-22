@@ -1,3 +1,4 @@
+﻿# core/servers/l2mad/flows/tp_gatekeeper.py
 # L2MAD teleport flow (gatekeeper) — временно повторяет dashboard.
 # Замените шаги под реальные действия с GK.
 FLOW = [

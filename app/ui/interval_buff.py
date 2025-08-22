@@ -1,4 +1,4 @@
-﻿# app/ui/settings.py
+﻿# app/ui/interval_buff.py
 import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable, Iterable

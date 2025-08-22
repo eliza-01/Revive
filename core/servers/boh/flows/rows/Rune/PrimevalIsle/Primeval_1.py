@@ -1,4 +1,4 @@
-# core/servers/l2mad/flows/rows/Rune/PrimevalIsle/Primeval_1.py
+﻿# core/servers/boh/flows/rows/Rune/PrimevalIsle/Primeval_1.py
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
     {"op": "sleep", "ms": 2000},

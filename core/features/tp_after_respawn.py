@@ -1,3 +1,4 @@
+# core/features/tp_after_respawn.py
 from __future__ import annotations
 import time
 import importlib
@@ -14,7 +15,7 @@ class TPAfterDeathWorker:
     Телепорт после смерти с выбором метода:
       - flows: core.servers.<server>.flows.tp_<method>  (fallback: flows.tp)
       - zones: core.servers.<server>.zones.tp_<method>  (fallback: zones.tp)
-    Для L2MAD сервер зашит как 'l2mad' (как и было до ветвления).
+    Сервер не хардкодится: задаётся в конструкторе или через set_server().
     """
     def __init__(
         self,
@@ -24,39 +25,52 @@ class TPAfterDeathWorker:
         on_status: Callable[[str, Optional[bool]], None] = lambda *_: None,
         check_is_dead: Optional[Callable[[], bool]] = None,
         wait_alive_timeout_s: float = 1.0,
+        *,
+        server: str = "l2mad",
+        get_window: Optional[Callable[[], Optional[Dict]]] = None,
     ):
         self._controller = controller
-        self._window_info = window_info
-        self._get_language = get_language
         self._on_status = on_status
+        self._get_language = get_language
         self._check_is_dead = check_is_dead
         self._wait_alive_timeout_s = float(wait_alive_timeout_s)
 
-        self._server = "l2mad"  # как в текущей версии (UI локации тоже из l2mad)
+        # окно: либо переданный коллбек, либо внутренняя ссылка, которую можно обновлять через .window
+        self._window_info = window_info
+        self._get_window = get_window if callable(get_window) else (lambda: self._window_info)
+
+        # состояние
+        self._server = (server or "l2mad").lower()
         self._method = TP_METHOD_DASHBOARD
-        self._category_id: Optional[str] = None
-        self._location_id: Optional[str] = None
+        self._category_id: str = ""
+        self._location_id: str = ""
 
-    # UI дергает это при смене метода
-    def set_method(self, method: str):
-        m = (method or TP_METHOD_DASHBOARD).lower()
-        self._method = m if m in (TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER) else TP_METHOD_DASHBOARD
+    # --- свойства/сеттеры ---
+    @property
+    def server(self) -> str:
+        return self._server
 
-    # UI вызывает перед телепортом
-    def configure(self, category_id: str, location_id: str, method: str = TP_METHOD_DASHBOARD):
-        self._category_id = category_id or ""
-        self._location_id = location_id or ""
-        self.set_method(method)
+    def set_server(self, server: str):
+        self._server = (server or "l2mad").lower()
 
-    # чтобы UI мог обновлять окно перед запуском
     @property
     def window(self) -> Optional[dict]:
         return self._window_info
 
     @window.setter
     def window(self, win: Optional[dict]):
-        self._window_info = win
+        self._window_info = win  # _get_window читает это поле
 
+    def set_method(self, method: str):
+        m = (method or TP_METHOD_DASHBOARD).lower()
+        self._method = m if m in (TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER) else TP_METHOD_DASHBOARD
+
+    def configure(self, category_id: str, location_id: str, method: str = TP_METHOD_DASHBOARD):
+        self._category_id = (category_id or "").strip()
+        self._location_id = (location_id or "").strip()
+        self.set_method(method)
+
+    # --- утилиты ---
     def _wait_until_alive(self, timeout_s: float) -> bool:
         if not callable(self._check_is_dead):
             return True
@@ -68,8 +82,10 @@ class TPAfterDeathWorker:
             except Exception:
                 return True
             time.sleep(0.25)
-        return True  # мягко: не блокируем, просто продолжаем
+        # Мягко продолжаем, чтобы не блокировать цикл, как в текущей логике
+        return True
 
+    # --- основной вызов ТП ---
     def teleport_now(self, category_id: str, location_id: str, method: Optional[str] = None) -> bool:
         cat = (category_id or self._category_id or "").strip()
         loc = (location_id or self._location_id or "").strip()
@@ -84,9 +100,8 @@ class TPAfterDeathWorker:
 
         server = self._server
 
-        # ---- resolver (для click_village / click_location) ----
+        # ---- resolver (в L2MAD и BOH лежит в templates/resolver.py) ----
         try:
-            # ВНИМАНИЕ: у L2MAD resolver лежит в templates/
             rmod = importlib.import_module(f"core.servers.{server}.templates.resolver")
             resolver = getattr(rmod, "resolve")
         except Exception as e:
@@ -98,8 +113,9 @@ class TPAfterDeathWorker:
             try:
                 fmod = importlib.import_module(f"core.servers.{server}.flows.tp_{self._method}")
             except Exception:
+                # откат на старое имя файла
                 fmod = importlib.import_module(f"core.servers.{server}.flows.tp")
-            flow = getattr(fmod, "FLOW", [])
+            flow = list(getattr(fmod, "FLOW", []))
         except Exception as e:
             self._on_status(f"[tp] flow load error: {e}", False)
             return False
@@ -110,21 +126,22 @@ class TPAfterDeathWorker:
                 zmod = importlib.import_module(f"core.servers.{server}.zones.tp_{self._method}")
             except Exception:
                 zmod = importlib.import_module(f"core.servers.{server}.zones.tp")
-            zones = getattr(zmod, "ZONES", {})
-            templates = getattr(zmod, "TEMPLATES", {})
+            zones = dict(getattr(zmod, "ZONES", {}))
+            templates = dict(getattr(zmod, "TEMPLATES", {}))
         except Exception as e:
             self._on_status(f"[tp] zones load error: {e}", False)
             return False
 
+        # ---- запуск ----
         ctx = FlowCtx(
             server=server,
             controller=self._controller,
-            get_window=lambda: self._window_info,
+            get_window=self._get_window,
             get_language=self._get_language,
             zones=zones,
             templates=templates,
             extras={
-                "resolver": resolver,
+                "resolver": resolver,   # используется в click_village / click_location
                 "category_id": cat,
                 "location_id": loc,
             },

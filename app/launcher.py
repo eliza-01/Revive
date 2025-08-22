@@ -24,14 +24,11 @@ from app.ui.account_settings import AccountSettingsDialog
 from app.ui.widgets import Collapsible, VScrollFrame
 
 from core.features.afterbuff_macros import AfterBuffMacroRunner
-from core.features.post_tp_row import PostTPRowRunner
+from core.features.post_tp_row import PostTPRowRunner, RowsController
 from core.features.to_village import ToVillage
 from core.features.flow_orchestrator import FlowOrchestrator
 from core.features.restart_manager import RestartManager
 from core.features.autobuff_service import AutobuffService
-
-from app.controllers.rows_controller import RowsController
-
 
 def _init_logging():
     LOG_PATH = "revive.log"

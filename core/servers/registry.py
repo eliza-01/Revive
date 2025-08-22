@@ -1,3 +1,4 @@
+﻿# core/servers/registry.py
 # РЕЕСТР СЕРВЕРОВ: автопоиск core.servers.<server_id> c profile.py
 from __future__ import annotations
 from importlib import import_module

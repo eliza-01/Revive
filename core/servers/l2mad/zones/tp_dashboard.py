@@ -1,4 +1,4 @@
-# core/servers/l2mad/zones/tp.py
+﻿# core/servers/l2mad/zones/tp_dashboard.py
 from typing import Dict, Tuple
 
 Zone = Tuple[int, int, int, int]

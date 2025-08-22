@@ -1,4 +1,4 @@
-# core/servers/l2mad/flows/rows/Goddard/VarkaSilenosStronghold/Varka_1.py
+﻿# core/servers/boh/flows/rows/Goddard/VarkaSilenosStronghold/Varka_1.py
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
     {"op": "sleep", "ms": 1000},
