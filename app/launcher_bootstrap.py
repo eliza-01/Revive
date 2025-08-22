@@ -1,3 +1,4 @@
+# File: app/launcher_bootstrap.py
 from __future__ import annotations
 import os, sys, glob, time, tempfile, subprocess, threading, platform, struct
 import tkinter as tk
@@ -12,13 +13,13 @@ if PROJ_ROOT not in sys.path:
 BITS = 64 if struct.calcsize("P")==8 else 32
 # offline-файл (если есть — используем его)
 OFFLINE_INSTALLER_PATH = os.path.join(os.path.dirname(__file__), "dep", "MicrosoftEdgeWebView2RuntimeInstallerX64.exe")
-# online-URL (твой, фиксированный x64)
+# online-URL (фиксированный x64, можно переопределить переменной окружения WV2_URL)
 DOWNLOAD_URL = os.getenv("WV2_URL") or \
     "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0d95f327-a869-4d28-9746-2212baa3228f/MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 FORCE_INSTALL = os.getenv("WV2_FORCE") == "1"
 
-HTML_LAUNCH_FN = ("app.launcher_html", "launch_gui_html")  # если нет — встроенный HTML-тест
-TK_LAUNCH_FN   = ("app.launcher",      "launch_gui")       # если нет — простой Tk-фолбэк
+HTML_LAUNCH_FN = ("app.launcher_html", "launch_gui_html")  # основной UI (HTML)
+TK_LAUNCH_FN   = ("app.launcher",      "launch_gui")       # запасной UI (Tk)
 
 # ---- поиск WebView2/Edge папки ----
 PF64  = r"C:\Program Files\Microsoft\EdgeWebView\Application"
@@ -31,7 +32,6 @@ EA86  = r"C:\Program Files (x86)\Microsoft\Edge\Application"
 
 def _pick_webview_folder() -> str|None:
     """Возвращает папку версии с движком. Приоритет: user-runtime → system-runtime → EdgeCore/Edge."""
-    import os, glob
     def scan(base: str, exe: str) -> str|None:
         if not base or not os.path.isdir(base): return None
         vers = sorted(glob.glob(os.path.join(base, "*.*.*.*")), reverse=True)
@@ -72,7 +72,7 @@ def download_with_progress(url: str, dst_path: str, progress_cb):
 
 def is_signature_valid(path: str) -> bool:
     ps = ["powershell","-NoProfile","-ExecutionPolicy","Bypass",
-          "(Get-AuthenticodeSignature '{}').Status".format(path.replace("'","''"))]
+          "(Get-AuthenticodeSignature '{}').Status".format(path.replace(\"'\",\"''\"))]
     try:
         out = subprocess.check_output(ps, stderr=subprocess.STDOUT, text=True, timeout=20)
         return "Valid" in out
