@@ -12,8 +12,7 @@ import importlib
 from core.connection import ReviveController
 from core.connection_test import run_test_command
 
-from core.servers.registry import get_server_profile
-from core.servers.l2mad.flows.rows.registry import list_rows
+from core.servers.registry import get_server_profile, list_servers, BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC
 
 from core.runtime.state_watcher import StateWatcher
 from core.runtime.poller import RepeaterThread
@@ -130,10 +129,18 @@ class ReviveLauncherUI:
     def __init__(self, root: tk.Tk):
         self.root = root
 
+        # --- servers ---
+        servers = list_servers()
+        default_server = servers[0] if servers else "l2mad"
+        self.server = default_server
+        self.server_var = tk.StringVar(value=self.server)
+
         # --- state ---
         self.language = "rus"
         self.language_var = tk.StringVar(value=self.language)
-        self.server = "l2mad"
+
+        servers = list_servers()
+        self.server = servers[0] if servers else "l2mad"   # авто-первый найденный
         self.server_var = tk.StringVar(value=self.server)
 
         self._alive_flag = True
@@ -149,6 +156,11 @@ class ReviveLauncherUI:
 
         # --- server profile FIRST ---
         self.profile = get_server_profile(self.server)
+
+        # buff method
+        self.buff_method_var = tk.StringVar(value="")
+        self._buff_mode_menu = None
+        self._buff_mode_container = None
 
         # --- post-TP rows UI state ---
         self._row_var = tk.StringVar(value="")
@@ -277,6 +289,14 @@ class ReviveLauncherUI:
 
         self.update_window_ref = None
 
+    # ----------------  list_rows  ----------------
+    def _load_list_rows(self):
+        """Динамически подхватывает list_rows из core.servers.<server>.flows.rows.registry."""
+        try:
+            mod = importlib.import_module(f"core.servers.{self.server}.flows.rows.registry")
+            return getattr(mod, "list_rows", lambda *_: [])
+        except Exception:
+            return lambda *_: []
     # ----------------  Charge Flow  ----------------
     def _flow_extras(self):
         acc = getattr(self, "account", {"login":"", "password":"", "pin":""})
@@ -411,6 +431,63 @@ class ReviveLauncherUI:
             self.reset_and_run("row_exception")
         finally:
             self._tp_success = False
+
+    # ----------------  Buff Mode Changer  ----------------
+    def _on_buff_mode_change(self, value: str):
+        try:
+            self.profile.set_buff_mode(value)
+            self.buff_method_var.set(value)
+            print(f"[UI] buff mode set: {value}")
+        except Exception as e:
+            print(f"[UI] buff mode set error: {e}")
+
+    def _refresh_buff_methods(self):
+        # если контейнер ещё не создан — выходим
+        if not self._buff_mode_container:
+            return
+
+        # очистим старое меню (если было)
+        try:
+            if self._buff_mode_menu:
+                self._buff_mode_menu.destroy()
+        except Exception:
+            pass
+
+        # спросить у профиля поддерживаемые методы
+        try:
+            supported = list(self.profile.buff_supported_methods() or [])
+        except Exception:
+            supported = []
+
+        if not supported:
+            # нет бафа — показывать нечего
+            self._buff_mode_menu = ttk.Label(self._buff_mode_container, text="нет")
+            self._buff_mode_menu.pack(side="left")
+            self.buff_method_var.set("")
+            return
+
+        # текущее значение — из профиля (или первый метод)
+        try:
+            current = self.profile.get_buff_mode()
+        except Exception:
+            current = None
+        if current not in supported:
+            current = supported[0]
+            try:
+                self.profile.set_buff_mode(current)
+            except Exception:
+                pass
+        self.buff_method_var.set(current)
+
+        # построить OptionMenu
+        self._buff_mode_menu = ttk.OptionMenu(
+            self._buff_mode_container,
+            self.buff_method_var,
+            current,
+            *supported,
+            command=self._on_buff_mode_change
+        )
+        self._buff_mode_menu.pack(side="left")
 
     # ----------------  Buff Interval Checker ----------------
     def _buff_interval_tick(self):
@@ -785,6 +862,16 @@ class ReviveLauncherUI:
         except Exception:
             return False
 
+    def _load_list_rows(self):
+        """Динамически подхватывает list_rows из core.servers.<server>.flows.rows.registry."""
+        try:
+            mod = importlib.import_module(f"core.servers.{self.server}.flows.rows.registry")
+            fn = getattr(mod, "list_rows", None)
+            if callable(fn):
+                return fn
+        except Exception as e:
+            print(f"[rows] resolver load error: {e}")
+        return lambda *_: []
     # ---------------- UI build ----------------
     def build_ui(self, parent: tk.Widget, local_version: str):
         # Блок 1: системные настройки (язык, сервер, поиск окна, коннект, версия, апдейт, выход)
@@ -803,9 +890,21 @@ class ReviveLauncherUI:
         server_frame = tk.Frame(top.body())
         server_frame.pack(pady=(2, 6), anchor="center")
         tk.Label(server_frame, text="Сервер:", font=("Arial", 10)).pack(side="left", padx=(0, 12))
-        ttk.OptionMenu(server_frame, self.server_var, self.server_var.get(), "l2mad", command=self.set_server).pack(
-            side="left", padx=(0, 20)
-        )
+        # ↓↓↓ добавь это
+        servers = list_servers()
+        if not servers:
+            servers = ["l2mad"]  # безопасный дефолт, если автопоиск ничего не вернул
+        if self.server not in servers:
+            self.server = servers[0]
+            self.server_var.set(self.server)
+        # ↑↑↑
+        ttk.OptionMenu(
+            server_frame,
+            self.server_var,
+            self.server_var.get(),
+            *servers,
+            command=self.set_server
+        ).pack(side="left", padx=(0, 20))
 
         # окно
         window_frame = tk.Frame(top.body())
@@ -849,7 +948,7 @@ class ReviveLauncherUI:
         self.respawn_ui = RespawnControls(parent=flow.body(), start_fn=self._respawn_start, stop_fn=self._respawn_stop)
         StateControls(parent=self.respawn_ui.get_body(), state_getter=lambda: self.watcher.last())
 
-        # 2) Баф
+       # 2) Баф
         self.buff = BuffControls(
             parent=flow.body(),
             controller=self.controller,
@@ -859,12 +958,14 @@ class ReviveLauncherUI:
             profile_getter=lambda: self.profile,
             window_found_getter=lambda: bool(self.winprobe.window_found),
         )
+
         BuffIntervalControl(
             flow.body(),
             checker=self.checker,
             on_toggle_autobuff=self._toggle_autobuff,
             intervals=(1, 5, 10, 20),
         )
+
 
         # 3) Макросы после бафа
         self.afterbuff_ui = AfterBuffMacrosControls(flow.body())
@@ -885,7 +986,7 @@ class ReviveLauncherUI:
             profile_getter=lambda: self.profile,
             check_is_dead=self._check_is_dead,
         )
-
+        self._list_rows_fn = self._load_list_rows()
         # --- блок: маршрут после ТП ---
         rows_frame = tk.Frame(tp_frame)  # ← привязываем к секции ТП
         rows_frame.pack(fill="x", padx=6, pady=(4, 6), anchor="w")
@@ -948,6 +1049,8 @@ class ReviveLauncherUI:
         print(f"[UI] Сервер установлен: {self.server}")
         self.profile = get_server_profile(self.server)
 
+        self._list_rows_fn = None  # кэш резолвера list_rows
+
         br = getattr(self, "buff_runner", None)
         if br and br.is_running():
             br.stop()
@@ -972,7 +1075,14 @@ class ReviveLauncherUI:
             self.buff.refresh_enabled(self.profile)
         except Exception:
             pass
-
+        try:
+            self._refresh_buff_methods()
+        except Exception:
+            pass
+        try:
+            self._list_rows_fn = self._load_list_rows()
+        except Exception:
+            self._list_rows_fn = lambda *_: []
     # ---------------- rows (post-TP) ----------------
     def _rows_watch(self):
         get_sel = getattr(self.tp, "get_selected_destination", None)
@@ -1001,9 +1111,15 @@ class ReviveLauncherUI:
 
     def _reload_rows(self):
         cat, loc = self._last_row_dest
+        rows = []  # <- гарантированно определена
+
         try:
-            rows = list_rows(cat, loc) if (cat and loc) else []
-        except Exception:
+            fn = self._list_rows_fn or self._load_list_rows()
+            self._list_rows_fn = fn  # кэшируем на будущее
+            if cat and loc:
+                rows = fn(cat, loc) or []
+        except Exception as e:
+            print(f"[rows] fetch error: {e}")
             rows = []
 
         lang = (self.language or "rus").lower()
@@ -1031,6 +1147,7 @@ class ReviveLauncherUI:
         elif cur_id not in valid_ids:
             self._row_var.set(values_list[0])
             self._on_row_selected()
+
 
     def _clear_row(self):
         self._row_var.set("")
