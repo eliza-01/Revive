@@ -23,7 +23,7 @@ Revive
 │   │   ├── css
 │   │   │   └── style.css
 │   │   ├── js
-│   │   │   └── main.js
+│   │   │   └── app.js
 │   │   └── index.html
 │   ├── __init__.py
 │   ├── launcher.py
