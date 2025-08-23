@@ -3,9 +3,30 @@ const $ = (s) => document.querySelector(s);
 const logEl = $('#log');
 const log = (m) => { if (!m) return; logEl.textContent += m + '\n'; logEl.scrollTop = logEl.scrollHeight; };
 
+async function whenApiReady() {
+  if (window.pywebview?.api) return;
+  await new Promise(resolve => {
+    const onReady = () => {
+      if (window.pywebview?.api) {
+        window.removeEventListener('pywebviewready', onReady);
+        resolve();
+      }
+    };
+    window.addEventListener('pywebviewready', onReady);
+  });
+}
+
 async function call(name, args = []) {
   try {
-    const res = await pywebview.api[name](...args);
+    await whenApiReady();
+    const api = window.pywebview?.api;
+    const fn = api?.[name];
+    if (typeof fn !== 'function') {
+      const err = `pywebview.api.${name} is not a function`;
+      log(`[err] ${name}: ${err}`);
+      return { ok: false, error: err };
+    }
+    const res = await fn(...args);
     return res || {};
   } catch (e) {
     log(`[err] ${name}: ${e}`);
@@ -14,6 +35,8 @@ async function call(name, args = []) {
 }
 
 async function init() {
+  await whenApiReady();
+
   // версия
   const v = await call('app_version');
   $('#appVersion').textContent = v.version || '—';
@@ -79,7 +102,7 @@ async function refreshRows() {
 
 async function updateHP() {
   const w = await call('get_window');
-  $('#winStatus').textContent = w.window ? `[✓] ${w.window.width}×${w.window.height}` : '[×] окно не найдено';
+  $('#winStatus').textContent = w.info ? `[✓] ${w.info.width}×${w.info.height}` : '[×] окно не найдено';
   const st = await call('state_last');
   if (typeof st.hp_ratio === 'number') {
     const p = Math.max(0, Math.min(100, Math.round(st.hp_ratio * 100)));

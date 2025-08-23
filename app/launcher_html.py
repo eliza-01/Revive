@@ -96,7 +96,9 @@ class Bridge:
 
         # железо/окно
         self.controller = ReviveController()
-        self._window_info = None  # dict|None
+        self._window_info = None
+        self._watcher = None
+        self._last_state = None
 
         # watcher
         self._watcher = None
@@ -185,6 +187,21 @@ class Bridge:
         # автоповтор чекера
         self._checker_tick = Repeater(lambda: self._checker and self._checker.tick(), 1.0)
 
+
+    # --- внутреннее ---
+    def _ensure_watcher(self):
+        if self._watcher is None:
+            from core.runtime.state_watcher import StateWatcher
+            # watcher будет обновлять self._last_state в фоне
+            self._watcher = StateWatcher(
+                server=self.server,
+                get_window=lambda: self._window_info,
+                get_language=lambda: self.language,
+                poll_interval=0.25,
+                on_state=lambda st: setattr(self, "_last_state", st),
+            )
+            self._watcher.start()
+        return self._watcher
     # ─── системное ───
     def app_version(self):
         return {"version": self.version}
@@ -209,20 +226,55 @@ class Bridge:
         return {"items": self.server_list}
 
     def set_server(self, server: str):
-        self.server = (server or "l2mad").lower()
-        self.profile = get_server_profile(self.server)
+        srv = (server or "l2mad").lower()
+        if srv == self.server:
+            return {"ok": True, "server": self.server}
+
+        self.server = srv
+
+        # профиль и дефолтный метод бафа
         try:
-            self._watcher and self._watcher.set_server(self.server)
+            self.profile = get_server_profile(self.server)
+            cur = getattr(self.profile, "get_buff_mode", lambda: "")()
+            if cur:
+                self._buff_method = cur
         except Exception:
             pass
+
+        # watcher
         try:
-            self._tp_worker and setattr(self._tp_worker, "server", self.server)
+            if self._watcher:
+                self._watcher.set_server(self.server)
         except Exception:
             pass
+
+        # TP worker
         try:
-            self._rows_runner and self._rows_runner.set_server(self.server)
+            if self._tp_worker:
+                if hasattr(self._tp_worker, "set_server"):
+                    self._tp_worker.set_server(self.server)
+                else:
+                    setattr(self._tp_worker, "server", self.server)
+                # актуализируем ссылку на окно
+                if hasattr(self._tp_worker, "window"):
+                    self._tp_worker.window = self._window_info
         except Exception:
             pass
+
+        # Rows runner
+        try:
+            if self._rows_runner:
+                self._rows_runner.set_server(self.server)
+        except Exception:
+            pass
+
+        # ToVillage
+        try:
+            if self._to_village:
+                self._to_village.set_server(self.server)
+        except Exception:
+            pass
+
         return {"ok": True, "server": self.server}
 
     def get_server(self):
@@ -245,6 +297,11 @@ class Bridge:
                     info = get_window_info(hwnd, client=True)
                     if all(k in info for k in ("x","y","width","height")):
                         self._window_info = info
+                        try:
+                            if self._tp_worker and hasattr(self._tp_worker, "window"):
+                                self._tp_worker.window = self._window_info
+                        except Exception:
+                            pass
                         found = True
                         break
             except Exception:
@@ -252,7 +309,29 @@ class Bridge:
         return {"found": found, "window": (self._window_info or None)}
 
     def get_window(self):
-        return {"window": (self._window_info or None)}
+        """Найти окно клиента и вернуть info. Вызывается из web-UI."""
+        try:
+            from core.vision.capture.gdi import find_window, get_window_info
+            titles = ["Lineage", "Lineage II", "L2MAD", "L2", "BOHPTS"]
+            for t in titles:
+                hwnd = find_window(t)
+                if hwnd:
+                    info = get_window_info(hwnd, client=True)
+                    if all(k in info for k in ("x", "y", "width", "height")):
+                        self._window_info = info
+                        try:
+                            if self._tp_worker and hasattr(self._tp_worker, "window"):
+                                self._tp_worker.window = self._window_info
+                        except Exception:
+                            pass
+                        try:
+                            self._ensure_watcher()
+                        except Exception:
+                            pass
+                        return {"found": True, "title": t, "info": info}
+            return {"found": False}
+        except Exception as e:
+            return {"found": False, "error": str(e)}
 
     # ─── пинг ардуино / тест ───
     def ping_arduino(self):
@@ -289,11 +368,18 @@ class Bridge:
             return {"running": False}
 
     def state_last(self):
-        if not self._watcher:
-            return {"hp_ratio": None}
-        st = self._watcher.last()
-        hp = float(getattr(st, "hp_ratio", 0.0) or 0.0)
-        return {"hp_ratio": hp}
+        """Вернуть последнее состояние от watcher (hp_ratio, is_alive)."""
+        try:
+            if self._watcher is None:
+                # Попробуем автонайти окно и стартануть watcher
+                self.get_window()
+            st = self._last_state
+            if not st:
+                return {"hp_ratio": None, "is_alive": None}
+            hp = float(getattr(st, "hp_ratio", 0.0) or 0.0)
+            return {"hp_ratio": hp, "is_alive": bool(hp > 0.01)}
+        except Exception as e:
+            return {"hp_ratio": None, "is_alive": None, "error": str(e)}
 
     def is_alive(self):
         if not self._watcher:
@@ -466,10 +552,12 @@ def launch_gui_html(local_version: str):
     html_path = os.path.join(base, "index.html")
     if not os.path.isfile(html_path):
         raise FileNotFoundError(f"UI not found: {html_path}")
+
     api = Bridge(local_version)
     window = webview.create_window(
         title=f"Revive · {local_version}",
         url=f"file://{html_path}",
-        width=760, height=800, resizable=False
+        width=760, height=800, resizable=False,
+        js_api=api,               # ← ВАЖНО: js_api здесь
     )
-    webview.start(gui="edgechromium", debug=False, js_api=api)
+    webview.start(gui="edgechromium", debug=False)  # ← без js_api

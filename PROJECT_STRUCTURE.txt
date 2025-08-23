@@ -1,10 +1,9 @@
 Root: C:\Projects\Revive
-Generated: 2025-08-22 17:53:45
+Generated: 2025-08-22 23:36:05
 
 Revive
 ├── app
 │   ├── dep
-│   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 │   ├── ui
 │   │   ├── __init__.py
 │   │   ├── account_settings.py
@@ -19,7 +18,7 @@ Revive
 │   │   └── window_probe.py
 │   ├── webui
 │   │   ├── assets
-│   │   │   └── icon.ico
+│   │   │   └── icon.png
 │   │   ├── css
 │   │   │   └── style.css
 │   │   ├── js
@@ -30,6 +29,16 @@ Revive
 │   ├── launcher_bootstrap.py
 │   └── launcher_html.py
 ├── assets
+│   ├── upx
+│   │   ├── COPYING
+│   │   ├── LICENSE
+│   │   ├── NEWS
+│   │   ├── README
+│   │   ├── THANKS.txt
+│   │   ├── upx-doc.html
+│   │   ├── upx-doc.txt
+│   │   ├── upx.1
+│   │   └── upx.exe
 │   └── icon.ico
 ├── core
 │   ├── arduino
@@ -73,6 +82,104 @@ Revive
 │   │   └── state_watcher.py
 │   ├── servers
 │   │   ├── boh
+│   │   │   ├── flows
+│   │   │   │   ├── rows
+│   │   │   │   │   ├── Goddard
+│   │   │   │   │   │   └── VarkaSilenosStronghold
+│   │   │   │   │   │       └── Varka_1.py
+│   │   │   │   │   ├── Rune
+│   │   │   │   │   │   └── PrimevalIsle
+│   │   │   │   │   │       └── Primeval_1.py
+│   │   │   │   │   └── registry.py
+│   │   │   │   ├── README.md
+│   │   │   │   ├── buff.py
+│   │   │   │   ├── buff_dashboard.py
+│   │   │   │   ├── buff_npc.py
+│   │   │   │   ├── dashboard_reset.py
+│   │   │   │   ├── restart.py
+│   │   │   │   ├── tp_dashboard.py
+│   │   │   │   └── tp_gatekeeper.py
+│   │   │   ├── templates
+│   │   │   │   ├── rus
+│   │   │   │   │   ├── buffs
+│   │   │   │   │   │   └── icons
+│   │   │   │   │   │       ├── blessedBody.png
+│   │   │   │   │   │       └── shield.png
+│   │   │   │   │   ├── dashboard
+│   │   │   │   │   │   ├── buffer
+│   │   │   │   │   │   │   ├── dashboard_buffer_button.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_fighter.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_init.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_mage.png
+│   │   │   │   │   │   │   ├── dashboard_buffer_profile.png
+│   │   │   │   │   │   │   └── dashboard_buffer_restoreHp.png
+│   │   │   │   │   │   ├── teleport
+│   │   │   │   │   │   │   ├── villages
+│   │   │   │   │   │   │   │   ├── Goddard
+│   │   │   │   │   │   │   │   │   ├── Goddard.png
+│   │   │   │   │   │   │   │   │   └── VarkaSilenosStronghold.png
+│   │   │   │   │   │   │   │   └── Rune
+│   │   │   │   │   │   │   │       ├── PrimevalIsle.png
+│   │   │   │   │   │   │   │       └── Rune.png
+│   │   │   │   │   │   │   ├── dashboard_teleport_button.png
+│   │   │   │   │   │   │   └── dashboard_teleport_init.png
+│   │   │   │   │   │   ├── dashboard_init.png
+│   │   │   │   │   │   └── dashboard_is_locked.png
+│   │   │   │   │   ├── death
+│   │   │   │   │   │   └── to_village_button.png
+│   │   │   │   │   ├── interface
+│   │   │   │   │   │   ├── pincode
+│   │   │   │   │   │   │   ├── enter_pincode.png
+│   │   │   │   │   │   │   ├── num1.png
+│   │   │   │   │   │   │   ├── num2.png
+│   │   │   │   │   │   │   ├── num3.png
+│   │   │   │   │   │   │   ├── num4.png
+│   │   │   │   │   │   │   ├── num5.png
+│   │   │   │   │   │   │   ├── num6.png
+│   │   │   │   │   │   │   ├── num7.png
+│   │   │   │   │   │   │   ├── num8.png
+│   │   │   │   │   │   │   └── num9.png
+│   │   │   │   │   │   ├── account_characters_init.png
+│   │   │   │   │   │   ├── apply_button.png
+│   │   │   │   │   │   ├── autofarm.png
+│   │   │   │   │   │   ├── closeCross_button.png
+│   │   │   │   │   │   ├── disconnect_window.png
+│   │   │   │   │   │   ├── enterGame_button.png
+│   │   │   │   │   │   ├── enterServerOk_button.png
+│   │   │   │   │   │   ├── login_accept_button.png
+│   │   │   │   │   │   ├── login_window_init.png
+│   │   │   │   │   │   ├── pincode_init.png
+│   │   │   │   │   │   ├── relogin_button.png
+│   │   │   │   │   │   ├── restart_button.png
+│   │   │   │   │   │   ├── settings_button.png
+│   │   │   │   │   │   ├── start_button.png
+│   │   │   │   │   │   └── yes_button.png
+│   │   │   │   │   └── rows
+│   │   │   │   │       ├── Goddard
+│   │   │   │   │       │   └── VarkaSilenosStronghold
+│   │   │   │   │       │       └── Varka_1
+│   │   │   │   │       │           └── 1.png
+│   │   │   │   │       └── Rune
+│   │   │   │   │           └── PrimevalIsle
+│   │   │   │   │               └── Primeval_1
+│   │   │   │   │                   ├── 1.png
+│   │   │   │   │                   ├── 2.png
+│   │   │   │   │                   └── 3.png
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── resolver.py
+│   │   │   ├── zones
+│   │   │   │   ├── buff.py
+│   │   │   │   ├── buffs_state.py
+│   │   │   │   ├── dashboard_reset.py
+│   │   │   │   ├── respawn.py
+│   │   │   │   ├── restart.py
+│   │   │   │   ├── rows.py
+│   │   │   │   ├── state.py
+│   │   │   │   ├── tp_dashboard.py
+│   │   │   │   └── tp_gatekeeper.py
+│   │   │   ├── __init__.py
+│   │   │   ├── locations_map.py
+│   │   │   └── profile.py
 │   │   ├── l2mad
 │   │   │   ├── flows
 │   │   │   │   ├── rows
@@ -203,7 +310,6 @@ Revive
 │   │   ├── revive_buff_macro_tp.md
 │   │   └── revive_buff_marco_tp.txt
 │   ├── NOTES.md
-│   ├── PROJECT_STRUCTURE.txt
 │   ├── README.md
 │   ├── is_dead.png
 │   ├── latest_version.txt
@@ -212,6 +318,7 @@ Revive
 │   ├── keys_test.py
 │   └── micro.ino
 ├── tools
+│   ├── collect_sections.py
 │   ├── dump_tree.py
 │   └── write_path_headers.py
 ├── .gitignore
