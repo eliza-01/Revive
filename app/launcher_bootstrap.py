@@ -226,4 +226,15 @@ def launch_universal(local_version: str):
     root = tk.Tk(); WV2BootstrapUI(root, local_version); root.mainloop()
 
 if __name__ == "__main__":
-    launch_universal("dev")
+    # поддержка: python -m app.launcher_bootstrap 1.0.0
+    ver = None
+    if len(sys.argv) > 1:
+        ver = sys.argv[1]
+    else:
+        # попробуем вычитать версию из documents/latest_version.txt
+        try:
+            with open(os.path.join(PROJ_ROOT, "documents", "latest_version.txt"), "r", encoding="utf-8") as f:
+                ver = (f.read() or "").strip() or "dev"
+        except Exception:
+            ver = "dev"
+    launch_universal(ver)
