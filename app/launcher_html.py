@@ -1,17 +1,18 @@
 # app/launcher_html.py
 from __future__ import annotations
-import os, importlib, threading, time, json
+import os, importlib, threading, time
 import webview
 
 from core.connection import ReviveController
 from core.connection_test import run_test_command
 from core.servers.registry import list_servers, get_server_profile
 
-# — бэкендные блоки (некоторые могут отсутствовать в твоей поставке)
+# — бэкендные блоки (не все обязаны быть в сборке)
 try:
     from core.runtime.state_watcher import StateWatcher
 except Exception:
     StateWatcher = None  # type: ignore
+
 try:
     from core.checks.charged import ChargeChecker, BuffTemplateProbe
 except Exception:
@@ -23,13 +24,18 @@ except Exception:
     AfterBuffMacroRunner = None  # type: ignore
 
 try:
-    from core.features.buff_after_respawn import BuffAfterRespawnWorker, BUFF_MODE_PROFILE, BUFF_MODE_MAGE, BUFF_MODE_FIGHTER
+    from core.features.buff_after_respawn import (
+        BuffAfterRespawnWorker,
+        BUFF_MODE_PROFILE, BUFF_MODE_MAGE, BUFF_MODE_FIGHTER
+    )
 except Exception:
     BuffAfterRespawnWorker = None  # type: ignore
     BUFF_MODE_PROFILE = "profile"; BUFF_MODE_MAGE = "mage"; BUFF_MODE_FIGHTER = "fighter"
 
 try:
-    from core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER
+    from core.features.tp_after_respawn import (
+        TPAfterDeathWorker, TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER
+    )
 except Exception:
     TPAfterDeathWorker = None  # type: ignore
     TP_METHOD_DASHBOARD = "dashboard"; TP_METHOD_GATEKEEPER = "gatekeeper"
@@ -44,7 +50,7 @@ try:
 except Exception:
     ToVillage = None  # type: ignore
 
-# gdi helpers (поиск окна/инфа)
+# gdi helpers
 try:
     from core.vision.capture.gdi import find_window, get_window_info
 except Exception:
@@ -56,7 +62,6 @@ except Exception:
 # ────────────────────────────────────────────────────────────────────────────
 
 class Repeater:
-    """Простой планировщик без Tk: переодический вызов fn() в отдельном потоке."""
     def __init__(self, fn, interval_s: float):
         self.fn = fn; self.interval = max(0.05, float(interval_s))
         self._stop = threading.Event(); self._thr: threading.Thread|None = None
@@ -71,7 +76,6 @@ class Repeater:
             try: self.fn()
             except Exception as e: print("[Repeater]", e)
             self._stop.wait(self.interval)
-
 
 def _safe_import(modpath: str):
     try:
@@ -101,7 +105,6 @@ class Bridge:
         self._last_state = None
 
         # watcher
-        self._watcher = None
         if StateWatcher:
             self._watcher = StateWatcher(
                 server=self.server,
@@ -110,16 +113,19 @@ class Bridge:
                 poll_interval=0.2,
                 zero_hp_threshold=0.01,
                 on_state=lambda st: setattr(self, "_last_state", st),
-                on_dead=self._on_dead,          # ← было print
-                on_alive=self._on_alive,        # ← было print
+                on_dead=self._on_dead,
+                on_alive=self._on_alive,
                 debug=False,
             )
 
+        # авто-подъём/цепочка
         self._auto_rise = True
         self._rising = False
         self._last_rise_at = 0.0
+        self._was_dead = False
+        self._chain_running = False
 
-        # checker + probe (для «заряжен/не заряжен»)
+        # checker (charged)
         self._checker = None
         if ChargeChecker and BuffTemplateProbe:
             self._checker = ChargeChecker(interval_minutes=10, mode="ANY")
@@ -141,12 +147,16 @@ class Bridge:
             except Exception as e:
                 print("[checker] probe init:", e)
 
+        # параметры добивки «до charged»
+        self._rebuff_max_tries = 3
+        self._rebuff_wait_s = 2.0
+
         # баф
         self._buff_mode = BUFF_MODE_PROFILE
         self._buff_method = getattr(self.profile, "get_buff_mode", lambda: "dashboard")()
         self._buff_enabled = False
 
-        # макросы после бафа
+        # макросы
         self._macros_enabled = False
         self._macros_run_always = False
         self._macros_seq = ["1"]
@@ -167,7 +177,7 @@ class Bridge:
             server=self.server,
         )) or None
 
-        # post-row runner (ручной запуск с UI)
+        # post-row (ручной)
         self._rows_runner = (PostTPRowRunner and PostTPRowRunner(
             controller=self.controller,
             server=self.server,
@@ -176,7 +186,7 @@ class Bridge:
             on_status=lambda msg, ok=None: print(msg),
         )) or None
 
-        # to_village (ручной подъём)
+        # to_village
         self._to_village = (ToVillage and ToVillage(
             controller=self.controller,
             server=self.server,
@@ -188,11 +198,10 @@ class Bridge:
             confirm_timeout_s=3.0,
         )) or None
 
-        # автоповтор чекера
+        # автопулс чекера (не обязателен для force_check, но пусть будет)
         self._checker_tick = Repeater(lambda: self._checker and self._checker.tick(), 1.0)
 
-
-     # ─── авто-подъём ───
+    # ─── авто-подъём ───
     def rise_enable(self, enable: bool):
         self._auto_rise = bool(enable)
         return {"ok": True, "enabled": self._auto_rise}
@@ -215,46 +224,124 @@ class Bridge:
             self._watcher.start()
         return self._watcher
 
-    # ─── реакции watcher ───
+    # ─── watcher callbacks ───
     def _on_dead(self, st):
-        print("[watcher] DEAD"); self._last_state = st
-        if not (self._auto_rise and self._to_village and self._window_info):
-            return
-        now = time.time()
-        if self._rising or (now - self._last_rise_at) < 5.0:
-            return
+        print("[watcher] DEAD")
+        self._last_state = st
+        self._was_dead = True
+        if self._auto_rise and self._to_village and not self._rising and (time.time() - self._last_rise_at > 2.0):
+            threading.Thread(target=self._do_rise, daemon=True).start()
+
+    def _do_rise(self):
         self._rising = True
-        def _work():
-            try:
-                ok = self._to_village.run_once(timeout_ms=14000)
-                print(f"[rise] {'OK' if ok else 'FAIL'}")
-            except Exception as e:
-                print("[rise] error:", e)
-            finally:
-                self._last_rise_at = time.time()
-                self._rising = False
-        threading.Thread(target=_work, daemon=True).start()
+        try:
+            ok = self._to_village.run_once(timeout_ms=14000)
+            print(f"[rise] {'OK' if ok else 'FAIL'}")
+        except Exception as e:
+            print("[rise] error:", e)
+        finally:
+            self._last_rise_at = time.time()
+            self._rising = False
+
+    def _do_buff_once(self) -> bool:
+        if not BuffAfterRespawnWorker:
+            return False
+        try:
+            worker = BuffAfterRespawnWorker(
+                controller=self.controller,
+                server=self.server,
+                get_window=lambda: self._window_info,
+                get_language=lambda: self.language,
+                on_status=lambda m, ok=None: print(m),
+                click_threshold=0.87,
+                debug=False,
+            )
+            worker.set_mode(self._buff_mode)
+            try: worker.set_method(self._buff_method)
+            except: pass
+            ok = bool(worker.run_once())
+            print(f"[buff] {'OK' if ok else 'FAIL'}")
+            return ok
+        except Exception as e:
+            print("[buff] error:", e)
+            return False
+
+    def _after_rise_chain(self):
+        self._chain_running = True
+        try:
+            # 1) баф один раз (если включён)
+            initial_buff_ok = False
+            if self._buff_enabled and BuffAfterRespawnWorker:
+                initial_buff_ok = self._do_buff_once()
+
+            # 2) макросы (если включены)
+            if self._macros_runner and self._macros_enabled and (self._macros_run_always or initial_buff_ok):
+                try:
+                    ok = self._macros_runner.run_once()
+                    print(f"[macros] {'OK' if ok else 'FAIL'}")
+                    if self._macros_duration_s > 0:
+                        time.sleep(self._macros_duration_s)
+                except Exception as e:
+                    print("[macros] error:", e)
+
+            # 3) ДОБИВКА ДО CHARGED
+            charged = None
+            tries = 0
+            if self._checker:
+                charged = self._checker.force_check()
+                while charged is not True and tries < int(self._rebuff_max_tries):
+                    tries += 1
+                    # если баф выключен – дальше нечем добиваться
+                    if not (self._buff_enabled and BuffAfterRespawnWorker):
+                        break
+                    # ребаф
+                    self._do_buff_once()
+                    # короткая пауза и повторная проверка
+                    time.sleep(self._rebuff_wait_s)
+                    charged = self._checker.force_check()
+                print(f"[flow] recheck_charged → {charged} (tries={tries})")
+
+            # 4) ТП (если задано и либо charged==True, либо чекер отсутствует)
+            can_tp = (charged is True) if self._checker else True
+            if can_tp and self._tp_worker and self._tp_enabled and self._tp_cfg.get("cat") and self._tp_cfg.get("loc"):
+                try:
+                    try:
+                        setattr(self._tp_worker, "window", self._window_info)
+                    except Exception:
+                        pass
+                    ok = self._tp_worker.teleport_now(
+                        self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"]
+                    )
+                    print(f"[tp] {'OK' if ok else 'FAIL'}")
+                except Exception as e:
+                    print("[tp] error:", e)
+            elif self._checker and charged is False:
+                print("[flow] skip tp: not charged after retries")
+
+        finally:
+            self._chain_running = False
 
     def _on_alive(self, st):
-        print("[watcher] ALIVE"); self._last_state = st
+        print("[watcher] ALIVE")
+        self._last_state = st
+        if not self._was_dead:
+            return
+        self._was_dead = False
+        if self._chain_running:
+            return
+        threading.Thread(target=self._after_rise_chain, daemon=True).start()
 
     # ─── системное ───
     def app_version(self):
         return {"version": self.version}
 
     def quit(self):
-        try:
-            self._checker_tick.stop()
-        except Exception:
-            pass
-        try:
-            self._watcher and self._watcher.stop()
-        except Exception:
-            pass
-        try:
-            self.controller.close()
-        except Exception:
-            pass
+        try: self._checker_tick.stop()
+        except Exception: pass
+        try: self._watcher and self._watcher.stop()
+        except Exception: pass
+        try: self.controller.close()
+        except Exception: pass
         os._exit(0)
 
     # ─── сервер / язык ───
@@ -265,7 +352,6 @@ class Bridge:
         srv = (server or "l2mad").lower()
         if srv == self.server:
             return {"ok": True, "server": self.server}
-
         self.server = srv
 
         # профиль и дефолтный метод бафа
@@ -291,7 +377,6 @@ class Bridge:
                     self._tp_worker.set_server(self.server)
                 else:
                     setattr(self._tp_worker, "server", self.server)
-                # актуализируем ссылку на окно
                 if hasattr(self._tp_worker, "window"):
                     self._tp_worker.window = self._window_info
         except Exception:
@@ -345,7 +430,6 @@ class Bridge:
         return {"found": found, "window": (self._window_info or None)}
 
     def get_window(self):
-        """Найти окно клиента и вернуть info. Вызывается из web-UI."""
         try:
             from core.vision.capture.gdi import find_window, get_window_info
             titles = ["Lineage", "Lineage II", "L2MAD", "L2", "BOHPTS"]
@@ -369,7 +453,7 @@ class Bridge:
         except Exception as e:
             return {"found": False, "error": str(e)}
 
-    # ─── пинг ардуино / тест ───
+    # ─── пинг / тест ───
     def ping_arduino(self):
         try:
             self.controller.send("ping")
@@ -404,10 +488,8 @@ class Bridge:
             return {"running": False}
 
     def state_last(self):
-        """Вернуть последнее состояние от watcher (hp_ratio, is_alive)."""
         try:
             if self._watcher is None:
-                # Попробуем автонайти окно и стартануть watcher
                 self.get_window()
             st = self._last_state
             if not st:
@@ -479,26 +561,10 @@ class Bridge:
         return {"ok": True, "enabled": self._buff_enabled}
 
     def buff_run_once(self):
-        if not BuffAfterRespawnWorker:
-            return {"ok": False, "error": "buff worker unavailable"}
-        worker = BuffAfterRespawnWorker(
-            controller=self.controller,
-            server=self.server,
-            get_window=lambda: self._window_info,
-            get_language=lambda: self.language,
-            on_status=lambda msg, ok=None: print(msg),
-            click_threshold=0.87,
-            debug=False,
-        )
-        worker.set_mode(self._buff_mode)
-        try:
-            worker.set_method(self._buff_method)
-        except Exception:
-            pass
-        ok = worker.run_once()
+        ok = self._do_buff_once()
         return {"ok": bool(ok)}
 
-    # ─── макросы после бафа ───
+    # ─── макросы ───
     def macros_config(self, enabled: bool, seq: list[str], delay_s: float, duration_s: float, run_always: bool):
         self._macros_enabled = bool(enabled)
         self._macros_seq = list(seq or ["1"])
@@ -521,7 +587,6 @@ class Bridge:
                 return {"items": lm.get_categories(lang=self.language)}
         except Exception:
             pass
-        # fallback через resolver
         r = _safe_import(f"core.servers.{self.server}.templates.resolver")
         if not r:
             return {"items": []}
@@ -561,7 +626,12 @@ class Bridge:
         return {"items": [{"id": r["id"], "title": title_of(r)} for r in rows if r.get("id")]}
 
     def tp_configure(self, category_id: str, location_id: str, method: str):
-        self._tp_cfg = {"cat": category_id or "", "loc": location_id or "", "method": (method or TP_METHOD_DASHBOARD)}
+        self._tp_cfg = {
+            "cat": category_id or "",
+            "loc": location_id or "",
+            "method": (method or TP_METHOD_DASHBOARD),
+        }
+        self._tp_enabled = True
         if self._tp_worker:
             try: self._tp_worker.set_method(self._tp_cfg["method"])
             except Exception: pass
@@ -572,10 +642,14 @@ class Bridge:
     def tp_now(self):
         if not self._tp_worker:
             return {"ok": False, "error": "tp worker unavailable"}
+        try:
+            setattr(self._tp_worker, "window", self._window_info)
+        except Exception:
+            pass
         ok = self._tp_worker.teleport_now(self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"])
         return {"ok": bool(ok)}
 
-    # ─── ручной «встать в деревню» ───
+    # ─── manual rise ───
     def to_village_now(self, timeout_ms: int = 14000):
         if not self._to_village:
             return {"ok": False, "error": "to_village unavailable"}
@@ -590,10 +664,11 @@ def launch_gui_html(local_version: str):
         raise FileNotFoundError(f"UI not found: {html_path}")
 
     api = Bridge(local_version)
-    window = webview.create_window(
+    webview.create_window(
         title=f"Revive · {local_version}",
         url=f"file://{html_path}",
-        width=760, height=800, resizable=False,
-        js_api=api,               # ← ВАЖНО: js_api здесь
+        width=760, height=800,
+        resizable=False,
+        js_api=api,
     )
-    webview.start(gui="edgechromium", debug=False)  # ← без js_api
+    webview.start(gui="edgechromium", debug=False)

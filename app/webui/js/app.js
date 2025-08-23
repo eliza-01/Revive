@@ -19,12 +19,10 @@ async function whenApiReady() {
 async function call(name, args = []) {
   try {
     await whenApiReady();
-    const api = window.pywebview?.api;
-    const fn = api?.[name];
+    const api = window.pywebview.api;
+    const fn = api && api[name];
     if (typeof fn !== 'function') {
-      const err = `pywebview.api.${name} is not a function`;
-      log(`[err] ${name}: ${err}`);
-      return { ok: false, error: err };
+      throw new Error(`pywebview.api.${name} is not a function`);
     }
     const res = await fn(...args);
     return res || {};
