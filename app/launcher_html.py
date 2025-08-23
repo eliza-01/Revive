@@ -109,11 +109,15 @@ class Bridge:
                 get_language=lambda: self.language,
                 poll_interval=0.2,
                 zero_hp_threshold=0.01,
-                on_state=lambda st: None,
-                on_dead=lambda st: print("[watcher] DEAD"),
-                on_alive=lambda st: print("[watcher] ALIVE"),
+                on_state=lambda st: setattr(self, "_last_state", st),
+                on_dead=self._on_dead,          # ← было print
+                on_alive=self._on_alive,        # ← было print
                 debug=False,
             )
+
+        self._auto_rise = True
+        self._rising = False
+        self._last_rise_at = 0.0
 
         # checker + probe (для «заряжен/не заряжен»)
         self._checker = None
@@ -188,20 +192,52 @@ class Bridge:
         self._checker_tick = Repeater(lambda: self._checker and self._checker.tick(), 1.0)
 
 
+     # ─── авто-подъём ───
+    def rise_enable(self, enable: bool):
+        self._auto_rise = bool(enable)
+        return {"ok": True, "enabled": self._auto_rise}
+
     # --- внутреннее ---
     def _ensure_watcher(self):
         if self._watcher is None:
             from core.runtime.state_watcher import StateWatcher
-            # watcher будет обновлять self._last_state в фоне
             self._watcher = StateWatcher(
                 server=self.server,
                 get_window=lambda: self._window_info,
                 get_language=lambda: self.language,
                 poll_interval=0.25,
+                zero_hp_threshold=0.01,
                 on_state=lambda st: setattr(self, "_last_state", st),
+                on_dead=self._on_dead,
+                on_alive=self._on_alive,
+                debug=False,
             )
             self._watcher.start()
         return self._watcher
+
+    # ─── реакции watcher ───
+    def _on_dead(self, st):
+        print("[watcher] DEAD"); self._last_state = st
+        if not (self._auto_rise and self._to_village and self._window_info):
+            return
+        now = time.time()
+        if self._rising or (now - self._last_rise_at) < 5.0:
+            return
+        self._rising = True
+        def _work():
+            try:
+                ok = self._to_village.run_once(timeout_ms=14000)
+                print(f"[rise] {'OK' if ok else 'FAIL'}")
+            except Exception as e:
+                print("[rise] error:", e)
+            finally:
+                self._last_rise_at = time.time()
+                self._rising = False
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _on_alive(self, st):
+        print("[watcher] ALIVE"); self._last_state = st
+
     # ─── системное ───
     def app_version(self):
         return {"version": self.version}
