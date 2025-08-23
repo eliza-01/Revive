@@ -46,24 +46,21 @@ class Repeater:
             except Exception: pass
             self._stop.wait(self.interval)
 
-class _CheckerShim:
-    """Фасад для оркестратора: всегда форсит проверку."""
-    def __init__(self, checker):
-        self.c = checker
 
+class _CheckerShim:
+    """Фасад для оркестратора: всегда форсит проверку (как в старом UI)."""
+    def __init__(self, checker: ChargeChecker):
+        self.c = checker
     def is_charged(self, *_):
-        # Оркестратор иногда зовёт is_charged(), иногда force_check()
         try:
             return self.c.force_check()
         except Exception:
             return None
-
     def force_check(self, *_):
         try:
             return self.c.force_check()
         except Exception:
             return None
-
     def invalidate(self):
         try:
             self.c.invalidate()
@@ -117,7 +114,7 @@ class Bridge:
             ),
             enabled=True,
         )
-        # регулярный тикер (не критичен, но полезен для бэкграунда)
+        # фоновый тикер (не критичен, но полезен)
         self._checker_tick = Repeater(lambda: self.checker.tick(), 1.0)
         self._checker_tick.start()
 
@@ -168,7 +165,7 @@ class Bridge:
         self.orch = FlowOrchestrator(
             schedule=schedule,
             log=print,
-            checker=_CheckerShim(self.checker),   # ВАЖНО: фасад с force_check()
+            checker=_CheckerShim(self.checker),   # ← форс-проверка charged
             watcher=self.watcher,
             to_village=self.to_village,
             postrow_runner=self.postrow,
@@ -193,11 +190,10 @@ class Bridge:
             get_delay_s=lambda: self._macros_delay_s,
         )
 
-        self._tp_enabled = False
         self._tp_cfg = {"cat": "", "loc": "", "method": TP_METHOD_DASHBOARD}
         self._selected_row_id = ""
 
-        # ---- передаём "виджеты" в оркестратор 1-в-1
+        # ---- передаём «виджеты» в оркестратор (как в старом UI)
         self.orch.set_ui(
             buff_is_enabled=lambda: self._buff_enabled,
             buff_run_once=lambda: self._buff_run_once(),
@@ -205,6 +201,7 @@ class Bridge:
             macros_ui_run_always=lambda: self._macros_run_always,
             macros_ui_get_duration_s=lambda: self._macros_duration_s,
             macros_run_once=lambda: self._macros_runner.run_once(),
+            # ВАЖНО: ТП считается включённым, если указаны cat и loc
             tp_is_enabled=lambda: bool(self._tp_cfg["cat"] and self._tp_cfg["loc"]),
             tp_teleport_now_selected=lambda: self._tp_teleport_now_selected(),
             tp_get_selected_destination=lambda: (self._tp_cfg["cat"], self._tp_cfg["loc"]),
@@ -212,7 +209,7 @@ class Bridge:
             respawn_ui_is_enabled=lambda: True,
         )
 
-    # ── прокси watcher → orchestrator (как в старом launcher.py)
+    # ── прокси watcher → orchestrator
     def _on_dead_proxy(self, st): self.orch.on_dead(st)
     def _on_alive_proxy(self, st): self.orch.on_alive(st)
 
@@ -359,19 +356,14 @@ class Bridge:
         self._buff_enabled = bool(enable); return {"ok": True, "enabled": self._buff_enabled}
 
     def _wait_for_charged(self, timeout_s: float = 12.0, poll_s: float = 0.5) -> bool:
-        try:
-            self.checker.invalidate()
-        except Exception:
-            pass
-        t0 = time.time()
-        val = None
+        """После бафа активно ждём появления иконок."""
+        try: self.checker.invalidate()
+        except Exception: pass
+        t0 = time.time(); val = None
         while time.time() - t0 < timeout_s:
-            try:
-                val = self.checker.force_check()
-            except Exception:
-                val = None
-            if val is True:
-                return True
+            try: val = self.checker.force_check()
+            except Exception: val = None
+            if val is True: return True
             time.sleep(poll_s)
         return bool(val)
 
@@ -386,34 +378,18 @@ class Bridge:
             debug=False,
         )
         worker.set_mode(self._buff_mode)
-        try:
-            worker.set_method(self._buff_method)
-        except Exception:
-            pass
+        try: worker.set_method(self._buff_method)
+        except Exception: pass
         ok = bool(worker.run_once())
         if ok:
-            try:
-                self.checker.invalidate()
-            except Exception:
-                pass
             self._wait_for_charged(timeout_s=8.0, poll_s=0.4)
         return ok
 
     def buff_run_once(self):
         ok = self._buff_run_once()
-        try:
-            charged = self.checker.force_check()
-        except Exception:
-            charged = None
+        try: charged = self.checker.force_check()
+        except Exception: charged = None
         return {"ok": ok, "charged": charged}
-
-    # (по желанию — быстрый ручной форс-речек из UI)
-    def charged_recheck_now(self):
-        try:
-            v = self.checker.force_check()
-        except Exception:
-            v = None
-        return {"charged": v}
 
     # ── макросы (как в старом UI)
     def macros_config(self, enabled: bool, seq: list[str], delay_s: float, duration_s: float, run_always: bool):
@@ -429,17 +405,17 @@ class Bridge:
 
     # ── ТП (как TPControls → teleport_now_selected)
     def tp_configure(self, category_id: str, location_id: str, method: str):
-        self._tp_enabled = bool(self._tp_cfg["cat"] and self._tp_cfg["loc"])
-        self._tp_enabled = bool(category_id and location_id)
+        self._tp_cfg = {"cat": category_id or "", "loc": location_id or "", "method": (method or TP_METHOD_DASHBOARD)}
         try:
             self.tp_worker.set_method(self._tp_cfg["method"])
             self.tp_worker.configure(self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"])
         except Exception: pass
-        print(f"[tp] configured: {self._tp_cfg}, enabled={self._tp_enabled}")
-        return {"ok": True, **self._tp_cfg, "enabled": self._tp_enabled}
+        # ВАЖНО: включён, если цель задана (как в старом UI)
+        enabled = bool(self._tp_cfg["cat"] and self._tp_cfg["loc"])
+        return {"ok": True, **self._tp_cfg, "enabled": enabled}
 
     def _tp_teleport_now_selected(self) -> bool:
-        if not (self._tp_enabled and self._tp_cfg["cat"] and self._tp_cfg["loc"]):
+        if not (self._tp_cfg["cat"] and self._tp_cfg["loc"]):
             return False
         try: self.tp_worker.window_info = self._window_info
         except Exception: pass
