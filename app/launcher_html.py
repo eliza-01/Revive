@@ -7,8 +7,10 @@ import time
 import threading
 import logging
 from typing import Optional, Tuple, Dict, List, Any, Callable
-
+from pathlib import Path
 import webview  # pywebview / WebView2
+import subprocess, tempfile, ctypes
+
 
 # --- core runtime ---
 from core.connection import ReviveController
@@ -602,66 +604,122 @@ class Bridge:
             pass
         sys.exit(0)
 
+def _spawn_splash(gif_path: str):
+    try:
+        gif_uri = Path(gif_path).resolve().as_uri()
+        html = f"""<html><head>
+<meta http-equiv="x-ua-compatible" content="IE=11" />
+<HTA:APPLICATION
+  ID="ReviveSplash"
+  BORDER="none"
+  CAPTION="no"
+  SYSMENU="no"
+  SCROLL="no"
+  SHOWINTASKBAR="no"
+  SINGLEINSTANCE="yes"
+  MAXIMIZEBUTTON="no"
+  MINIMIZEBUTTON="no"
+  NAVIGABLE="no"
+/>
+<style>
+  html,body{{margin:0;overflow:hidden;background:#111;color:#fff;
+             font:600 13px 'Segoe UI', Tahoma, Verdana, system-ui;
+             -ms-overflow-style:none;-webkit-user-select:none;user-select:none}}
+  .wrap{{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+         text-align:center}}
+  img{{width:72px;height:72px;display:block;margin:0 auto 12px auto}}
+</style>
+<script type="text/javascript">
+function boot(){{
+  var w=360, h=170;
+  window.resizeTo(w,h);
+  var x=(screen.availLeft + (screen.availWidth - w)/2);
+  var y=(screen.availTop  + (screen.availHeight - h)/2);
+  window.moveTo(x,y);
+  document.title='';
+  document.body.style.visibility='visible';
+}}
+window.onload=boot;
+</script>
+</head>
+<body style="visibility:hidden">
+  <div class="wrap">
+    <img src="{gif_uri}" alt="">
+    <div>Загрузка Revive…</div>
+  </div>
+</body></html>"""
+        fd, hta = tempfile.mkstemp(suffix=".hta"); os.close(fd)
+        with open(hta, "w", encoding="utf-8") as f:
+            f.write(html)
+        p = subprocess.Popen(["mshta.exe", hta],
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return p, hta
+    except Exception:
+        return None, None
+
+def _kill_splash(p, hta_path: str|None):
+    if p:
+        try: p.terminate()
+        except Exception: pass
+        try: p.wait(timeout=1)
+        except Exception: pass
+    if hta_path and os.path.isfile(hta_path):
+        try: os.remove(hta_path)
+        except Exception: pass
 
 def launch_gui(local_version: str):
     index_path = _res_path("webui", "index.html")
     if not os.path.exists(index_path):
         raise RuntimeError(f"Не найден UI: {index_path}")
 
+    # 1) сплэш
+    gif_path = _res_path("webui", "assets", "preloader1.gif")
+    splash_proc, splash_tag = _spawn_splash(gif_path)
+
+    def _close_splash(*_):
+        _kill_splash(splash_proc, splash_tag)
+
+    # 2) основное окно
     window = webview.create_window(
         title="Revive Launcher",
-        url=index_path,           # локальный файл из _MEIPASS/app/webui/...
+        url=index_path,
         width=820,
         height=900,
         resizable=False,
     )
+
+    # 3) мост и API
     api = Bridge(window, local_version)
     window.expose(
-        api.get_init_state,
-        api.set_language,
-        api.set_server,
-        api.find_window,
-        api.test_connect,
-        api.account_get,
-        api.account_save,
-        api.respawn_set_monitoring,
-        api.respawn_set_enabled,
-        api.get_state_snapshot,
-        api.get_status_snapshot,
-        api.watcher_is_running,
-        api.buff_set_enabled,
-        api.buff_set_mode,
-        api.buff_set_method,
-        api.buff_run_once,
-        api.macros_set_enabled,
-        api.macros_set_run_always,
-        api.macros_set_delay,
-        api.macros_set_duration,
-        api.macros_set_sequence,
-        api.macros_run_once,
-        api.tp_set_enabled,
-        api.tp_set_method,
-        api.tp_set_category,
-        api.tp_set_location,
-        api.tp_get_categories,
-        api.tp_get_locations,
-        api.tp_get_selected_row_id,
-        api.tp_set_selected_row_id,
-        api.tp_teleport_now,
-        api.run_update_check,
-        api.shutdown,
-        api._py_exit,
+        api.get_init_state, api.set_language, api.set_server, api.find_window, api.test_connect,
+        api.account_get, api.account_save, api.respawn_set_monitoring, api.respawn_set_enabled,
+        api.get_state_snapshot, api.get_status_snapshot, api.watcher_is_running,
+        api.buff_set_enabled, api.buff_set_mode, api.buff_set_method, api.buff_run_once,
+        api.macros_set_enabled, api.macros_set_run_always, api.macros_set_delay,
+        api.macros_set_duration, api.macros_set_sequence, api.macros_run_once,
+        api.tp_set_enabled, api.tp_set_method, api.tp_set_category, api.tp_set_location,
+        api.tp_get_categories, api.tp_get_locations, api.tp_get_selected_row_id,
+        api.tp_set_selected_row_id, api.tp_teleport_now, api.run_update_check,
+        api.shutdown, api._py_exit,
     )
+
+    # 4) события
+    window.events.loaded  += _close_splash
+    window.events.shown   += _close_splash
 
     def _on_closing():
         try:
             api.shutdown()
         finally:
+            _close_splash()
             os._exit(0)
+
     window.events.closing += _on_closing
 
-    # важно для корректной загрузки статики в WebView2 из onefile
+    # 5) запуск
     webview.start(debug=False, gui="edgechromium", http_server=True)
+
+
 
 
 # точка входа при запуске как скрипт
