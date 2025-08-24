@@ -7,8 +7,11 @@ import time
 import threading
 import logging
 from typing import Optional, Tuple, Dict, List, Any, Callable
-
+from pathlib import Path
 import webview  # pywebview / WebView2
+import subprocess, tempfile, ctypes
+import ctypes, subprocess, tempfile, os
+from pathlib import Path
 
 # --- core runtime ---
 from core.connection import ReviveController
@@ -602,66 +605,146 @@ class Bridge:
             pass
         sys.exit(0)
 
+def _work_area_center(w: int, h: int) -> tuple[int, int]:
+    class RECT(ctypes.Structure):
+        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                    ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    rect = RECT()
+    ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
+    x = rect.left + max(0, (rect.right - rect.left - w) // 2)
+    y = rect.top  + max(0, (rect.bottom - rect.top - h) // 2)
+    return int(x), int(y)
+
+_SPLASH_PS = r"""param($gif)
+Add-Type -Name U32 -Namespace Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+[Win.U32]::SetProcessDPIAware() | Out-Null
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$u = (New-Object System.Uri($gif)).AbsoluteUri
+
+# HTML фиксированной вёрстки 360x170, центрирование как в форме
+$html = @"
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+html,body{margin:0;height:100%;background:#111;color:#fff}
+.container{position:relative;width:360px;height:170px}
+img{position:absolute;left:144px;top:28px;width:72px;height:72px}
+p{position:absolute;top:110px;width:100%;text-align:center;font:600 13px 'Segoe UI', Tahoma, Verdana, system-ui}
+</style></head>
+<body>
+<div class="container">
+  <img src="$u" alt="">
+  <p>Загрузка Revive…</p>
+</div>
+</body></html>
+"@
+
+# Окно
+$w=360;$h=170
+$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$left=[int]($wa.Left + ($wa.Width - $w)/2)
+$top =[int]($wa.Top  + ($wa.Height - $h)/2)
+
+$form=New-Object System.Windows.Forms.Form
+$form.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::None
+$form.StartPosition=[System.Windows.Forms.FormStartPosition]::Manual
+$form.BackColor=[System.Drawing.Color]::FromArgb(17,17,17)
+$form.TopMost=$true
+$form.Location=New-Object System.Drawing.Point($left,$top)
+$form.Size=New-Object System.Drawing.Size($w,$h)
+$form.ShowInTaskbar=$true
+
+$wb = New-Object System.Windows.Forms.WebBrowser
+$wb.ScrollBarsEnabled = $false
+$wb.Dock = 'Fill'
+$wb.ScriptErrorsSuppressed = $true
+$form.Controls.Add($wb)
+$wb.DocumentText = $html
+
+[System.Windows.Forms.Application]::Run($form)
+"""
+
+def _spawn_splash(gif_path: str):
+    import tempfile, os, subprocess
+    from pathlib import Path
+    try:
+        fd, ps1 = tempfile.mkstemp(suffix=".ps1"); os.close(fd)
+        with open(ps1, "w", encoding="utf-8") as f:
+            f.write(_SPLASH_PS)
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        p = subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+             "-File", ps1, str(Path(gif_path))],
+            creationflags=flags
+        )
+        return p, ps1
+    except Exception:
+        return None, None
+
+def _kill_splash(p, hta_path: str|None):
+    if p:
+        try: p.terminate()
+        except Exception: pass
+        try: p.wait(timeout=1)
+        except Exception: pass
+    if hta_path and os.path.isfile(hta_path):
+        try: os.remove(hta_path)
+        except Exception: pass
 
 def launch_gui(local_version: str):
     index_path = _res_path("webui", "index.html")
     if not os.path.exists(index_path):
         raise RuntimeError(f"Не найден UI: {index_path}")
 
+    # 1) сплэш
+    gif_path = _res_path("webui", "assets", "preloader1.gif")
+    splash_proc, splash_tag = _spawn_splash(gif_path)
+
+    def _close_splash(*_):
+        _kill_splash(splash_proc, splash_tag)
+
+    # 2) основное окно
     window = webview.create_window(
         title="Revive Launcher",
-        url=index_path,           # локальный файл из _MEIPASS/app/webui/...
+        url=index_path,
         width=820,
         height=900,
         resizable=False,
     )
+
+    # 3) мост и API
     api = Bridge(window, local_version)
     window.expose(
-        api.get_init_state,
-        api.set_language,
-        api.set_server,
-        api.find_window,
-        api.test_connect,
-        api.account_get,
-        api.account_save,
-        api.respawn_set_monitoring,
-        api.respawn_set_enabled,
-        api.get_state_snapshot,
-        api.get_status_snapshot,
-        api.watcher_is_running,
-        api.buff_set_enabled,
-        api.buff_set_mode,
-        api.buff_set_method,
-        api.buff_run_once,
-        api.macros_set_enabled,
-        api.macros_set_run_always,
-        api.macros_set_delay,
-        api.macros_set_duration,
-        api.macros_set_sequence,
-        api.macros_run_once,
-        api.tp_set_enabled,
-        api.tp_set_method,
-        api.tp_set_category,
-        api.tp_set_location,
-        api.tp_get_categories,
-        api.tp_get_locations,
-        api.tp_get_selected_row_id,
-        api.tp_set_selected_row_id,
-        api.tp_teleport_now,
-        api.run_update_check,
-        api.shutdown,
-        api._py_exit,
+        api.get_init_state, api.set_language, api.set_server, api.find_window, api.test_connect,
+        api.account_get, api.account_save, api.respawn_set_monitoring, api.respawn_set_enabled,
+        api.get_state_snapshot, api.get_status_snapshot, api.watcher_is_running,
+        api.buff_set_enabled, api.buff_set_mode, api.buff_set_method, api.buff_run_once,
+        api.macros_set_enabled, api.macros_set_run_always, api.macros_set_delay,
+        api.macros_set_duration, api.macros_set_sequence, api.macros_run_once,
+        api.tp_set_enabled, api.tp_set_method, api.tp_set_category, api.tp_set_location,
+        api.tp_get_categories, api.tp_get_locations, api.tp_get_selected_row_id,
+        api.tp_set_selected_row_id, api.tp_teleport_now, api.run_update_check,
+        api.shutdown, api._py_exit,
     )
+
+    # 4) события
+    window.events.loaded  += _close_splash
+    window.events.shown   += _close_splash
 
     def _on_closing():
         try:
             api.shutdown()
         finally:
+            _close_splash()
             os._exit(0)
+
     window.events.closing += _on_closing
 
-    # важно для корректной загрузки статики в WebView2 из onefile
+    # 5) запуск
     webview.start(debug=False, gui="edgechromium", http_server=True)
+
+
 
 
 # точка входа при запуске как скрипт
