@@ -1,4 +1,4 @@
-﻿# core/servers/boh/flows/rows/registry.py
+# core/servers/l2mad/flows/rows/registry.py
 from typing import List, Dict, Tuple
 
 # Сопоставление локации списку путей

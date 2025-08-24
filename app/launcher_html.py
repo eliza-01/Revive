@@ -1,7 +1,9 @@
 # app/launcher_html.py
 from __future__ import annotations
+import queue
 import os, importlib, threading, time
 import webview
+from typing import Optional
 
 from core.connection import ReviveController
 from core.connection_test import run_test_command
@@ -33,17 +35,23 @@ def _safe_import(modpath: str):
 
 class Repeater:
     def __init__(self, fn, interval_s: float):
-        self.fn = fn; self.interval = max(0.05, float(interval_s))
-        self._stop = threading.Event(); self._thr = None
+        self.fn = fn
+        self.interval = max(0.05, float(interval_s))
+        self._stop = threading.Event()
+        self._thr = None
     def start(self):
-        if self._thr and self._thr.is_alive(): return
+        if self._thr and self._thr.is_alive():
+            return
         self._stop.clear()
-        self._thr = threading.Thread(target=self._loop, daemon=True); self._thr.start()
+        self._thr = threading.Thread(target=self._loop, daemon=True)
+        self._thr.start()
     def stop(self): self._stop.set()
     def _loop(self):
         while not self._stop.is_set():
-            try: self.fn()
-            except Exception: pass
+            try:
+                self.fn()
+            except Exception:
+                pass
             self._stop.wait(self.interval)
 
 
@@ -52,20 +60,14 @@ class _CheckerShim:
     def __init__(self, checker: ChargeChecker):
         self.c = checker
     def is_charged(self, *_):
-        try:
-            return self.c.force_check()
-        except Exception:
-            return None
+        try: return self.c.force_check()
+        except Exception: return None
     def force_check(self, *_):
-        try:
-            return self.c.force_check()
-        except Exception:
-            return None
+        try: return self.c.force_check()
+        except Exception: return None
     def invalidate(self):
-        try:
-            self.c.invalidate()
-        except Exception:
-            pass
+        try: self.c.invalidate()
+        except Exception: pass
 
 
 class Bridge:
@@ -82,7 +84,7 @@ class Bridge:
         self.controller = ReviveController()
 
         # ---- окно
-        self._window_info = None
+        self._window_info: Optional[dict] = None
 
         # ---- watcher (как раньше)
         self._last_state = None
@@ -159,8 +161,24 @@ class Bridge:
             logger=print,
         )
 
-        # простой планировщик "как root.after"
-        def schedule(fn, ms): threading.Timer(max(0, ms) / 1000.0, fn).start()
+        # сериализованный планировщик (аналог root.after из старого UI)
+        class _SerialScheduler:
+            def __init__(self):
+                self._q = queue.Queue()
+                self._thr = threading.Thread(target=self._pump, daemon=True)
+                self._thr.start()
+            def _pump(self):
+                while True:
+                    fn = self._q.get()
+                    try:
+                        fn()
+                    finally:
+                        self._q.task_done()
+            def after(self, ms, fn):
+                threading.Timer(max(0, ms) / 1000.0, lambda: self._q.put(fn)).start()
+
+        _sched = _SerialScheduler()
+        def schedule(fn, ms): _sched.after(ms, fn)
 
         self.orch = FlowOrchestrator(
             schedule=schedule,
@@ -190,6 +208,7 @@ class Bridge:
             get_delay_s=lambda: self._macros_delay_s,
         )
 
+        self._tp_enabled = False          # как в старом UI (tp.is_enabled())
         self._tp_cfg = {"cat": "", "loc": "", "method": TP_METHOD_DASHBOARD}
         self._selected_row_id = ""
 
@@ -201,15 +220,14 @@ class Bridge:
             macros_ui_run_always=lambda: self._macros_run_always,
             macros_ui_get_duration_s=lambda: self._macros_duration_s,
             macros_run_once=lambda: self._macros_runner.run_once(),
-            # ВАЖНО: ТП считается включённым, если указаны cat и loc
-            tp_is_enabled=lambda: bool(self._tp_cfg["cat"] and self._tp_cfg["loc"]),
+            tp_is_enabled=lambda: self._tp_enabled,  # строго как в старом UI (флаг из UI)
             tp_teleport_now_selected=lambda: self._tp_teleport_now_selected(),
             tp_get_selected_destination=lambda: (self._tp_cfg["cat"], self._tp_cfg["loc"]),
             tp_get_selected_row_id=lambda: self._selected_row_id,
             respawn_ui_is_enabled=lambda: True,
         )
 
-    # ── прокси watcher → orchestrator
+    # ── прокси watcher → orchestrатор
     def _on_dead_proxy(self, st): self.orch.on_dead(st)
     def _on_alive_proxy(self, st): self.orch.on_alive(st)
 
@@ -242,11 +260,11 @@ class Bridge:
             else:
                 setattr(self.tp_worker, "server", self.server)
         except Exception: pass
-        # дефолтный метод бафа из профиля
         try:
             cur = getattr(self.profile, "get_buff_mode", lambda: "")()
             if cur: self._buff_method = cur
-        except Exception: pass
+        except Exception:
+            pass
         return {"ok": True, "server": self.server}
 
     def get_server(self): return {"server": self.server}
@@ -263,7 +281,7 @@ class Bridge:
                 hwnd = find_window(t)
                 if hwnd:
                     info = get_window_info(hwnd, client=True)
-                    if all(k in info for k in ("x","y","width","height")):
+                    if all(k in info for k in ("x", "y", "width", "height")):
                         self._window_info = info
                         try: self.tp_worker.window_info = info
                         except Exception: pass
@@ -279,14 +297,15 @@ class Bridge:
             hwnd = find_window(t)
             if hwnd:
                 info = get_window_info(hwnd, client=True)
-                if all(k in info for k in ("x","y","width","height")):
+                if all(k in info for k in ("x", "y", "width", "height")):
                     self._window_info = info
                     try: self.tp_worker.window_info = info
                     except Exception: pass
                     try:
                         if not self.watcher.is_running():
                             self.watcher.start()
-                    except Exception: pass
+                    except Exception:
+                        pass
                     return {"found": True, "title": t, "window": info, "info": info}
         return {"found": False}
 
@@ -327,7 +346,7 @@ class Bridge:
 
     # ── аккаунт
     def account_get(self):
-        return {"account": getattr(self, "account", {"login":"", "password":"", "pin":""})}
+        return {"account": getattr(self, "account", {"login": "", "password": "", "pin": ""})}
     def account_set(self, login: str, password: str, pin: str):
         self.account = {"login": login or "", "password": password or "", "pin": pin or ""}
         return {"ok": True}
@@ -349,7 +368,8 @@ class Bridge:
         try:
             if hasattr(self.profile, "set_buff_mode"):
                 self.profile.set_buff_mode(self._buff_method)
-        except Exception: pass
+        except Exception:
+            pass
         return {"ok": True}
 
     def buff_enable(self, enable: bool):
@@ -369,19 +389,22 @@ class Bridge:
 
     def _buff_run_once(self) -> bool:
         worker = BuffAfterRespawnWorker(
-            controller=self.controller,
-            server=self.server,
-            get_window=lambda: self._window_info,
-            get_language=lambda: self.language,
-            on_status=lambda m, ok=None: print(m),
-            click_threshold=0.87,
-            debug=False,
+            self.controller,                # controller
+            self.server,                    # server
+            lambda: self._window_info,      # get_window
+            lambda: self.language,          # get_language
+            lambda m, ok=None: print(m),    # on_status
+            0.87,                           # click_threshold
+            False,                          # debug
         )
         worker.set_mode(self._buff_mode)
         try: worker.set_method(self._buff_method)
         except Exception: pass
+
         ok = bool(worker.run_once())
         if ok:
+            try: self.checker.invalidate()
+            except Exception: pass
             self._wait_for_charged(timeout_s=8.0, poll_s=0.4)
         return ok
 
@@ -405,24 +428,42 @@ class Bridge:
 
     # ── ТП (как TPControls → teleport_now_selected)
     def tp_configure(self, category_id: str, location_id: str, method: str):
-        self._tp_cfg = {"cat": category_id or "", "loc": location_id or "", "method": (method or TP_METHOD_DASHBOARD)}
+        self._tp_cfg = {
+            "cat": category_id or "",
+            "loc": location_id or "",
+            "method": (method or TP_METHOD_DASHBOARD),
+        }
+        # точь-в-точь логика старого UI: пользователь сохранил цель → ТП считается включённым
+        self._tp_enabled = bool(self._tp_cfg["cat"] and self._tp_cfg["loc"])
         try:
             self.tp_worker.set_method(self._tp_cfg["method"])
             self.tp_worker.configure(self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"])
-        except Exception: pass
-        # ВАЖНО: включён, если цель задана (как в старом UI)
-        enabled = bool(self._tp_cfg["cat"] and self._tp_cfg["loc"])
-        return {"ok": True, **self._tp_cfg, "enabled": enabled}
+        except Exception:
+            pass
+        return {"ok": True, **self._tp_cfg, "enabled": self._tp_enabled}
 
     def _tp_teleport_now_selected(self) -> bool:
-        if not (self._tp_cfg["cat"] and self._tp_cfg["loc"]):
+        if not (self._tp_enabled and self._tp_cfg["cat"] and self._tp_cfg["loc"]):
             return False
-        try: self.tp_worker.window_info = self._window_info
-        except Exception: pass
-        return bool(self.tp_worker.teleport_now(self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"]))
+        # как в старом UI — просто освежаем window_info перед запуском воркера
+        try:
+            self.get_window()
+        except Exception:
+            pass
+        try:
+            self.tp_worker.window_info = self._window_info
+        except Exception:
+            pass
+        return bool(self.tp_worker.teleport_now(
+            self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"]
+        ))
 
     def tp_now(self):
         return {"ok": self._tp_teleport_now_selected()}
+
+    def tp_enable(self, enable: bool):
+        self._tp_enabled = bool(enable)
+        return {"ok": True, "enabled": self._tp_enabled}
 
     # ── rows (опционально)
     def rows_list(self, village_id: str, location_id: str):

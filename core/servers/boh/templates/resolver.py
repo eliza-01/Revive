@@ -1,4 +1,4 @@
-﻿# core/servers/boh/templates/resolver.py
+# core/servers/l2mad/templates/resolver.py
 """
 L2MAD template resolver.
 

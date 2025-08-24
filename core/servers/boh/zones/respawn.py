@@ -1,4 +1,4 @@
-﻿# core/servers/boh/zones/respawn.py
+# core/servers/l2mad/zones/respawn.py
 # Зоны и шаблоны для подъёма после смерти.
 from typing import Dict, Tuple, List, Union
 

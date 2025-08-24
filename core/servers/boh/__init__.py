@@ -1,1 +1,1 @@
-﻿# core/servers/boh/__init__.py
+﻿# core/servers/l2mad/__init__.py

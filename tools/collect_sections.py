@@ -75,6 +75,15 @@ SECTIONS: dict[str, list[str]] = {
         "app/launcher_bootstrap.py",
         "app/launcher_html.py",
     ],
+    # F) Контроллеры/обвязка
+    "F": [
+      "core/vision/matching.py",
+      "core/vision/utils/colors.py",
+      "core/vision/win32/gdi_backend.py",
+      "core/vision/capture/gdi.py",
+      "core/vision/capture/window_bgr_capture.py",
+      "core/vision/matching/template_matcher.py"
+    ],
 }
 
 OUT_FILENAMES = {
@@ -83,6 +92,7 @@ OUT_FILENAMES = {
     "C": "C_servers.py",
     "D": "D_ui_spec.py",
     "E": "E_wrappers.py",
+    "F": "F_vision.py",
 }
 
 def _iter_matches(root: Path, patterns: Iterable[str]) -> list[Path]:
@@ -151,7 +161,7 @@ def main():
     ap = argparse.ArgumentParser(description="Собрать файлы по разделам A–E в один .py на раздел.")
     ap.add_argument("--root", default=".", help="корень проекта")
     ap.add_argument("--out", default="collected", help="каталог вывода")
-    ap.add_argument("--sections", default="A,B,C,D,E", help="какие разделы собирать, через запятую")
+    ap.add_argument("--sections", default="A,B,C,D,E,F", help="какие разделы собирать, через запятую")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()

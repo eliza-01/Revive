@@ -1,4 +1,4 @@
-﻿# core/servers/boh/zones/buffs_state.py
+# core/servers/l2mad/zones/buffs_state.py
 from typing import Dict, Tuple, List, Union
 
 ZoneLTRB = Tuple[int, int, int, int]

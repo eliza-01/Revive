@@ -1,4 +1,4 @@
-﻿# core/servers/boh/flows/buff_dashboard.py
+# core/servers/l2mad/flows/buff_dashboard.py
 FLOW = [
     {"op": "send_arduino", "cmd": "b"},
     {"op": "wait", "zone": "fullscreen", "tpl": "dashboard_init", "timeout_ms": 2000, "thr": 0.87,
