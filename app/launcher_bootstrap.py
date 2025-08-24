@@ -3,6 +3,7 @@ from __future__ import annotations
 import os, sys, glob, time, tempfile, subprocess, threading, platform, struct
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import messagebox
 
 # ---- импорт пакета app ----
 PROJ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -149,6 +150,7 @@ class WV2BootstrapUI:
         self._set_progress(reset=True)
         self.refresh_state()
 
+
     def _set_progress(self, value: int|None=None, text: str|None=None, indeterminate: bool=False, reset: bool=False):
         if reset:
             self.progress.config(mode="determinate"); self.progress["value"]=0; self.progress_label.config(text=""); self.progress.stop(); return
@@ -170,12 +172,18 @@ class WV2BootstrapUI:
             self.btn_html.config(state="disabled")
             self.btn_install.config(text="Установить компонент WebView2")
 
+
     def on_run_html(self):
         self.root.destroy()
         try:
             start_html_ui(self.local_version)
         except Exception as e:
-            print("[html-ui] error:", e); start_tk_ui(self.local_version)
+            try:
+                messagebox.showerror("Ошибка запуска современного интерфейса", str(e))
+                if messagebox.askyesno("Открыть упрощённый интерфейс?", "Не удалось запустить современный интерфейс. Открыть упрощённый?"):
+                    start_tk_ui(self.local_version)
+            except Exception:
+                start_tk_ui(self.local_version)
 
     def on_run_tk(self):
         self.root.destroy(); start_tk_ui(self.local_version)

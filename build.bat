@@ -3,16 +3,16 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 chcp 65001 >nul
 
-rem === 1) Поиск Python (py -3 или python) ===
+rem === 1) Python ===
 set "PYEXE="
-for %%P in (py -3) do (%%P -c "import sys" >nul 2>&1 && set "PYEXE=%%P")
-if not defined PYEXE for %%P in (python) do (%%P -c "import sys" >nul 2>&1 && set "PYEXE=%%P")
+py -3 -c "import sys" >nul 2>&1 && set "PYEXE=py -3"
+if not defined PYEXE python -c "import sys" >nul 2>&1 && set "PYEXE=python"
 if not defined PYEXE (
-  echo [E] Python не найден. Установи 3.11+ и перезапусти.
+  echo [E] Python не найден. Установи 3.11+ и добавь в PATH.
   pause & exit /b 1
 )
 
-rem === 2) Безопасные TEMP каталоги (на случай кириллицы в профиле) ===
+rem === 2) TEMP/UTF-8 ===
 set "TMPROOT=%CD%\_tmp"
 if not exist "%TMPROOT%" mkdir "%TMPROOT%"
 set "TEMP=%TMPROOT%"
@@ -20,44 +20,26 @@ set "TMP=%TMPROOT%"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 
-rem === 3) venv: не трогаем, создаём только если его нет ===
+rem === 3) venv ===
 if not exist venv (
-  echo [INFO] venv не найден, создаю...
-  %PYEXE% -m venv venv || (echo [E] не удалось создать venv & pause & exit /b 1)
+  echo [INFO] Создаю venv...
+  %PYEXE% -m venv venv || (echo [E] venv failed & pause & exit /b 1)
 ) else (
-  echo [INFO] использую существующий venv.
+  echo [INFO] Использую существующий venv.
 )
 set "PY=%CD%\venv\Scripts\python.exe"
 
-rem === 4) Готовим requirements.build.txt ===
-set "REQSRC=documents\requirements.txt"
-set "REQFALL=requirements.txt"
+rem === 4) deps ===
 set "REQOUT=requirements.build.txt"
-
-if exist "%REQSRC%" (
-  set "REQ=%REQSRC%"
-) else if exist "%REQFALL%" (
-  set "REQ=%REQFALL%"
-) else (
-  set "REQ="
-)
-
-if defined REQ (
-  powershell -NoProfile -Command ^
-    "$r=Get-Content '%REQ%';" ^
-    "$r=$r | Where-Object {$_ -notmatch '^\s*(win32gui|win32con|atexit)\b'};" ^
-    "if(-not ($r -match '^\s*pywin32(\b|=)')){$r+='pywin32'};" ^
-    "$r | Set-Content -Encoding ASCII '%REQOUT%'"
-) else (
-  echo pywin32>"%REQOUT%"
-)
-
-rem === 5) Установка зависимостей строго через python -m pip ===
+> "%REQOUT%" echo pywin32
+>>"%REQOUT%" echo requests
+>>"%REQOUT%" echo comtypes
+>>"%REQOUT%" echo pywebview>=4.4
 "%PY%" -m pip install --upgrade pip || (echo [E] pip upgrade failed & pause & exit /b 1)
 "%PY%" -m pip install -r "%REQOUT%" || (echo [E] deps install failed & pause & exit /b 1)
 "%PY%" -m pip install pyinstaller || (echo [E] pyinstaller install failed & pause & exit /b 1)
 
-rem === 6) Опции ресурсов ===
+rem === 5) ресурсы ===
 set "NAME=Revive"
 set "ICON=assets\icon.ico"
 set "ICON_OPT="
@@ -68,16 +50,25 @@ if exist assets                        set "DATA_OPTS=%DATA_OPTS% --add-data ass
 if exist core\servers                  set "DATA_OPTS=%DATA_OPTS% --add-data core\servers;core\servers"
 if exist app\webui                     set "DATA_OPTS=%DATA_OPTS% --add-data app\webui;app\webui"
 if exist app\dep                       set "DATA_OPTS=%DATA_OPTS% --add-data app\dep;app\dep"
-if exist latest_version.txt            set "DATA_OPTS=%DATA_OPTS% --add-data latest_version.txt;."
-rem  если есть другие статические каталоги, добавь аналогично
+if exist documents                     set "DATA_OPTS=%DATA_OPTS% --add-data documents;documents"
 
+rem === 6) очистка ===
+if exist build rmdir /s /q build
+if exist dist rmdir /s /q dist
+for %%F in (*.spec) do del "%%F" >nul 2>&1
 
-rem === 7) Сборка onefile (без UAC; добавь --uac-admin при необходимости) ===
+rem === 7) сборка (включаем HTML-лаунчер и Tk-фолбэк) ===
 "%PY%" -m PyInstaller --clean --onefile --uac-admin --noconsole %ICON_OPT% ^
   --name "%NAME%" %DATA_OPTS% main.py ^
+  --hidden-import app.launcher_html ^
+  --hidden-import app.launcher ^
+  --hidden-import webview.platforms.edgechromium ^
+  --collect-submodules webview ^
+  --collect-data webview ^
   --workpath "%CD%\build" --distpath "%CD%\dist" --specpath "%CD%"
 if errorlevel 1 (echo [FAIL] build failed & pause & exit /b 1)
 
+rem === 8) результат ===
 if exist "dist\%NAME%.exe" (
   echo [OK] dist\%NAME%.exe
 ) else (

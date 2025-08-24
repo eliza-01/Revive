@@ -36,6 +36,10 @@ from core.updater import get_remote_version, is_newer_version
 LOG_PATH = "revive.log"
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
 
+def _res_path(*parts: str) -> str:
+    # путь к ресурсам как в PyInstaller (onefile) так и в dev
+    base = os.path.join(getattr(sys, "_MEIPASS", ""), "app") if hasattr(sys, "_MEIPASS") else os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(base, *parts)
 
 def _schedule(fn: Callable[[], None], ms: int) -> None:
     t = threading.Timer(max(0.0, ms) / 1000.0, fn)
@@ -600,15 +604,13 @@ class Bridge:
 
 
 def launch_gui(local_version: str):
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    index_path = os.path.join(base_dir, "webui", "index.html")
+    index_path = _res_path("webui", "index.html")
     if not os.path.exists(index_path):
         raise RuntimeError(f"Не найден UI: {index_path}")
 
-    # создать окно и JS API
     window = webview.create_window(
         title="Revive Launcher",
-        url=index_path,
+        url=index_path,           # локальный файл из _MEIPASS/app/webui/...
         width=820,
         height=900,
         resizable=False,
@@ -656,13 +658,12 @@ def launch_gui(local_version: str):
             api.shutdown()
         finally:
             os._exit(0)
-
     window.events.closing += _on_closing
 
-    # WebView2 принудительно
-    webview.start(debug=False, gui="edgechromium")
+    # важно для корректной загрузки статики в WebView2 из onefile
+    webview.start(debug=False, gui="edgechromium", http_server=True)
 
 
 # точка входа при запуске как скрипт
 if __name__ == "__main__":
-    launch_gui(local_version="0.0.0")
+    webview.start(debug=False, gui="edgechromium", http_server=True)
