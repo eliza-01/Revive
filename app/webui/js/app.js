@@ -220,7 +220,7 @@
 
     // periodic HP + мониторинг
     tickState();
-  }b
+  }
 
   // --- ждать готовности pywebview ---
   function boot() {
