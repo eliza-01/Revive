@@ -10,7 +10,8 @@ from typing import Optional, Tuple, Dict, List, Any, Callable
 from pathlib import Path
 import webview  # pywebview / WebView2
 import subprocess, tempfile, ctypes
-
+import ctypes, subprocess, tempfile, os
+from pathlib import Path
 
 # --- core runtime ---
 from core.connection import ReviveController
@@ -604,56 +605,80 @@ class Bridge:
             pass
         sys.exit(0)
 
-def _spawn_splash(gif_path: str):
-    try:
-        gif_uri = Path(gif_path).resolve().as_uri()
-        html = f"""<html><head>
-<meta http-equiv="x-ua-compatible" content="IE=11" />
-<HTA:APPLICATION
-  ID="ReviveSplash"
-  BORDER="none"
-  CAPTION="no"
-  SYSMENU="no"
-  SCROLL="no"
-  SHOWINTASKBAR="no"
-  SINGLEINSTANCE="yes"
-  MAXIMIZEBUTTON="no"
-  MINIMIZEBUTTON="no"
-  NAVIGABLE="no"
-/>
+def _work_area_center(w: int, h: int) -> tuple[int, int]:
+    class RECT(ctypes.Structure):
+        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                    ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    rect = RECT()
+    ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
+    x = rect.left + max(0, (rect.right - rect.left - w) // 2)
+    y = rect.top  + max(0, (rect.bottom - rect.top - h) // 2)
+    return int(x), int(y)
+
+_SPLASH_PS = r"""param($gif)
+Add-Type -Name U32 -Namespace Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+[Win.U32]::SetProcessDPIAware() | Out-Null
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$u = (New-Object System.Uri($gif)).AbsoluteUri
+
+# HTML фиксированной вёрстки 360x170, центрирование как в форме
+$html = @"
+<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
-  html,body{{margin:0;overflow:hidden;background:#111;color:#fff;
-             font:600 13px 'Segoe UI', Tahoma, Verdana, system-ui;
-             -ms-overflow-style:none;-webkit-user-select:none;user-select:none}}
-  .wrap{{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-         text-align:center}}
-  img{{width:72px;height:72px;display:block;margin:0 auto 12px auto}}
-</style>
-<script type="text/javascript">
-function boot(){{
-  var w=360, h=170;
-  window.resizeTo(w,h);
-  var x=(screen.availLeft + (screen.availWidth - w)/2);
-  var y=(screen.availTop  + (screen.availHeight - h)/2);
-  window.moveTo(x,y);
-  document.title='';
-  document.body.style.visibility='visible';
-}}
-window.onload=boot;
-</script>
-</head>
-<body style="visibility:hidden">
-  <div class="wrap">
-    <img src="{gif_uri}" alt="">
-    <div>Загрузка Revive…</div>
-  </div>
-</body></html>"""
-        fd, hta = tempfile.mkstemp(suffix=".hta"); os.close(fd)
-        with open(hta, "w", encoding="utf-8") as f:
-            f.write(html)
-        p = subprocess.Popen(["mshta.exe", hta],
-                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        return p, hta
+html,body{margin:0;height:100%;background:#111;color:#fff}
+.container{position:relative;width:360px;height:170px}
+img{position:absolute;left:144px;top:28px;width:72px;height:72px}
+p{position:absolute;top:110px;width:100%;text-align:center;font:600 13px 'Segoe UI', Tahoma, Verdana, system-ui}
+</style></head>
+<body>
+<div class="container">
+  <img src="$u" alt="">
+  <p>Загрузка Revive…</p>
+</div>
+</body></html>
+"@
+
+# Окно
+$w=360;$h=170
+$wa=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$left=[int]($wa.Left + ($wa.Width - $w)/2)
+$top =[int]($wa.Top  + ($wa.Height - $h)/2)
+
+$form=New-Object System.Windows.Forms.Form
+$form.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::None
+$form.StartPosition=[System.Windows.Forms.FormStartPosition]::Manual
+$form.BackColor=[System.Drawing.Color]::FromArgb(17,17,17)
+$form.TopMost=$true
+$form.Location=New-Object System.Drawing.Point($left,$top)
+$form.Size=New-Object System.Drawing.Size($w,$h)
+$form.ShowInTaskbar=$true
+
+$wb = New-Object System.Windows.Forms.WebBrowser
+$wb.ScrollBarsEnabled = $false
+$wb.Dock = 'Fill'
+$wb.ScriptErrorsSuppressed = $true
+$form.Controls.Add($wb)
+$wb.DocumentText = $html
+
+[System.Windows.Forms.Application]::Run($form)
+"""
+
+def _spawn_splash(gif_path: str):
+    import tempfile, os, subprocess
+    from pathlib import Path
+    try:
+        fd, ps1 = tempfile.mkstemp(suffix=".ps1"); os.close(fd)
+        with open(ps1, "w", encoding="utf-8") as f:
+            f.write(_SPLASH_PS)
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        p = subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+             "-File", ps1, str(Path(gif_path))],
+            creationflags=flags
+        )
+        return p, ps1
     except Exception:
         return None, None
 
