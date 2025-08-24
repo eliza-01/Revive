@@ -1,145 +1,159 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <title>Revive</title>
-  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <link rel="stylesheet" href="css/style.css">
+  <meta charset="utf-8"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Revive Launcher</title>
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
-
-<header class="topbar">
-  <img class="logo" src="assets/icon.png" alt="">
-  <div class="title">
-    <div class="name">Revive</div>
-    <div class="ver" id="appVersion">—</div>
-  </div>
-  <div class="spacer"></div>
-  <button id="btnQuit" class="btn danger">Выход</button>
-</header>
-
-<main class="content">
-
-  <section class="card">
-    <h3>Системное</h3>
-    <div class="row">
-      <label>Язык:</label>
-      <select id="langSel">
-        <option value="rus">rus</option>
-        <option value="eng">eng</option>
-      </select>
-
-      <label class="ml">Сервер:</label>
-      <select id="serverSel"></select>
-
-      <button id="btnFindWindow" class="btn">Найти окно</button>
-      <span id="winStatus" class="muted">[?] …</span>
+  <header class="hdr">
+    <div class="brand">
+      <img src="assets/icon.png" alt="icon" class="icon">
+      <div>
+        <div class="title">Revive</div>
+        <div id="ver" class="subtitle">Версия: ...</div>
+      </div>
     </div>
+  </header>
 
-    <div class="row">
-      <button id="btnPing" class="btn">🧪 Тест коннекта</button>
-      <span id="pingStatus" class="muted">—</span>
-    </div>
+  <main class="container">
+    <!-- Система -->
+    <section class="card">
+      <h3>Системные настройки</h3>
+      <div class="row">
+        <label>Язык интерфейса:</label>
+        <select id="lang">
+          <option value="rus">rus</option>
+          <option value="eng">eng</option>
+        </select>
 
-    <div class="row">
-      <button id="btnAcc" class="btn">Настроить аккаунт</button>
-      <span id="accInfo" class="muted"></span>
-    </div>
-  </section>
+        <label class="ml">Сервер:</label>
+        <select id="server"></select>
+      </div>
 
-  <section class="card">
-    <h3>Отслеживание и подъём</h3>
-    <div class="row">
-      <label><input type="checkbox" id="chkWatch"> Отслеживать состояние (HP)</label>
-      <label class="ml"><input type="checkbox" id="chkRise"> Встать после смерти («В деревню»)</label>
-      <button id="btnRiseNow" class="btn">В деревню сейчас</button>
-    </div>
-    <div class="row">
-      <span>HP:</span> <span id="hpVal" class="hp">-- %</span>
-    </div>
-  </section>
+      <div class="row">
+        <button id="btnFind">🔍 Найти окно Lineage</button>
+        <button id="btnTest">🧪 Тест коннекта</button>
+      </div>
 
-  <section class="card">
-    <h3>Баф после респавна</h3>
-    <div class="row">
-      <label><input type="checkbox" id="chkBuff"> Включить баф</label>
-      <label class="ml">Режим:</label>
-      <select id="buffMode">
-        <option value="profile">profile</option>
-        <option value="mage">mage</option>
-        <option value="fighter">fighter</option>
-      </select>
-      <label class="ml">Метод:</label>
-      <select id="buffMethod"></select>
-      <button id="btnBuffNow" class="btn">Баф сейчас</button>
-    </div>
-  </section>
+      <div class="row">
+        <span id="status-window" class="status gray">[?] Поиск окна...</span>
+      </div>
+      <div class="row">
+        <span id="status-driver" class="status gray">Состояние связи: неизвестно</span>
+      </div>
+      <div class="row">
+        <button id="btnUpdate">🔄 Проверить обновление</button>
+        <span id="status-update" class="status gray"></span>
+      </div>
 
-  <section class="card">
-    <h3>Макросы после бафа</h3>
-    <div class="row">
-      <label><input type="checkbox" id="chkMacros"> Включить</label>
-      <label class="ml"><input type="checkbox" id="chkMacrosAlways"> Запускать даже без бафа</label>
-    </div>
-    <div class="row">
-      <label>Последовательность:</label>
-      <input id="macrosSeq" class="inp" value="1,2,3">
-      <label class="ml">Задержка (сек):</label>
-      <input id="macrosDelay" class="inp" value="1">
-      <label class="ml">Окно (сек):</label>
-      <input id="macrosDur" class="inp" value="2">
-      <button id="btnMacrosNow" class="btn">Запустить</button>
-    </div>
-  </section>
+      <details class="mt">
+        <summary>Настройки аккаунта</summary>
+        <div class="row">
+          <label>Логин:</label><input id="acc-login" type="text" placeholder="login">
+        </div>
+        <div class="row">
+          <label>Пароль:</label><input id="acc-pass" type="password" placeholder="password">
+        </div>
+        <div class="row">
+          <label>PIN:</label><input id="acc-pin" type="text" pattern="[0-9]*" inputmode="numeric">
+        </div>
+        <div class="row">
+          <button id="btnAccSave">Сохранить</button>
+        </div>
+      </details>
+    </section>
 
-  <section class="card">
-    <h3>Телепорт</h3>
-    <div class="row">
-      <label><input type="checkbox" id="chkTP"> ТП после смерти</label>
-      <label class="ml">Метод:</label>
-      <select id="tpMethod">
-        <option value="dashboard">dashboard</option>
-        <option value="gatekeeper">gatekeeper</option>
-      </select>
-    </div>
-    <div class="row">
-      <label>Категория:</label>
-      <select id="catSel"></select>
-      <label class="ml">Локация:</label>
-      <select id="locSel"></select>
-      <button id="btnSaveTP" class="btn">Сохранить</button>
-      <button id="btnTPNow" class="btn primary">ТП сейчас</button>
-    </div>
-    <div class="row">
-      <label>Маршрут после ТП:</label>
-      <select id="rowsSel"></select>
-      <button id="btnRowsRefresh" class="btn">Обновить</button>
-      <button id="btnRowsClear" class="btn">Очистить</button>
-    </div>
-  </section>
+    <!-- Поток -->
+    <section class="card">
+      <h3>Отслеживать состояние · Баф · Макросы · ТП</h3>
 
-  <section class="card">
-    <h3>Лог</h3>
-    <pre id="log" class="log"></pre>
-  </section>
+      <!-- Respawn -->
+      <div class="group">
+        <label><input type="checkbox" id="chkMonitor"> Отслеживать состояние (StateWatcher)</label>
+        <label class="ml"><input type="checkbox" id="chkRespawn" checked> Встать после смерти</label>
+        <div class="row"><span id="status-watcher" class="status gray">Мониторинг: выкл</span></div>
+      </div>
 
-</main>
+      <!-- State -->
+      <div class="group">
+        <h4>Состояние персонажа</h4>
+        <div class="row">
+          <span>HP: <b id="hp">-- %</b></span>
+          <span class="ml">CP: <b id="cp">-- %</b></span>
+        </div>
+      </div>
 
-<!-- простейший диалог аккаунта -->
-<dialog id="accDlg">
-  <form method="dialog" class="dlg">
-    <h3>Аккаунт</h3>
-    <label>Логин <input id="accLogin"></label>
-    <label>Пароль <input id="accPass" type="password"></label>
-    <label>PIN <input id="accPin"></label>
-    <menu>
-      <button value="cancel">Отмена</button>
-      <button id="accSave" value="ok" class="primary">Сохранить</button>
-    </menu>
-  </form>
-</dialog>
+      <!-- Buff -->
+      <div class="group">
+        <h4>Баф после респавна</h4>
+        <div class="row">
+          <label><input type="checkbox" id="chkBuff"> Включить баф</label>
+          <label class="ml">Режим:</label>
+          <select id="buffMode">
+            <option value="profile">profile</option>
+            <option value="mage">mage</option>
+            <option value="fighter">fighter</option>
+          </select>
+          <label class="ml">Метод:</label>
+          <select id="buffMethod"></select>
+          <button class="ml" id="btnBuffOnce">Баф один раз</button>
+        </div>
+        <div class="row"><span id="status-buff" class="status gray">Отключено</span></div>
+      </div>
 
-<script src="js/app.js"></script>
+      <!-- After-buff macros -->
+      <div class="group">
+        <h4>Макросы после бафа</h4>
+        <div class="row">
+          <label><input type="checkbox" id="chkMacros"> Включить</label>
+          <label class="ml"><input type="checkbox" id="chkMacrosAlways"> Запускать даже без бафа</label>
+        </div>
+        <div id="macrosRows" class="rows"></div>
+        <div class="row">
+          <button id="btnAddRow">+</button>
+          <button id="btnDelRow" class="ml">−</button>
+        </div>
+        <div class="row">
+          <label>Задержка, сек:</label><input id="macrosDelay" type="number" step="0.1" value="1">
+          <label class="ml">Окно ожидания, сек:</label><input id="macrosDur" type="number" step="0.1" value="2">
+          <button class="ml" id="btnMacrosOnce">Выполнить сейчас</button>
+        </div>
+        <div class="row"><span id="status-macros" class="status gray"></span></div>
+      </div>
+
+      <!-- TP -->
+      <div class="group">
+        <h4>Телепорт</h4>
+        <div class="row">
+          <label><input type="checkbox" id="chkTP"> ТП после смерти</label>
+          <label class="ml">Метод:</label>
+          <select id="tpMethod"></select>
+        </div>
+        <div class="row">
+          <label>Категория:</label><select id="tpCat"></select>
+          <label class="ml">Локация:</label><select id="tpLoc"></select>
+          <button class="ml" id="btnTPNow">ТП сейчас</button>
+        </div>
+        <div class="row"><span id="status-tp" class="status gray">Выберите категорию и локацию</span></div>
+
+        <div class="row mt">
+          <label>Маршрут после ТП:</label>
+          <select id="rows"></select>
+          <button id="btnRowClear" class="ml">Очистить</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <button id="btnExit" class="danger">Выход</button>
+      <span id="logHint" class="hint">Лог: revive.log</span>
+    </footer>
+  </main>
+
+  <script src="js/app.js"></script>
 </body>
 </html>

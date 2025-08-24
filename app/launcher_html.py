@@ -1,189 +1,140 @@
-# app/launcher_html.py
+# === FILE: app/launcher_html.py
 from __future__ import annotations
-import queue
-import os, importlib, threading, time
-import webview
-from typing import Optional
+import os
+import sys
+import json
+import time
+import threading
+import logging
+from typing import Optional, Tuple, Dict, List, Any, Callable
 
+import webview  # pywebview / WebView2
+
+# --- core runtime ---
 from core.connection import ReviveController
 from core.connection_test import run_test_command
-from core.servers.registry import list_servers, get_server_profile
-
-# runtime/orchestrator stack (как в старом UI)
+from core.servers.registry import get_server_profile, list_servers
 from core.runtime.state_watcher import StateWatcher
 from core.checks.charged import ChargeChecker, BuffTemplateProbe
 from core.features.afterbuff_macros import AfterBuffMacroRunner
-from core.features.post_tp_row import PostTPRowRunner
+from core.features.post_tp_row import PostTPRowRunner, RowsController
 from core.features.to_village import ToVillage
 from core.features.flow_orchestrator import FlowOrchestrator
 from core.features.restart_manager import RestartManager
+from core.features.autobuff_service import AutobuffService
 
-# ТП-воркер (как в старом стеке)
-from core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD
-from core.features.buff_after_respawn import BuffAfterRespawnWorker, BUFF_MODE_PROFILE
+# --- TP lists (как в Tk-версии) ---
+from core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER
+from core.servers.l2mad.locations_map import get_categories as tp_get_categories, get_locations as tp_get_locations
 
-# gdi helpers
+# --- capture / window ---
 from core.vision.capture.gdi import find_window, get_window_info
 
+# --- updater (используется только для проверки наличия апдейта) ---
+from core.updater import get_remote_version, is_newer_version
 
-def _safe_import(modpath: str):
-    try:
-        return importlib.import_module(modpath)
-    except Exception:
-        return None
-
-
-class Repeater:
-    def __init__(self, fn, interval_s: float):
-        self.fn = fn
-        self.interval = max(0.05, float(interval_s))
-        self._stop = threading.Event()
-        self._thr = None
-    def start(self):
-        if self._thr and self._thr.is_alive():
-            return
-        self._stop.clear()
-        self._thr = threading.Thread(target=self._loop, daemon=True)
-        self._thr.start()
-    def stop(self): self._stop.set()
-    def _loop(self):
-        while not self._stop.is_set():
-            try:
-                self.fn()
-            except Exception:
-                pass
-            self._stop.wait(self.interval)
+LOG_PATH = "revive.log"
+logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
 
 
-class _CheckerShim:
-    """Фасад для оркестратора: всегда форсит проверку (как в старом UI)."""
-    def __init__(self, checker: ChargeChecker):
-        self.c = checker
-    def is_charged(self, *_):
-        try: return self.c.force_check()
-        except Exception: return None
-    def force_check(self, *_):
-        try: return self.c.force_check()
-        except Exception: return None
-    def invalidate(self):
-        try: self.c.invalidate()
-        except Exception: pass
+def _schedule(fn: Callable[[], None], ms: int) -> None:
+    t = threading.Timer(max(0.0, ms) / 1000.0, fn)
+    t.daemon = True
+    t.start()
 
 
 class Bridge:
-    def __init__(self, version: str):
-        self.version = version
+    """
+    JS ↔ Python мост для HTML UI.
+    Совпадает по возможностям с Tk-версией: мониторинг, баф, макросы, ТП, post-ТП маршрут, апдейтер, аккаунт.
+    """
+    def __init__(self, window: webview.Window, local_version: str):
+        self.window = window
+        self.local_version = local_version
 
-        # ---- состояние / конфиг
-        self.server_list = list_servers() or ["l2mad"]
-        self.server = self.server_list[0]
-        self.profile = get_server_profile(self.server)
-        self.language = "rus"
+        # --- app state ---
+        servers = list_servers() or ["l2mad"]
+        self.server: str = servers[0]
+        self.language: str = "rus"
+        self._charged_flag: Optional[bool] = None
+        self.account: Dict[str, str] = {"login": "", "password": "", "pin": ""}
 
-        # ---- железо
+        # --- controller ---
         self.controller = ReviveController()
 
-        # ---- окно
-        self._window_info: Optional[dict] = None
+        # --- server profile ---
+        self.profile = get_server_profile(self.server)
 
-        # ---- watcher (как раньше)
-        self._last_state = None
+        # --- window info / probe ---
+        self._window_info: Optional[Dict[str, Any]] = None
+        self._window_found: bool = False
+        self._autofind_stop = False
+
+        # --- watcher ---
         self.watcher = StateWatcher(
             server=self.server,
-            get_window=lambda: self._window_info,
+            get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
             poll_interval=0.2,
             zero_hp_threshold=0.01,
-            on_state=lambda st: setattr(self, "_last_state", st),
+            on_state=lambda st: None,
             on_dead=self._on_dead_proxy,
             on_alive=self._on_alive_proxy,
-            debug=False,
+            debug=True,
         )
 
-        # ---- charged checker (как раньше)
+        # --- checker + probes ---
         self.checker = ChargeChecker(interval_minutes=10, mode="ANY")
         self.checker.register_probe(
             "autobuff_icons",
             BuffTemplateProbe(
                 name="autobuff_icons",
                 server_getter=lambda: self.server,
-                get_window=lambda: self._window_info,
+                get_window=lambda: self._safe_window(),
                 get_language=lambda: self.language,
                 zone_key="buff_bar",
                 tpl_keys=["buff_icon_shield", "buff_icon_blessedBody"],
                 threshold=0.85,
-                debug=False,
+                debug=True,
             ),
             enabled=True,
         )
-        # фоновый тикер (не критичен, но полезен)
-        self._checker_tick = Repeater(lambda: self.checker.tick(), 1.0)
-        self._checker_tick.start()
 
-        # ---- workers
+        # --- services/workers ---
         self.postrow = PostTPRowRunner(
             controller=self.controller,
             server=self.server,
-            get_window=lambda: self._window_info,
+            get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
-            on_status=lambda msg, ok=None: print(msg),
+            on_status=lambda msg, ok: self._emit_status("postrow", msg, ok),
         )
         self.to_village = ToVillage(
             controller=self.controller,
             server=self.server,
-            get_window=lambda: self._window_info,
+            get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
             click_threshold=0.87,
-            debug=False,
+            debug=True,
             is_alive=lambda: self.watcher.is_alive(),
             confirm_timeout_s=3.0,
         )
-        self.tp_worker = TPAfterDeathWorker(
-            controller=self.controller,
-            window_info=self._window_info,
-            get_language=lambda: self.language,
-            on_status=lambda msg, ok=None: print(msg),
-            check_is_dead=lambda: not self.watcher.is_alive(),
-            wait_alive_timeout_s=0.5,
-            server=self.server,
-        )
 
-        # ---- рестарт + оркестратор
         self.restart = RestartManager(
             controller=self.controller,
             get_server=lambda: self.server,
-            get_window=lambda: self._window_info,
+            get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
             watcher=self.watcher,
-            account_getter=lambda: getattr(self, "account", {"login": "", "password": "", "pin": ""}),
+            account_getter=lambda: self.account,
             max_restart_attempts=3,
             retry_delay_s=1.0,
-            logger=print,
+            logger=self._log,
         )
 
-        # сериализованный планировщик (аналог root.after из старого UI)
-        class _SerialScheduler:
-            def __init__(self):
-                self._q = queue.Queue()
-                self._thr = threading.Thread(target=self._pump, daemon=True)
-                self._thr.start()
-            def _pump(self):
-                while True:
-                    fn = self._q.get()
-                    try:
-                        fn()
-                    finally:
-                        self._q.task_done()
-            def after(self, ms, fn):
-                threading.Timer(max(0, ms) / 1000.0, lambda: self._q.put(fn)).start()
-
-        _sched = _SerialScheduler()
-        def schedule(fn, ms): _sched.after(ms, fn)
-
         self.orch = FlowOrchestrator(
-            schedule=schedule,
-            log=print,
-            checker=_CheckerShim(self.checker),   # ← форс-проверка charged
+            schedule=lambda fn, ms: _schedule(fn, ms),
+            log=self._log,
+            checker=self.checker,
             watcher=self.watcher,
             to_village=self.to_village,
             postrow_runner=self.postrow,
@@ -191,107 +142,241 @@ class Bridge:
             get_server=lambda: self.server,
             get_language=lambda: self.language,
         )
+        self._last_status: Dict[str, Dict[str, Any]] = {}
 
-        # ---- UI-переключатели (аналог виджетов)
-        self._buff_enabled = False
-        self._buff_mode = BUFF_MODE_PROFILE
-        self._buff_method = getattr(self.profile, "get_buff_mode", lambda: "dashboard")()
+        # --- UI model ---
+        self.ui: Dict[str, Any] = {
+            # respawn
+            "monitoring": False,
+            "respawn_enabled": True,
+            # buff
+            "buff_enabled": False,
+            "buff_mode": "profile",     # 'profile' | 'mage' | 'fighter'
+            "buff_method": "",          # заполняется из профиля, если поддерживается
+            # afterbuff macros
+            "macros_enabled": False,
+            "macros_run_always": False,
+            "macros_delay_s": 1.0,
+            "macros_duration_s": 2.0,
+            "macros_sequence": ["1"],
+            # tp
+            "tp_enabled": False,
+            "tp_method": TP_METHOD_DASHBOARD,  # dashboard|gatekeeper
+            "tp_category": "",
+            "tp_location": "",
+            "tp_row_id": "",
+        }
 
-        self._macros_enabled = False
-        self._macros_run_always = False
-        self._macros_seq = ["1"]
-        self._macros_delay_s = 1.0
-        self._macros_duration_s = 2.0
-        self._macros_runner = AfterBuffMacroRunner(
+        self.afterbuff_runner = AfterBuffMacroRunner(
             controller=self.controller,
-            get_sequence=lambda: self._macros_seq,
-            get_delay_s=lambda: self._macros_delay_s,
+            get_sequence=lambda: list(self.ui["macros_sequence"]),
+            get_delay_s=lambda: float(self.ui["macros_delay_s"]),
         )
 
-        self._tp_enabled = False          # как в старом UI (tp.is_enabled())
-        self._tp_cfg = {"cat": "", "loc": "", "method": TP_METHOD_DASHBOARD}
-        self._selected_row_id = ""
+        self.autobuff = AutobuffService(
+            checker=self.checker,
+            is_alive=lambda: self.watcher.is_alive(),
+            buff_is_enabled=lambda: bool(self.ui["buff_enabled"]),
+            buff_run_once=lambda: self.buff_run_once(),
+            on_charged_update=lambda v: setattr(self, "_charged_flag", v),
+            tick_interval_s=1.0,
+            log=self._log,
+        )
 
-        # ---- передаём «виджеты» в оркестратор (как в старом UI)
+        # rows controller
+        self.rows_ctrl: RowsController | None = RowsController(
+            get_server=lambda: self.server,
+            get_language=lambda: self.language,
+            get_destination=lambda: self._tp_get_destination(),
+            schedule=lambda fn, ms: _schedule(fn, ms),
+            on_values=self._rows_set_values,
+            on_select_row_id=lambda rid: self._set_tp_row_id(rid or ""),
+            log=self._log,
+        )
+        self.rows_ctrl.start()
+
+        # orchestrator UI hooks
         self.orch.set_ui(
-            buff_is_enabled=lambda: self._buff_enabled,
-            buff_run_once=lambda: self._buff_run_once(),
-            macros_ui_is_enabled=lambda: self._macros_enabled,
-            macros_ui_run_always=lambda: self._macros_run_always,
-            macros_ui_get_duration_s=lambda: self._macros_duration_s,
-            macros_run_once=lambda: self._macros_runner.run_once(),
-            tp_is_enabled=lambda: self._tp_enabled,  # строго как в старом UI (флаг из UI)
-            tp_teleport_now_selected=lambda: self._tp_teleport_now_selected(),
-            tp_get_selected_destination=lambda: (self._tp_cfg["cat"], self._tp_cfg["loc"]),
-            tp_get_selected_row_id=lambda: self._selected_row_id,
-            respawn_ui_is_enabled=lambda: True,
+            buff_is_enabled=lambda: bool(self.ui["buff_enabled"]),
+            buff_run_once=self.buff_run_once,
+            macros_ui_is_enabled=lambda: bool(self.ui["macros_enabled"]),
+            macros_ui_run_always=lambda: bool(self.ui["macros_run_always"]),
+            macros_ui_get_duration_s=lambda: float(self.ui["macros_duration_s"]),
+            macros_run_once=self.macros_run_once,
+            tp_is_enabled=lambda: bool(self.ui["tp_enabled"]),
+            tp_teleport_now_selected=self.tp_teleport_now,
+            tp_get_selected_destination=lambda: self._tp_get_destination(),
+            tp_get_selected_row_id=lambda: str(self.ui["tp_row_id"] or ""),
+            respawn_ui_is_enabled=lambda: bool(self.ui["respawn_enabled"]),
         )
 
-    # ── прокси watcher → orchestrатор
-    def _on_dead_proxy(self, st): self.orch.on_dead(st)
-    def _on_alive_proxy(self, st): self.orch.on_alive(st)
-
-    # ── системное
-    def app_version(self): return {"version": self.version}
-    def quit(self):
-        try: self._checker_tick.stop()
-        except Exception: pass
-        try: self.watcher.stop()
-        except Exception: pass
-        try: self.controller.close()
-        except Exception: pass
-        os._exit(0)
-
-    # ── сервер / язык
-    def list_servers(self): return {"items": self.server_list}
-
-    def set_server(self, server: str):
-        self.server = (server or "l2mad").lower()
-        self.profile = get_server_profile(self.server)
-        try: self.watcher.set_server(self.server)
-        except Exception: pass
-        try: self.to_village.set_server(self.server)
-        except Exception: pass
-        try: self.postrow.set_server(self.server)
-        except Exception: pass
+        # попытка ping Arduino
         try:
-            if hasattr(self.tp_worker, "set_server"):
-                self.tp_worker.set_server(self.server)
+            self.controller.send("ping")
+            if self.controller.read() == "pong":
+                self._emit_status("driver", "[✓] Arduino ответила", True)
             else:
-                setattr(self.tp_worker, "server", self.server)
-        except Exception: pass
+                self._emit_status("driver", "[×] Нет ответа", False)
+        except Exception as e:
+            self._emit_status("driver", f"[×] Ошибка связи с Arduino: {e}", False)
+
+        # авто-поиск окна
+        _schedule(self._autofind_tick, 10)
+
+        # периодическая проверка обновлений
+        _schedule(self._periodic_update_check, 2_000)
+
+    # ---------- helpers ----------
+    def _log(self, *a):
         try:
-            cur = getattr(self.profile, "get_buff_mode", lambda: "")()
-            if cur: self._buff_method = cur
+            print(*a)
         except Exception:
             pass
-        return {"ok": True, "server": self.server}
 
-    def get_server(self): return {"server": self.server}
-    def set_language(self, lang: str):
-        self.language = (lang or "rus").lower()
-        return {"ok": True, "language": self.language}
+    def _safe_window(self) -> Optional[Dict]:
+        try:
+            return self._window_info
+        except Exception:
+            return None
 
-    # ── окно клиента
-    def find_window_now(self, titles: list[str] | None = None):
-        titles = titles or ["Lineage", "Lineage II", "L2MAD", "L2", "BOHPTS"]
-        found = False
-        for t in titles:
+    def _emit_status(self, scope: str, text: str, ok: Optional[bool]) -> None:
+        payload = {"scope": scope, "text": text, "ok": (True if ok is True else False if ok is False else None)}
+        self._last_status[scope] = payload  # кэшируем, чтобы UI мог забрать после инициализации
+        js = f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})"
+        try:
+            self.window.evaluate_js(js)
+        except Exception:
+            pass
+
+    def get_status_snapshot(self) -> Dict[str, Dict[str, Any]]:
+        """Вернуть последние статусы по scope."""
+        return dict(self._last_status)
+
+    def watcher_is_running(self) -> bool:
+        try:
+            return bool(self.watcher.is_running())
+        except Exception:
+            return False
+
+    def _emit_rows(self, rows: List[Tuple[str, str]]) -> None:
+        # rows: [(row_id, title)]
+        js = f"window.ReviveUI && window.ReviveUI.onRows({json.dumps(rows)})"
+        try:
+            self.window.evaluate_js(js)
+        except Exception:
+            pass
+
+    def _tp_get_destination(self) -> Tuple[str, str]:
+        return (self.ui["tp_category"] or "", self.ui["tp_location"] or "")
+
+    def _set_tp_row_id(self, rid: str):
+        self.ui["tp_row_id"] = rid
+        try:
+            self.window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onRowSelected({json.dumps(rid)})")
+        except Exception:
+            pass
+
+    def _rows_set_values(self, rows: List[Tuple[str, str]]):
+        self._emit_rows(rows)
+
+    def _autofind_tick(self):
+        if self._autofind_stop or self._window_found:
+            return
+        self.find_window()
+        if not self._window_found:
+            _schedule(self._autofind_tick, 3000)
+
+    def _periodic_update_check(self):
+        try:
+            rv = get_remote_version()
+            if is_newer_version(rv, self.local_version):
+                msg = f"Доступно обновление: {rv}"
+                self._emit_status("update", msg, None)
+            else:
+                self._emit_status("update", f"Установлена последняя версия: {self.local_version}", True)
+        except Exception:
+            self._emit_status("update", "Сбой проверки актуальности версии", False)
+        finally:
+            _schedule(self._periodic_update_check, 600_000)
+
+    # ---------- watcher → orchestrator ----------
+    def _on_dead_proxy(self, st):
+        self.orch.on_dead(st)
+
+    def _on_alive_proxy(self, st):
+        self.orch.on_alive(st)
+
+    # ---------- JS API ----------
+    def get_init_state(self) -> Dict[str, Any]:
+        servers = list_servers() or ["l2mad"]
+        if self.server not in servers:
+            self.server = servers[0]
+        # профиль и методы бафа
+        self.profile = get_server_profile(self.server)
+        methods, current = [], ""
+        try:
+            methods = list(getattr(self.profile, "buff_supported_methods", lambda: [])())
+            cur = getattr(self.profile, "get_buff_mode", lambda: "")()
+            current = cur if cur in methods else (methods[0] if methods else "")
+            self.ui["buff_method"] = current
+        except Exception:
+            methods, current = [], ""
+
+        # если статуса драйвера ещё нет — выполним быстрый ping здесь
+        if "driver" not in self._last_status:
             try:
-                hwnd = find_window(t)
-                if hwnd:
-                    info = get_window_info(hwnd, client=True)
-                    if all(k in info for k in ("x", "y", "width", "height")):
-                        self._window_info = info
-                        try: self.tp_worker.window_info = info
-                        except Exception: pass
-                        found = True
-                        break
-            except Exception:
-                pass
-        return {"found": found, "window": (self._window_info or None)}
+                self.controller.send("ping")
+                ok = (self.controller.read() == "pong")
+                self._emit_status("driver", "[✓] Arduino ответила" if ok else "[×] Нет ответа", ok)
+            except Exception as e:
+                self._emit_status("driver", f"[×] Ошибка связи с Arduino: {e}", False)
 
-    def get_window(self):
+        return {
+            "version": self.local_version,
+            "language": self.language,
+            "server": self.server,
+            "servers": servers,
+            "window_found": bool(self._window_found),
+            "monitoring": bool(self.watcher.is_running()),
+            "buff_methods": methods,
+            "buff_current": current,
+            "tp_methods": [TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER],
+            "driver_status": self._last_status.get("driver", {"text": "Состояние связи: неизвестно", "ok": None}),
+        }
+
+    def set_language(self, lang: str) -> None:
+        self.language = (lang or "rus").lower()
+        try:
+            self.watcher.set_language(self.language)
+        except Exception:
+            pass
+
+    def set_server(self, server: str) -> None:
+        self.server = (server or "l2mad").lower()
+        self.profile = get_server_profile(self.server)
+        try:
+            self.watcher.set_server(self.server)
+        except Exception:
+            pass
+        try:
+            self.to_village.set_server(self.server)
+        except Exception:
+            pass
+        # обновить список методов бафа и текущий
+        methods = []
+        cur = ""
+        try:
+            methods = list(getattr(self.profile, "buff_supported_methods", lambda: [])())
+            cur = getattr(self.profile, "get_buff_mode", lambda: "")()
+            if not cur or cur not in methods:
+                cur = methods[0] if methods else ""
+            self.ui["buff_method"] = cur
+        except Exception:
+            pass
+        # push на UI
+        self.window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(methods)}, {json.dumps(cur)})")
+
+    def find_window(self) -> Dict[str, Any]:
         titles = ["Lineage", "Lineage II", "L2MAD", "L2", "BOHPTS"]
         for t in titles:
             hwnd = find_window(t)
@@ -299,230 +384,285 @@ class Bridge:
                 info = get_window_info(hwnd, client=True)
                 if all(k in info for k in ("x", "y", "width", "height")):
                     self._window_info = info
-                    try: self.tp_worker.window_info = info
-                    except Exception: pass
-                    try:
-                        if not self.watcher.is_running():
-                            self.watcher.start()
-                    except Exception:
-                        pass
-                    return {"found": True, "title": t, "window": info, "info": info}
+                    self._window_found = True
+                    self._emit_status("window", "[✓] Окно найдено", True)
+                    return {"found": True, "title": t, "info": info}
+        self._window_info = None
+        self._window_found = False
+        self._emit_status("window", "[×] Окно не найдено", False)
         return {"found": False}
 
-    # ── связь
-    def ping_arduino(self):
+    def test_connect(self) -> str:
+        # обновит статус внутри run_test_command
+        label_proxy = type("L", (), {"config": lambda *_a, **_k: None})
+        run_test_command(self.controller, label_proxy)  # side effects в порт
+        return "ok"
+
+    # --- account ---
+    def account_get(self) -> Dict[str, str]:
+        return dict(self.account)
+
+    def account_save(self, data: Dict[str, str]) -> None:
+        self.account.update({
+            "login": data.get("login", ""),
+            "password": data.get("password", ""),
+            "pin": data.get("pin", ""),
+        })
+
+    # --- watcher controls ---
+    def respawn_set_monitoring(self, enabled: bool) -> None:
+        self.ui["monitoring"] = bool(enabled)
+        if enabled and not self.watcher.is_running():
+            self.watcher.start()
+            self._emit_status("watcher", "[state] watcher ON", True)
+        elif not enabled and self.watcher.is_running():
+            self.watcher.stop()
+            self._emit_status("watcher", "[state] watcher OFF", None)
+
+    def respawn_set_enabled(self, enabled: bool) -> None:
+        self.ui["respawn_enabled"] = bool(enabled)
+
+    def get_state_snapshot(self) -> Dict[str, Any]:
         try:
-            self.controller.send("ping")
-            r = self.controller.read()
-            return {"ok": r == "pong", "resp": r}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def test_connection(self):
-        ok = run_test_command(self.controller, None)
-        return {"ok": bool(ok)}
-
-    # ── watcher / состояние
-    def watcher_start(self):
-        self.watcher.start(); return {"ok": True}
-    def watcher_stop(self):
-        self.watcher.stop();  return {"ok": True}
-    def watcher_status(self):
-        try: return {"running": bool(self.watcher.is_running())}
-        except Exception: return {"running": False}
-
-    def state_last(self):
-        st = self._last_state
-        if not st: return {"hp_ratio": None, "is_alive": None}
-        hp = float(getattr(st, "hp_ratio", 0.0) or 0.0)
-        return {"hp_ratio": hp, "is_alive": bool(hp > 0.01)}
-
-    def is_alive(self): return {"alive": self.watcher.is_alive()}
-
-    # ── charged
-    def checker_enable(self, enable: bool):
-        self.checker.set_enabled(bool(enable)); return {"ok": True}
-    def charged_now(self): return {"charged": self.checker.force_check()}
-
-    # ── аккаунт
-    def account_get(self):
-        return {"account": getattr(self, "account", {"login": "", "password": "", "pin": ""})}
-    def account_set(self, login: str, password: str, pin: str):
-        self.account = {"login": login or "", "password": password or "", "pin": pin or ""}
-        return {"ok": True}
-
-    # ── баф (как в старом UI)
-    def buff_supported_methods(self):
-        try:
-            methods = list(getattr(self.profile, "buff_supported_methods", lambda: [])())
-            cur = getattr(self.profile, "get_buff_mode", lambda: "")()
-            return {"methods": methods, "current": (cur or (methods[0] if methods else ""))}
+            st = self.watcher.last()
+            hp_ratio = float(getattr(st, "hp_ratio", 0.0) or 0.0)
+            alive = bool(getattr(st, "alive", True))
+            return {"hp": max(0, min(100, int(round(hp_ratio * 100)))) , "cp": 100, "alive": alive}
         except Exception:
-            return {"methods": ["dashboard"], "current": "dashboard"}
+            return {"hp": None, "cp": None, "alive": None}
 
-    def buff_set_mode(self, mode: str):
-        self._buff_mode = (mode or BUFF_MODE_PROFILE).lower(); return {"ok": True}
+    # --- buff ---
+    def buff_set_enabled(self, enabled: bool) -> None:
+        self.ui["buff_enabled"] = bool(enabled)
 
-    def buff_set_method(self, method: str):
-        self._buff_method = (method or "dashboard").lower()
+    def buff_set_mode(self, mode: str) -> None:
+        self.ui["buff_mode"] = (mode or "profile").lower()
+
+    def buff_set_method(self, method: str) -> None:
+        self.ui["buff_method"] = method or ""
         try:
             if hasattr(self.profile, "set_buff_mode"):
-                self.profile.set_buff_mode(self._buff_method)
+                self.profile.set_buff_mode(self.ui["buff_method"])
         except Exception:
             pass
-        return {"ok": True}
 
-    def buff_enable(self, enable: bool):
-        self._buff_enabled = bool(enable); return {"ok": True, "enabled": self._buff_enabled}
-
-    def _wait_for_charged(self, timeout_s: float = 12.0, poll_s: float = 0.5) -> bool:
-        """После бафа активно ждём появления иконок."""
-        try: self.checker.invalidate()
-        except Exception: pass
-        t0 = time.time(); val = None
-        while time.time() - t0 < timeout_s:
-            try: val = self.checker.force_check()
-            except Exception: val = None
-            if val is True: return True
-            time.sleep(poll_s)
-        return bool(val)
-
-    def _buff_run_once(self) -> bool:
-        worker = BuffAfterRespawnWorker(
-            self.controller,                # controller
-            self.server,                    # server
-            lambda: self._window_info,      # get_window
-            lambda: self.language,          # get_language
-            lambda m, ok=None: print(m),    # on_status
-            0.87,                           # click_threshold
-            False,                          # debug
-        )
-        worker.set_mode(self._buff_mode)
-        try: worker.set_method(self._buff_method)
-        except Exception: pass
-
-        ok = bool(worker.run_once())
-        if ok:
-            try: self.checker.invalidate()
-            except Exception: pass
-            self._wait_for_charged(timeout_s=8.0, poll_s=0.4)
-        return ok
-
-    def buff_run_once(self):
-        ok = self._buff_run_once()
-        try: charged = self.checker.force_check()
-        except Exception: charged = None
-        return {"ok": ok, "charged": charged}
-
-    # ── макросы (как в старом UI)
-    def macros_config(self, enabled: bool, seq: list[str], delay_s: float, duration_s: float, run_always: bool):
-        self._macros_enabled = bool(enabled)
-        self._macros_seq = list(seq or ["1"])
-        self._macros_delay_s = max(0.0, float(delay_s or 0.0))
-        self._macros_duration_s = max(0.0, float(duration_s or 0.0))
-        self._macros_run_always = bool(run_always)
-        return {"ok": True}
-
-    def macros_run_once(self):
-        return {"ok": self._macros_runner.run_once()}
-
-    # ── ТП (как TPControls → teleport_now_selected)
-    def tp_configure(self, category_id: str, location_id: str, method: str):
-        self._tp_cfg = {
-            "cat": category_id or "",
-            "loc": location_id or "",
-            "method": (method or TP_METHOD_DASHBOARD),
-        }
-        # точь-в-точь логика старого UI: пользователь сохранил цель → ТП считается включённым
-        self._tp_enabled = bool(self._tp_cfg["cat"] and self._tp_cfg["loc"])
+    def _ensure_buff_worker(self) -> "BuffAfterRespawnWorker":
+        from core.features.buff_after_respawn import BuffAfterRespawnWorker, BUFF_MODE_PROFILE
+        # создаём/обновляем каждый вызов
+        if not hasattr(self, "_buff_worker") or self._buff_worker is None:
+            def _status(text, ok=None):
+                self._emit_status("buff", text, ok)
+            self._buff_worker = BuffAfterRespawnWorker(
+                controller=self.controller,
+                server=self.server,
+                get_window=lambda: self._safe_window(),
+                get_language=lambda: self.language,
+                on_status=_status,
+                click_threshold=0.87,
+                debug=True,
+            )
+        # sync динамику
+        self._buff_worker.server = self.server
+        self._buff_worker.set_mode(self.ui["buff_mode"])
         try:
-            self.tp_worker.set_method(self._tp_cfg["method"])
-            self.tp_worker.configure(self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"])
+            if self.ui.get("buff_method"):
+                self._buff_worker.set_method(self.ui["buff_method"])
         except Exception:
             pass
-        return {"ok": True, **self._tp_cfg, "enabled": self._tp_enabled}
+        return self._buff_worker
 
-    def _tp_teleport_now_selected(self) -> bool:
-        if not (self._tp_enabled and self._tp_cfg["cat"] and self._tp_cfg["loc"]):
+    def buff_run_once(self) -> bool:
+        if not self._window_found:
+            self._emit_status("buff", "Окно не найдено", False)
             return False
-        # как в старом UI — просто освежаем window_info перед запуском воркера
+        w = self._ensure_buff_worker()
+        ok = w.run_once()
+        self._emit_status("buff", "Баф выполнен" if ok else "Баф не выполнен", ok)
+        return bool(ok)
+
+    # --- afterbuff macros ---
+    def macros_set_enabled(self, enabled: bool) -> None:
+        self.ui["macros_enabled"] = bool(enabled)
+
+    def macros_set_run_always(self, enabled: bool) -> None:
+        self.ui["macros_run_always"] = bool(enabled)
+
+    def macros_set_delay(self, seconds: float) -> None:
         try:
-            self.get_window()
+            self.ui["macros_delay_s"] = max(0.0, float(seconds))
+        except Exception:
+            pass
+
+    def macros_set_duration(self, seconds: float) -> None:
+        try:
+            self.ui["macros_duration_s"] = max(0.0, float(seconds))
+        except Exception:
+            pass
+
+    def macros_set_sequence(self, seq: List[str]) -> None:
+        # фильтр по допустимым клавишам 0-9
+        allowed = set("0123456789")
+        cleaned = [c for c in (seq or []) if c and c[0] in allowed]
+        self.ui["macros_sequence"] = cleaned or ["1"]
+
+    def macros_run_once(self) -> bool:
+        ok = self.afterbuff_runner.run_once()
+        self._emit_status("macros", "Макросы выполнены" if ok else "Макросы не выполнены", ok)
+        return bool(ok)
+
+    # --- TP ---
+    def tp_set_enabled(self, enabled: bool) -> None:
+        self.ui["tp_enabled"] = bool(enabled)
+
+    def tp_set_method(self, method: str) -> None:
+        self.ui["tp_method"] = (method or TP_METHOD_DASHBOARD)
+
+    def tp_set_category(self, cid: str) -> None:
+        self.ui["tp_category"] = cid or ""
+        # сбросить выбранную локацию
+        self.ui["tp_location"] = ""
+
+    def tp_set_location(self, lid: str) -> None:
+        self.ui["tp_location"] = lid or ""
+
+    def tp_get_categories(self) -> List[Dict[str, str]]:
+        # завязка на l2mad карту, как и в Tk
+        cats = tp_get_categories(lang=self.language)
+        return [{"id": c["id"], "title": c["display_rus"] if self.language == "rus" else c["display_eng"]} for c in cats]
+
+    def tp_get_locations(self, category_id: str) -> List[Dict[str, str]]:
+        locs = tp_get_locations(category_id, lang=self.language) if category_id else []
+        return [{"id": l["id"], "title": l["display_rus"] if self.language == "rus" else l["display_eng"]} for l in locs]
+
+    def tp_get_selected_row_id(self) -> str:
+        return str(self.ui["tp_row_id"] or "")
+
+    def tp_set_selected_row_id(self, rid: str) -> None:
+        self._set_tp_row_id(rid or "")
+
+    def tp_teleport_now(self) -> bool:
+        # локальный worker
+        status_lock = threading.Lock()
+        msg_holder = {"text": "", "ok": None}
+
+        def _status(text, ok=None):
+            with status_lock:
+                msg_holder["text"] = text
+                msg_holder["ok"] = ok
+            self._emit_status("tp", text, ok)
+
+        w = TPAfterDeathWorker(
+            controller=self.controller,
+            window_info=self._safe_window(),
+            get_language=lambda: self.language,
+            on_status=_status,
+            check_is_dead=lambda: (not self.watcher.is_alive()),
+        )
+        w.set_method(self.ui["tp_method"])
+        cat, loc = self._tp_get_destination()
+        ok = w.teleport_now(cat, loc, self.ui["tp_method"])
+        # статус уже отправлен через _status
+        return bool(ok)
+
+    # --- update ---
+    def run_update_check(self) -> Dict[str, Any]:
+        try:
+            rv = get_remote_version()
+            newer = is_newer_version(rv, self.local_version)
+            return {"remote": rv, "local": self.local_version, "update": bool(newer)}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # --- shutdown ---
+    def shutdown(self) -> None:
+        try:
+            self._autofind_stop = True
+            self.watcher.stop()
         except Exception:
             pass
         try:
-            self.tp_worker.window_info = self._window_info
+            self.autobuff.stop()
         except Exception:
             pass
-        return bool(self.tp_worker.teleport_now(
-            self._tp_cfg["cat"], self._tp_cfg["loc"], self._tp_cfg["method"]
-        ))
-
-    def tp_now(self):
-        return {"ok": self._tp_teleport_now_selected()}
-
-    def tp_enable(self, enable: bool):
-        self._tp_enabled = bool(enable)
-        return {"ok": True, "enabled": self._tp_enabled}
-
-    # ── rows (опционально)
-    def rows_list(self, village_id: str, location_id: str):
-        mod = _safe_import(f"core.servers.{self.server}.flows.rows.registry")
-        if not mod or not hasattr(mod, "list_rows"): return {"items": []}
-        rows = mod.list_rows(village_id, location_id) or []
-        lang = self.language
-        def title_of(r):
-            if lang == "rus": return r.get("title_rus") or r.get("id")
-            return r.get("title_eng") or r.get("title_rus") or r.get("id")
-        return {"items": [{"id": r["id"], "title": title_of(r)} for r in rows if r.get("id")]}
-
-    def rows_set_selected(self, row_id: str):
-        self._selected_row_id = row_id or ""
-        return {"ok": True}
-
-    # ── каталоги/локации для UI
-    def list_categories(self):
         try:
-            lm = _safe_import(f"core.servers.{self.server}.locations_map")
-            if lm and hasattr(lm, "get_categories"):
-                return {"items": lm.get_categories(lang=self.language)}
+            self.controller.close()
         except Exception:
             pass
-        r = _safe_import(f"core.servers.{self.server}.templates.resolver")
-        if not r: return {"items": []}
-        items = []
-        for name in r.listdir(self.language, "dashboard", "teleport", "villages"):
-            if not name.startswith("."):
-                items.append({"id": name, "display_rus": name, "display_eng": name})
-        return {"items": items}
 
-    def list_locations(self, category_id: str):
+    # --- window close hook (called from JS) ---
+    def _py_exit(self) -> None:
+        self.shutdown()
         try:
-            lm = _safe_import(f"core.servers.{self.server}.locations_map")
-            if lm and hasattr(lm, "get_locations"):
-                return {"items": lm.get_locations(category_id, lang=self.language)}
+            self.window.destroy()
         except Exception:
             pass
-        r = _safe_import(f"core.servers.{self.server}.templates.resolver")
-        if not r: return {"items": []}
-        out = []
-        for f in (r.listdir(self.language, "dashboard", "teleport", "villages", category_id) or []):
-            if f.lower().endswith(".png"):
-                name = f.rsplit(".", 1)[0]
-                out.append({"id": name, "display_rus": name, "display_eng": name, "filename": f})
-        return {"items": out}
+        sys.exit(0)
 
 
-def launch_gui_html(local_version: str):
-    base = os.path.join(os.path.dirname(__file__), "webui")
-    html_path = os.path.join(base, "index.html")
-    if not os.path.isfile(html_path):
-        raise FileNotFoundError(f"UI not found: {html_path}")
-    api = Bridge(local_version)
-    webview.create_window(
-        title=f"Revive · {local_version}",
-        url=f"file://{html_path}",
-        width=760, height=800, resizable=False,
-        js_api=api,
+def launch_gui(local_version: str):
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    index_path = os.path.join(base_dir, "webui", "index.html")
+    if not os.path.exists(index_path):
+        raise RuntimeError(f"Не найден UI: {index_path}")
+
+    # создать окно и JS API
+    window = webview.create_window(
+        title="Revive Launcher",
+        url=index_path,
+        width=820,
+        height=900,
+        resizable=False,
     )
-    webview.start(gui="edgechromium", debug=False)
+    api = Bridge(window, local_version)
+    window.expose(
+        api.get_init_state,
+        api.set_language,
+        api.set_server,
+        api.find_window,
+        api.test_connect,
+        api.account_get,
+        api.account_save,
+        api.respawn_set_monitoring,
+        api.respawn_set_enabled,
+        api.get_state_snapshot,
+        api.get_status_snapshot,
+        api.watcher_is_running,
+        api.buff_set_enabled,
+        api.buff_set_mode,
+        api.buff_set_method,
+        api.buff_run_once,
+        api.macros_set_enabled,
+        api.macros_set_run_always,
+        api.macros_set_delay,
+        api.macros_set_duration,
+        api.macros_set_sequence,
+        api.macros_run_once,
+        api.tp_set_enabled,
+        api.tp_set_method,
+        api.tp_set_category,
+        api.tp_set_location,
+        api.tp_get_categories,
+        api.tp_get_locations,
+        api.tp_get_selected_row_id,
+        api.tp_set_selected_row_id,
+        api.tp_teleport_now,
+        api.run_update_check,
+        api.shutdown,
+        api._py_exit,
+    )
+
+    def _on_closing():
+        try:
+            api.shutdown()
+        finally:
+            os._exit(0)
+
+    window.events.closing += _on_closing
+
+    # WebView2 принудительно
+    webview.start(debug=False, gui="edgechromium")
+
+
+# точка входа при запуске как скрипт
+if __name__ == "__main__":
+    launch_gui(local_version="0.0.0")

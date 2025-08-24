@@ -1,213 +1,258 @@
-/* global pywebview */
-const $ = (s) => document.querySelector(s);
-const logEl = $('#log');
-const log = (m) => { if (!m) return; logEl.textContent += m + '\n'; logEl.scrollTop = logEl.scrollHeight; };
+(function () {
+  const $ = (sel) => document.querySelector(sel);
+  const create = (tag, attrs = {}, text = "") => {
+    const el = document.createElement(tag);
+    Object.entries(attrs).forEach(([k, v]) => {
+      if (k === "class") el.className = v; else el.setAttribute(k, v);
+    });
+    if (text) el.textContent = text;
+    return el;
+  };
+  const setStatus = (sel, text, ok) => {
+    const el = $(sel); if (!el) return;
+    el.textContent = text || "";
+    el.classList.remove("ok", "err", "warn", "gray");
+    if (ok === true) el.classList.add("ok");
+    else if (ok === false) el.classList.add("err");
+    else el.classList.add("gray");
+  };
 
-async function whenApiReady() {
-  if (window.pywebview?.api) return;
-  await new Promise(resolve => {
-    const onReady = () => {
-      if (window.pywebview?.api) {
-        window.removeEventListener('pywebviewready', onReady);
-        resolve();
+  // public sink для Python
+  window.ReviveUI = {
+    onStatus: ({ scope, text, ok }) => {
+      const id = {
+        driver: "#status-driver",
+        window: "#status-window",
+        watcher: "#status-watcher",
+        update: "#status-update",
+        buff: "#status-buff",
+        macros: "#status-macros",
+        tp: "#status-tp",
+        postrow: "#status-postrow"
+      }[scope] || "#status-driver";
+      setStatus(id, text, ok);
+    },
+    onRows: (rows) => {
+      const sel = $("#rows");
+      sel.innerHTML = "";
+      sel.appendChild(create("option", { value: "" }, "—"));
+      rows.forEach(([rid, title]) => sel.appendChild(create("option", { value: rid }, title)));
+    },
+    onRowSelected: (rid) => { $("#rows").value = rid || ""; },
+    onBuffMethods: (methods, current) => {
+      const m = $("#buffMethod");
+      m.innerHTML = "";
+      if (!methods || !methods.length) {
+        m.appendChild(create("option", { value: "" }, "—"));
+        m.disabled = true;
+      } else {
+        methods.forEach(x => m.appendChild(create("option", { value: x }, x)));
+        m.value = current || methods[0];
+        m.disabled = false;
       }
-    };
-    window.addEventListener('pywebviewready', onReady);
-  });
-}
-
-async function call(name, args = []) {
-  try {
-    await whenApiReady();
-    const api = window.pywebview.api;
-    const fn = api && api[name];
-    if (typeof fn !== 'function') {
-      throw new Error(`pywebview.api.${name} is not a function`);
     }
-    const res = await fn(...args);
-    return res || {};
-  } catch (e) {
-    log(`[err] ${name}: ${e}`);
-    return { ok: false, error: String(e) };
+  };
+
+  // macros rows
+  function buildMacrosRow(val) {
+    const sel = create("select");
+    "1234567890".split("").forEach(k => sel.appendChild(create("option", { value: k }, k)));
+    sel.value = val || "1";
+    return sel;
   }
-}
-
-async function init() {
-  await whenApiReady();
-
-  // версия
-  const v = await call('app_version');
-  $('#appVersion').textContent = v.version || '—';
-
-  // сервера
-  const s = await call('list_servers');
-  const sel = $('#serverSel');
-  sel.innerHTML = '';
-  (s.items || []).forEach(x => {
-    const o = document.createElement('option'); o.value = o.textContent = x; sel.appendChild(o);
-  });
-
-  await call('set_language', [$('#langSel').value]);
-  await call('set_server', [sel.value]);
-
-  // баф методы (из профиля)
-  await refreshBuffMethods();
-
-  // категории
-  await refreshCats();
-  await refreshRows();
-
-  // периодика: hp и окно
-  setInterval(updateHP, 1500);
-}
-
-async function refreshBuffMethods() {
-  const m = await call('buff_supported_methods');
-  const bm = $('#buffMethod'); bm.innerHTML = '';
-  (m.methods || []).forEach(x => {
-    const o = document.createElement('option'); o.value = o.textContent = x; bm.appendChild(o);
-  });
-  if (m.current) bm.value = m.current;
-}
-
-async function refreshCats() {
-  const r = await call('list_categories');
-  const cat = $('#catSel'); cat.innerHTML = '';
-  (r.items || []).forEach(x => {
-    const o = document.createElement('option'); o.value = x.id; o.textContent = (x.display_rus || x.id); cat.appendChild(o);
-  });
-  await refreshLocs();
-}
-
-async function refreshLocs() {
-  const cat = $('#catSel').value;
-  const r = await call('list_locations', [cat]);
-  const loc = $('#locSel'); loc.innerHTML = '';
-  (r.items || []).forEach(x => {
-    const o = document.createElement('option'); o.value = x.id; o.textContent = (x.display_rus || x.id); loc.appendChild(o);
-  });
-}
-
-async function refreshRows() {
-  const cat = $('#catSel').value;
-  const loc = $('#locSel').value;
-  const r = await call('rows_list', [cat, loc]);
-  const rows = $('#rowsSel'); rows.innerHTML = '';
-  (r.items || []).forEach(x => {
-    const o = document.createElement('option'); o.value = x.id; o.textContent = x.title || x.id; rows.appendChild(o);
-  });
-}
-
-async function updateHP() {
-  const w = await call('get_window');
-  $('#winStatus').textContent = w.info ? `[✓] ${w.info.width}×${w.info.height}` : '[×] окно не найдено';
-  const st = await call('state_last');
-  if (typeof st.hp_ratio === 'number') {
-    const p = Math.max(0, Math.min(100, Math.round(st.hp_ratio * 100)));
-    $('#hpVal').textContent = `${p} %`;
-  } else {
-    $('#hpVal').textContent = '-- %';
+  function readMacrosSequence() {
+    return Array.from($("#macrosRows").querySelectorAll("select")).map(x => x.value);
   }
-}
-
-// ─── handlers ───
-$('#btnQuit').onclick = () => call('quit');
-
-$('#langSel').onchange = async (e) => {
-  await call('set_language', [e.target.value]);
-  await refreshCats(); await refreshRows();
-};
-$('#serverSel').onchange = async (e) => {
-  await call('set_server', [e.target.value]);
-  await refreshBuffMethods();
-  await refreshCats(); await refreshRows();
-};
-
-$('#btnFindWindow').onclick = async () => {
-  const r = await call('find_window_now');
-  $('#winStatus').textContent = r.found ? '[✓] окно найдено' : '[×] не найдено';
-};
-
-$('#btnPing').onclick = async () => {
-  const r = await call('test_connection');
-  $('#pingStatus').textContent = r.ok ? 'Связь OK' : 'Нет ответа';
-};
-
-$('#chkWatch').onchange = async (e) => {
-  const r = e.target.checked ? await call('watcher_start') : await call('watcher_stop');
-  if (!r.ok && r.error) log(`[watcher] ${r.error}`);
-};
-
-$('#btnRiseNow').onclick = async () => {
-  const r = await call('to_village_now', [14000]);
-  log(`[rise] ${r.ok ? 'OK' : 'FAIL'}`);
-};
-
-$('#chkBuff').onchange = (e) => call('buff_enable', [e.target.checked]);
-$('#buffMode').onchange = (e) => call('buff_set_mode', [e.target.value]);
-$('#buffMethod').onchange = (e) => call('buff_set_method', [e.target.value]);
-$('#btnBuffNow').onclick = async () => {
-  const r = await call('buff_run_once');
-  log(`[buff] ${r.ok ? 'OK' : 'FAIL'}`);
-};
-
-function collectMacros() {
-  const seq = ($('#macrosSeq').value || '').split(',').map(s => s.trim()).filter(Boolean);
-  const delay_s = parseFloat($('#macrosDelay').value || '0') || 0;
-  const dur_s = parseFloat($('#macrosDur').value || '0') || 0;
-  const en = $('#chkMacros').checked;
-  const always = $('#chkMacrosAlways').checked;
-  return { enabled: en, seq, delay_s, dur_s, always };
-}
-async function syncMacros() {
-  const m = collectMacros();
-  await call('macros_config', [m.enabled, m.seq, m.delay_s, m.dur_s, m.always]);
-}
-$('#chkMacros').onchange = syncMacros;
-$('#chkMacrosAlways').onchange = syncMacros;
-$('#macrosSeq').onblur = syncMacros;
-$('#macrosDelay').onblur = syncMacros;
-$('#macrosDur').onblur = syncMacros;
-$('#btnMacrosNow').onclick = async () => {
-  await syncMacros();
-  const r = await call('macros_run_once');
-  log(`[macros] ${r.ok ? 'OK' : 'FAIL'}`);
-};
-
-$('#tpMethod').onchange = () => {/* сохраняем при кнопке Save */};
-$('#catSel').onchange = async () => { await refreshLocs(); await refreshRows(); };
-$('#locSel').onchange = refreshRows;
-
-$('#btnSaveTP').onclick = async () => {
-  const cfg = { method: $('#tpMethod').value, cat: $('#catSel').value, loc: $('#locSel').value };
-  const r = await call('tp_configure', [cfg.cat, cfg.loc, cfg.method]);
-  log(`[tp] config → ${JSON.stringify(r)}`);
-};
-$('#btnTPNow').onclick = async () => {
-  const r = await call('tp_now');
-  log(`[tp] ${r.ok ? 'OK' : 'FAIL'}`);
-};
-
-$('#btnRowsRefresh').onclick = refreshRows;
-$('#btnRowsClear').onclick = () => { $('#rowsSel').value = ''; };
-
-$('#btnAcc').onclick = async () => {
-  const dlg = $('#accDlg');
-  const cur = await call('account_get');
-  $('#accLogin').value = (cur.account && cur.account.login) || '';
-  $('#accPass').value = (cur.account && cur.account.password) || '';
-  $('#accPin').value = (cur.account && cur.account.pin) || '';
-  dlg.showModal();
-};
-$('#accSave').onclick = async (ev) => {
-  ev.preventDefault();
-  const r = await call('account_set', [
-    $('#accLogin').value, $('#accPass').value, $('#accPin').value
-  ]);
-  if (r.ok) {
-    $('#accDlg').close();
-    $('#accInfo').textContent = '✓ сохранено';
+  function ensureAtLeastOneRow() {
+    const cont = $("#macrosRows");
+    if (!cont.children.length) cont.appendChild(buildMacrosRow("1"));
   }
-};
 
-document.addEventListener('DOMContentLoaded', init);
+  // periodic state poll
+  async function tickState() {
+    try {
+      const st = await pywebview.api.get_state_snapshot();
+      const hp = $("#hp"), cp = $("#cp");
+      if (st.hp == null) { hp.textContent = "-- %"; cp.textContent = "-- %"; }
+      else {
+        hp.textContent = `${st.hp} %`;
+        cp.textContent = `100 %`;
+        hp.style.color = st.hp > 50 ? "#28a745" : (st.hp > 15 ? "#d39e00" : "#e55353");
+      }
+      // sync мониторинга с фактическим состоянием
+      if (pywebview.api.watcher_is_running) {
+        const running = await pywebview.api.watcher_is_running();
+        setStatus("#status-watcher", running ? "Мониторинг: вкл" : "Мониторинг: выкл", running ? true : null);
+        $("#chkMonitor").checked = !!running;
+      }
+    } catch (_) {}
+    setTimeout(tickState, 2000);
+  }
+
+  async function init() {
+    const init = await pywebview.api.get_init_state();
+
+    $("#ver").textContent = `Версия: ${init.version}`;
+    $("#lang").value = init.language;
+
+    const serverSel = $("#server");
+    serverSel.innerHTML = "";
+    (init.servers || []).forEach(s => serverSel.appendChild(create("option", { value: s }, s)));
+    serverSel.value = init.server;
+
+    const tpMethodSel = $("#tpMethod");
+    tpMethodSel.innerHTML = "";
+    (init.tp_methods || []).forEach(m => tpMethodSel.appendChild(create("option", { value: m }, m)));
+    tpMethodSel.value = (init.tp_methods && init.tp_methods[0]) || "dashboard";
+
+    // buff methods + текущий метод
+    window.ReviveUI.onBuffMethods(init.buff_methods || [], init.buff_current || "");
+
+    // статусы при старте
+    if (init.driver_status) setStatus("#status-driver", init.driver_status.text, init.driver_status.ok);
+    setStatus("#status-watcher", init.monitoring ? "Мониторинг: вкл" : "Мониторинг: выкл", init.monitoring ? true : null);
+    $("#chkMonitor").checked = !!init.monitoring;
+
+    // подтянуть ранние статусы из кэша Python, если есть
+    try {
+      if (pywebview.api.get_status_snapshot) {
+        const snap = await pywebview.api.get_status_snapshot();
+        if (snap && snap.window) setStatus("#status-window", snap.window.text, snap.window.ok);
+        if (snap && snap.driver && !init.driver_status) setStatus("#status-driver", snap.driver.text, snap.driver.ok);
+      }
+    } catch (_) {}
+
+    // account preload
+    try {
+      const acc = await pywebview.api.account_get();
+      $("#acc-login").value = acc.login || "";
+      $("#acc-pass").value = acc.password || "";
+      $("#acc-pin").value = acc.pin || "";
+    } catch (_) {}
+
+    // fill TP categories
+    await refreshTPCats();
+
+    // ensure one macros row
+    ensureAtLeastOneRow();
+
+    // handlers
+    $("#lang").addEventListener("change", async e => {
+      await pywebview.api.set_language(e.target.value);
+      await refreshTPCats();
+    });
+
+    serverSel.addEventListener("change", async e => {
+      await pywebview.api.set_server(e.target.value);
+      await refreshTPCats();
+      // методы бафа при смене сервера придут через onBuffMethods из Python
+    });
+
+    $("#btnFind").addEventListener("click", async () => { await pywebview.api.find_window(); });
+    $("#btnTest").addEventListener("click", async () => { await pywebview.api.test_connect(); });
+
+    $("#btnUpdate").addEventListener("click", async () => {
+      const r = await pywebview.api.run_update_check();
+      if (r && r.update) setStatus("#status-update", `Доступно обновление: ${r.remote}`, null);
+      else if (r && r.error) setStatus("#status-update", `Сбой проверки: ${r.error}`, false);
+      else setStatus("#status-update", `Установлена последняя версия: ${r.local}`, true);
+    });
+
+    $("#btnAccSave").addEventListener("click", async () => {
+      await pywebview.api.account_save({
+        login: $("#acc-login").value,
+        password: $("#acc-pass").value,
+        pin: $("#acc-pin").value
+      });
+    });
+
+    // respawn
+    $("#chkMonitor").addEventListener("change", e => {
+      pywebview.api.respawn_set_monitoring(e.target.checked);
+      setStatus("#status-watcher", e.target.checked ? "Мониторинг: вкл" : "Мониторинг: выкл", e.target.checked ? true : null);
+      setTimeout(async () => {
+        try {
+          if (pywebview.api.watcher_is_running) {
+            const running = await pywebview.api.watcher_is_running();
+            setStatus("#status-watcher", running ? "Мониторинг: вкл" : "Мониторинг: выкл", running ? true : null);
+            $("#chkMonitor").checked = !!running;
+          }
+        } catch (_) {}
+      }, 200);
+    });
+    $("#chkRespawn").addEventListener("change", e => pywebview.api.respawn_set_enabled(e.target.checked));
+
+    // buff
+    $("#chkBuff").addEventListener("change", e => pywebview.api.buff_set_enabled(e.target.checked));
+    $("#buffMode").addEventListener("change", e => pywebview.api.buff_set_mode(e.target.value));
+    $("#buffMethod").addEventListener("change", e => pywebview.api.buff_set_method(e.target.value));
+    $("#btnBuffOnce").addEventListener("click", async () => { await pywebview.api.buff_run_once(); });
+
+    // macros
+    $("#btnAddRow").addEventListener("click", () => {
+      $("#macrosRows").appendChild(buildMacrosRow("1"));
+      pywebview.api.macros_set_sequence(readMacrosSequence());
+    });
+    $("#btnDelRow").addEventListener("click", () => {
+      const cont = $("#macrosRows");
+      if (cont.children.length > 1) cont.removeChild(cont.lastElementChild);
+      pywebview.api.macros_set_sequence(readMacrosSequence());
+    });
+    $("#macrosRows").addEventListener("change", () => pywebview.api.macros_set_sequence(readMacrosSequence()));
+    $("#chkMacros").addEventListener("change", e => pywebview.api.macros_set_enabled(e.target.checked));
+    $("#chkMacrosAlways").addEventListener("change", e => pywebview.api.macros_set_run_always(e.target.checked));
+    $("#macrosDelay").addEventListener("change", e => pywebview.api.macros_set_delay(parseFloat(e.target.value || "0")));
+    $("#macrosDur").addEventListener("change", e => pywebview.api.macros_set_duration(parseFloat(e.target.value || "0")));
+    $("#btnMacrosOnce").addEventListener("click", () => pywebview.api.macros_run_once());
+
+    // TP
+    $("#chkTP").addEventListener("change", e => pywebview.api.tp_set_enabled(e.target.checked));
+    $("#tpMethod").addEventListener("change", e => pywebview.api.tp_set_method(e.target.value));
+    $("#tpCat").addEventListener("change", async e => { await pywebview.api.tp_set_category(e.target.value); await refreshTPLocs(); });
+    $("#tpLoc").addEventListener("change", e => pywebview.api.tp_set_location(e.target.value));
+    $("#btnTPNow").addEventListener("click", () => pywebview.api.tp_teleport_now());
+
+    $("#rows").addEventListener("change", e => pywebview.api.tp_set_selected_row_id(e.target.value || ""));
+    $("#btnRowClear").addEventListener("click", () => { $("#rows").value = ""; pywebview.api.tp_set_selected_row_id(""); });
+
+    // exit
+    $("#btnExit").addEventListener("click", () => pywebview.api._py_exit());
+
+    // periodic HP + мониторинг
+    tickState();
+  }b
+
+  // --- ждать готовности pywebview ---
+  function boot() {
+    if (window.pywebview && window.pywebview.api) { init(); return; }
+    const onReady = () => { document.removeEventListener('pywebviewready', onReady); init(); };
+    document.addEventListener('pywebviewready', onReady);
+    let tries = 0;
+    const poll = setInterval(() => {
+      if (window.pywebview && window.pywebview.api) { clearInterval(poll); init(); }
+      else if (++tries > 100) { clearInterval(poll); }
+    }, 50);
+  }
+
+  async function refreshTPCats() {
+    const cats = await pywebview.api.tp_get_categories();
+    const sel = $("#tpCat");
+    sel.innerHTML = "";
+    sel.appendChild(create("option", { value: "" }, "— не выбрано —"));
+    cats.forEach(c => sel.appendChild(create("option", { value: c.id }, c.title)));
+    sel.value = "";
+    await refreshTPLocs();
+  }
+  async function refreshTPLocs() {
+    const cid = $("#tpCat").value || "";
+    const locs = await pywebview.api.tp_get_locations(cid);
+    const sel = $("#tpLoc");
+    sel.innerHTML = "";
+    sel.appendChild(create("option", { value: "" }, "— не выбрано —"));
+    locs.forEach(l => sel.appendChild(create("option", { value: l.id }, l.title)));
+    sel.value = "";
+  }
+
+  // DOM загружен → запуск бутстрапа
+  document.addEventListener("DOMContentLoaded", boot);
+})();
