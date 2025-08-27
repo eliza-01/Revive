@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-08-22 23:36:05
+Generated: 2025-08-24 23:23:21
 
 Revive
 ├── app
@@ -18,13 +18,15 @@ Revive
 │   │   └── window_probe.py
 │   ├── webui
 │   │   ├── assets
-│   │   │   └── icon.png
+│   │   │   ├── icon.png
+│   │   │   └── preloader1.gif
 │   │   ├── css
 │   │   │   └── style.css
 │   │   ├── js
 │   │   │   └── app.js
 │   │   └── index.html
 │   ├── __init__.py
+│   ├── __main__.py
 │   ├── launcher.py
 │   ├── launcher_bootstrap.py
 │   └── launcher_html.py
@@ -40,6 +42,19 @@ Revive
 │   │   ├── upx.1
 │   │   └── upx.exe
 │   └── icon.ico
+├── collected
+│   ├── A.manifest.txt
+│   ├── A_core_io.py
+│   ├── B.manifest.txt
+│   ├── B_features.py
+│   ├── C.manifest.txt
+│   ├── C_servers.py
+│   ├── D.manifest.txt
+│   ├── D_ui_spec.py
+│   ├── E.manifest.txt
+│   ├── E_wrappers.py
+│   ├── F.manifest.txt
+│   └── F_vision.py
 ├── core
 │   ├── arduino
 │   │   ├── safe_serial.py
@@ -322,6 +337,7 @@ Revive
 │   ├── dump_tree.py
 │   └── write_path_headers.py
 ├── .gitignore
+├── 4.4
 ├── PROJECT_STRUCTURE.txt
 ├── Revive.spec
 ├── autofarm_settings_window.png

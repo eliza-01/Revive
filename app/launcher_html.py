@@ -630,7 +630,7 @@ $html = @"
 html,body{margin:0;height:100%;background:#111;color:#fff}
 .container{position:relative;width:360px;height:170px}
 img{position:absolute;left:144px;top:28px;width:72px;height:72px}
-p{position:absolute;top:110px;width:100%;text-align:center;font:600 13px 'Segoe UI', Tahoma, Verdana, system-ui}
+p{position:absolute;top:110px;width:100%;text-align:center;font:900 13px 'Segoe UI', Tahoma, Verdana, system-ui}
 </style></head>
 <body>
 <div class="container">

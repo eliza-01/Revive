@@ -1,3 +1,4 @@
+// app/webui/js/app.js
 (function () {
   const $ = (sel) => document.querySelector(sel);
   const create = (tag, attrs = {}, text = "") => {
@@ -53,15 +54,28 @@
     }
   };
 
-  // macros rows
+  // --- macros rows as numeric inputs (1 char, small reserve) ---
+  function sanitizeKey(val) {
+    const v = (val || "").replace(/[^\d]/g, "").slice(0, 2);
+    return v.length ? v : "1";
+  }
   function buildMacrosRow(val) {
-    const sel = create("select");
-    "1234567890".split("").forEach(k => sel.appendChild(create("option", { value: k }, k)));
-    sel.value = val || "1";
-    return sel;
+    const inp = create("input", {
+      type: "text",
+      class: "key",
+      inputmode: "numeric",
+      pattern: "[0-9]{1,2}",
+      maxlength: "2",
+      value: sanitizeKey(val || "1")
+    });
+    inp.addEventListener("input", () => {
+      inp.value = sanitizeKey(inp.value);
+      pywebview.api.macros_set_sequence(readMacrosSequence());
+    });
+    return inp;
   }
   function readMacrosSequence() {
-    return Array.from($("#macrosRows").querySelectorAll("select")).map(x => x.value);
+    return Array.from($("#macrosRows").querySelectorAll("input.key")).map(x => x.value || "1");
   }
   function ensureAtLeastOneRow() {
     const cont = $("#macrosRows");
@@ -79,7 +93,6 @@
         cp.textContent = `100 %`;
         hp.style.color = st.hp > 50 ? "#28a745" : (st.hp > 15 ? "#d39e00" : "#e55353");
       }
-      // sync мониторинга с фактическим состоянием
       if (pywebview.api.watcher_is_running) {
         const running = await pywebview.api.watcher_is_running();
         setStatus("#status-watcher", running ? "Мониторинг: вкл" : "Мониторинг: выкл", running ? true : null);
@@ -105,15 +118,13 @@
     (init.tp_methods || []).forEach(m => tpMethodSel.appendChild(create("option", { value: m }, m)));
     tpMethodSel.value = (init.tp_methods && init.tp_methods[0]) || "dashboard";
 
-    // buff methods + текущий метод
     window.ReviveUI.onBuffMethods(init.buff_methods || [], init.buff_current || "");
 
-    // статусы при старте
     if (init.driver_status) setStatus("#status-driver", init.driver_status.text, init.driver_status.ok);
     setStatus("#status-watcher", init.monitoring ? "Мониторинг: вкл" : "Мониторинг: выкл", init.monitoring ? true : null);
     $("#chkMonitor").checked = !!init.monitoring;
 
-    // подтянуть ранние статусы из кэша Python, если есть
+    // ранние статусы
     try {
       if (pywebview.api.get_status_snapshot) {
         const snap = await pywebview.api.get_status_snapshot();
@@ -130,7 +141,6 @@
       $("#acc-pin").value = acc.pin || "";
     } catch (_) {}
 
-    // fill TP categories
     await refreshTPCats();
 
     // ensure one macros row
@@ -145,7 +155,6 @@
     serverSel.addEventListener("change", async e => {
       await pywebview.api.set_server(e.target.value);
       await refreshTPCats();
-      // методы бафа при смене сервера придут через onBuffMethods из Python
     });
 
     $("#btnFind").addEventListener("click", async () => { await pywebview.api.find_window(); });
@@ -155,7 +164,7 @@
       const r = await pywebview.api.run_update_check();
       if (r && r.update) setStatus("#status-update", `Доступно обновление: ${r.remote}`, null);
       else if (r && r.error) setStatus("#status-update", `Сбой проверки: ${r.error}`, false);
-      else setStatus("#status-update", `Установлена последняя версия: ${r.local}`, true);
+      else setStatus("#status-update", `Последняя версия: ${r.local}`, true);
     });
 
     $("#btnAccSave").addEventListener("click", async () => {
@@ -198,7 +207,6 @@
       if (cont.children.length > 1) cont.removeChild(cont.lastElementChild);
       pywebview.api.macros_set_sequence(readMacrosSequence());
     });
-    $("#macrosRows").addEventListener("change", () => pywebview.api.macros_set_sequence(readMacrosSequence()));
     $("#chkMacros").addEventListener("change", e => pywebview.api.macros_set_enabled(e.target.checked));
     $("#chkMacrosAlways").addEventListener("change", e => pywebview.api.macros_set_run_always(e.target.checked));
     $("#macrosDelay").addEventListener("change", e => pywebview.api.macros_set_delay(parseFloat(e.target.value || "0")));
@@ -215,10 +223,6 @@
     $("#rows").addEventListener("change", e => pywebview.api.tp_set_selected_row_id(e.target.value || ""));
     $("#btnRowClear").addEventListener("click", () => { $("#rows").value = ""; pywebview.api.tp_set_selected_row_id(""); });
 
-    // exit
-    $("#btnExit").addEventListener("click", () => pywebview.api._py_exit());
-
-    // periodic HP + мониторинг
     tickState();
   }
 
@@ -253,6 +257,5 @@
     sel.value = "";
   }
 
-  // DOM загружен → запуск бутстрапа
   document.addEventListener("DOMContentLoaded", boot);
 })();
