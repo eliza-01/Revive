@@ -41,6 +41,7 @@ from core.engines.autofarm.zone_repo import list_zones_declared
 from core.engines.autofarm.skill_repo import list_skills as af_list_skills
 from core.engines.autofarm.skill_repo import list_professions as af_list_profs
 from core.engines.autofarm.skill_repo import debug_professions as af_debug_profs
+from core.engines.autofarm.service import AutoFarmService
 
 LOG_PATH = "revive.log"
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
@@ -156,6 +157,19 @@ class Bridge:
             get_language=lambda: self.language,
         )
         self._last_status: Dict[str, Dict[str, Any]] = {}
+
+        # --- AutoFarm сервис (гейт перед стартом) ---
+        self.autofarm = AutoFarmService(
+            schedule=lambda fn, ms: _schedule(fn, ms),
+            log=self._log,
+            on_start=self._autofarm_start_stub,   # заглушка старта
+        )
+        # приоритеты: true -> шаг завершён
+        # если у объекта нет is_running/is_busy — считаем, что готов.
+        self.autofarm.register_pre_step("restart", lambda: not getattr(self.restart, "is_running", lambda: False)())
+        self.autofarm.register_pre_step("to_village", lambda: not getattr(self.to_village, "is_running", lambda: False)())
+        self.autofarm.register_pre_step("postrow", lambda: not getattr(self.postrow, "is_running", lambda: False)())
+        self.autofarm.register_pre_step("autobuff", lambda: not getattr(self.autobuff, "is_busy", lambda: False)())
 
         # --- UI model ---
         self.ui: Dict[str, Any] = {
@@ -318,6 +332,10 @@ class Bridge:
 
     def _on_alive_proxy(self, st):
         self.orch.on_alive(st)
+        try:
+            self.autofarm.notify_after_tp()
+        except Exception:
+            pass
 
     # ---------- JS API ----------
     def get_init_state(self) -> Dict[str, Any]:
@@ -627,6 +645,38 @@ class Bridge:
         server = getattr(self, "server", "") or getattr(self, "_server", "") or "common"
         return af_list_skills(profession, ["attack"], lang or "eng", server)
 
+    #Автофарм
+    def _autofarm_start_stub(self):
+        # сюда подключится реальный движок: core/engines/autofarm/<server>/engine.py
+        self._emit_status("af", "Старт автофарма (заглушка)", True)
+        # пример: вызвать серверный сценарий
+        # try:
+        #     from core.engines.autofarm.<server>.engine import start as af_start
+        #     af_start(self.controller, self._safe_window(), self.language, self.ui, self.account)
+        # except Exception as e:
+        #     self._emit_status("af", f"Не удалось запустить: {e}", False)
+    def autofarm_set_mode(self, mode: str):
+        self.autofarm.set_mode((mode or "after_tp").lower())
+
+    def autofarm_set_enabled(self, enabled: bool):
+        self.autofarm.set_enabled(bool(enabled))
+        self._emit_status("af", "Включено" if enabled else "Выключено", True if enabled else None)
+
+    def autofarm_validate(self, ui_state: Dict[str, Any]):
+        # ui_state: {profession, skills:[{slug,...}], zone, ...}
+        ok = True; reason = None
+        if not ui_state.get("profession"):
+            ok, reason = False, "Выберите профессию"
+        elif not any((s.get("slug") for s in (ui_state.get("skills") or []))):
+            ok, reason = False, "Добавьте атакующий скилл"
+        elif not ui_state.get("zone"):
+            ok, reason = False, "Выберите зону"
+        return {"ok": ok, "reason": reason}
+
+    def autofarm_save(self, ui_state: Dict[str, Any]):
+        self.autofarm.configure(ui_state or {})
+        return {"ok": True}
+
     # --- window close hook (called from JS) ---
     def _py_exit(self) -> None:
         self.shutdown()
@@ -762,6 +812,7 @@ def launch_gui(local_version: str):
         api.af_list_zones_declared_only,
         api.af_zone_info,
         api.af_professions_debug,
+        api.autofarm_set_mode, api.autofarm_set_enabled, api.autofarm_validate, api.autofarm_save,
     )
 
     # 4) события

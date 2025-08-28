@@ -26,10 +26,14 @@ def _zones_json(server: str) -> List[str]:
         os.path.join(AF_ROOT, "common", "zones.json"),
     ]
 
-def _zones_root_galleries(server: str, zone_id: str) -> List[str]:
+def _zones_root_galleries(server: str, zone_id: str) -> list[str]:
+    base_srv = os.path.join(AF_ROOT, server)
+    base_com = os.path.join(AF_ROOT, "common")
     return [
-        os.path.join(AF_ROOT, server, "zones", zone_id, "gallery"),
-        os.path.join(AF_ROOT, "common", "zones", zone_id, "gallery"),
+        os.path.join(base_srv, "zones", zone_id, "gallery"),
+        os.path.join(base_srv, zone_id, "gallery"),
+        os.path.join(base_com, "zones", zone_id, "gallery"),
+        os.path.join(base_com, zone_id, "gallery"),
     ]
 
 def _img_data_uri(p: str) -> str | None:

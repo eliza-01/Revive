@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-08-24 23:23:21
+Generated: 2025-08-28 23:00:40
 
 Revive
 ├── app
@@ -23,7 +23,8 @@ Revive
 │   │   ├── css
 │   │   │   └── style.css
 │   │   ├── js
-│   │   │   └── app.js
+│   │   │   ├── app.js
+│   │   │   └── autofarm.ui.js
 │   │   └── index.html
 │   ├── __init__.py
 │   ├── __main__.py
@@ -63,6 +64,41 @@ Revive
 │   │   └── serial_port.py
 │   ├── checks
 │   │   └── charged.py
+│   ├── engines
+│   │   └── autofarm
+│   │       ├── boh
+│   │       │   ├── zones
+│   │       │   │   └── Varka_1
+│   │       │   │       └── gallery
+│   │       │   │           ├── map.png
+│   │       │   │           ├── spot_north.png
+│   │       │   │           └── spot_south.png
+│   │       │   └── zones.json
+│   │       ├── common
+│   │       │   ├── skills
+│   │       │   │   ├── attack.png
+│   │       │   │   ├── aura_flare.png
+│   │       │   │   ├── aura_flash.png
+│   │       │   │   ├── cancellation.png
+│   │       │   │   ├── curse_fear.png
+│   │       │   │   ├── dash.png
+│   │       │   │   ├── freezing_skin.png
+│   │       │   │   ├── frost_bolt.png
+│   │       │   │   ├── hydro_blast.png
+│   │       │   │   ├── ice_dagger.png
+│   │       │   │   ├── ice_vortex.png
+│   │       │   │   ├── light_vortex.png
+│   │       │   │   ├── sleep.png
+│   │       │   │   ├── solar_flare.png
+│   │       │   │   ├── stun_shot.png
+│   │       │   │   └── surrender_to_water.png
+│   │       │   ├── professions.json
+│   │       │   └── skills_catalog.json
+│   │       ├── la2mad
+│   │       ├── __init__.py
+│   │       ├── service.py
+│   │       ├── skill_repo.py
+│   │       └── zone_repo.py
 │   ├── features
 │   │   ├── archive
 │   │   │   └── auto_respawn_runner.py
