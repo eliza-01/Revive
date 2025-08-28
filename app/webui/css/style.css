@@ -185,3 +185,32 @@ select.sm.with-icon{
 .combo-item:hover { background:#1a1f25; }
 .combo-item img { width:18px; height:18px; object-fit:contain; }
 .hidden { display:none !important; }
+
+.monsters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+.monster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #2a2e36;
+  border-radius: 8px;
+}
+.monster img { width: 20px; height: 20px; object-fit: contain; }
+/* Autofarm → чекбоксы монстров: без обводки при фокусе/клике */
+.monsters input[type="checkbox"]:focus,
+.monsters input[type="checkbox"]:focus-visible,
+.monsters input[type="checkbox"]:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* контейнер карточки монстра тоже не подсвечивать */
+.monster:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #2a2e36 !important; /* вернуть базовый цвет рамки */
+}

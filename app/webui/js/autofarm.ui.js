@@ -57,6 +57,7 @@
     mode: "after_tp",
     profession: "",
     skills: [],   // [{key, slug, cast_ms}]
+    monsters: [],   // массив slug выбранных монстров
     zone: ""
   };
 
@@ -85,6 +86,15 @@
     // на всякий случай закрыть инфо-попап, чтобы он не перекрывал селект зоны
     // showModal("afZoneInfoModal", false);
     // showModal("afModal", true);
+  }
+
+  function slugifyName(s){
+    return String(s||"").toLowerCase()
+      .replace(/[’`]/g, "'")
+      .replace(/[^a-z0-9а-яё_' -]/gi, "")
+      .replace(/[\s\-']+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
   }
 
   //для отображения иконки около выпадающего списка?)
@@ -146,6 +156,51 @@
     return row;
   }
 
+  // Функция отрисовки монстров
+  async function renderMonsters() {
+    const box = $("afMonsters"); if (!box) return;
+    box.innerHTML = "";
+    const zoneId = ($("afZone") && $("afZone").value) || "";
+    if (!zoneId) return;
+
+    const langEl = document.getElementById("lang");
+    const lang = (langEl && langEl.value) ? langEl.value : "eng";
+
+    let info = null;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.af_zone_info) {
+      info = await pywebview.api.af_zone_info(zoneId, lang);
+    }
+    const list = (info && info.monsters) || []; // [{slug,name}] или []
+    // по умолчанию — все выбраны
+    const allSlugs = list.map(m => (typeof m === "string" ? slugifyName(m) : m.slug));
+    if (!state.monsters.length) state.monsters = allSlugs.slice();
+
+    list.forEach(m => {
+      const slug = (typeof m === "string") ? slugifyName(m) : m.slug;
+      const title = (typeof m === "string") ? m : (m.name || m.slug);
+
+      const label = document.createElement("label");
+      label.className = "monster";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = state.monsters.includes(slug);
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          if (!state.monsters.includes(slug)) state.monsters.push(slug);
+        } else {
+          state.monsters = state.monsters.filter(x => x !== slug);
+        }
+      });
+
+      const span = document.createElement("span");
+      span.textContent = title;
+
+      label.appendChild(cb);
+      label.appendChild(span);
+      box.appendChild(label);
+    });
+  }
 
   async function renderSkillsBlock() {
     const cont = $("afSkillRows"); if (!cont) return;
@@ -273,6 +328,7 @@
         await fillProfessions();
         await renderSkillsBlock();
         await fillZones();
+        await renderMonsters();
       } catch (e) {
         console.error("[AF] open settings error:", e);
       } finally {
@@ -308,9 +364,10 @@
       await renderSkillsBlock();
     });
 
-    if (zone) zone.addEventListener("change", ()=> {
-      // выбор зоны фиксируем в состоянии
+    if (zone) zone.addEventListener("change", async () => {
       state.zone = zone.value || "";
+      state.monsters = [];          // сброс выбора при смене зоны
+      await renderMonsters();       // перерисовать список
     });
 
     if (infoBtn)   infoBtn.addEventListener("click", openZoneInfo);
