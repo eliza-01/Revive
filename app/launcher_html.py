@@ -36,6 +36,12 @@ from core.vision.capture.gdi import find_window, get_window_info
 # --- updater (используется только для проверки наличия апдейта) ---
 from core.updater import get_remote_version, is_newer_version
 
+from core.engines.autofarm.zone_repo import get_zone_info as af_get_zone_info
+from core.engines.autofarm.zone_repo import list_zones_declared
+from core.engines.autofarm.skill_repo import list_skills as af_list_skills
+from core.engines.autofarm.skill_repo import list_professions as af_list_profs
+from core.engines.autofarm.skill_repo import debug_professions as af_debug_profs
+
 LOG_PATH = "revive.log"
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
 
@@ -596,6 +602,31 @@ class Bridge:
         except Exception:
             pass
 
+    # -- попап инфо зоны автофарма
+    def af_zone_info(self, zone_id: str, lang: str):
+        server = getattr(self, "server", "") or getattr(self, "_server", "") or "common"
+        return af_get_zone_info(server, zone_id, lang or "eng")
+
+    # вернуть только объявленные в server/zones.json
+    def af_list_zones_declared_only(self, lang: str):
+        server = getattr(self, "server", "") or getattr(self, "_server", "") or ""
+        return list_zones_declared(server, lang or "eng")
+
+    def af_get_professions(self, lang: str = ""):
+        try:
+            lang = (lang or self.language or "eng")
+            return af_list_profs(lang)
+        except Exception as e:
+            print(f"[autofarm] af_get_professions error: {e}")
+            return []
+
+    def af_professions_debug(self):
+        return af_debug_profs()
+
+    def af_get_attack_skills(self, profession: str, lang: str):
+        server = getattr(self, "server", "") or getattr(self, "_server", "") or "common"
+        return af_list_skills(profession, ["attack"], lang or "eng", server)
+
     # --- window close hook (called from JS) ---
     def _py_exit(self) -> None:
         self.shutdown()
@@ -726,6 +757,11 @@ def launch_gui(local_version: str):
         api.tp_get_categories, api.tp_get_locations, api.tp_get_selected_row_id,
         api.tp_set_selected_row_id, api.tp_teleport_now, api.run_update_check,
         api.shutdown, api._py_exit,
+        api.af_get_professions,
+        api.af_get_attack_skills,
+        api.af_list_zones_declared_only,
+        api.af_zone_info,
+        api.af_professions_debug,
     )
 
     # 4) события

@@ -1,0 +1,15 @@
+{
+  "hydro_blast":        { "eng": "Hydro Blast",        "rus": "Hydro Blast" },
+  "solar_flare":        { "eng": "Solar Flare",        "rus": "Solar Flare" },
+  "aura_flare":         { "eng": "Aura Flare",         "rus": "Aura Flare" },
+  "ice_vortex":         { "eng": "Ice Vortex",         "rus": "Ice Vortex" },
+  "surrender_to_water": { "eng": "Surrender to Water", "rus": "Surrender to Water" },
+  "curse_fear":         { "eng": "Curse Fear",         "rus": "Curse Fear" },
+  "sleep":              { "eng": "Sleep",              "rus": "Sleep" },
+  "aura_flash":         { "eng": "Aura Flash",         "rus": "Aura Flash" },
+  "cancellation":       { "eng": "Cancellation",       "rus": "Cancellation" },
+  "freezing_skin":      { "eng": "Freezing Skin",      "rus": "Freezing Skin" },
+  "attack":             { "eng": "Attack",             "rus": "Attack" },
+  "stun_shot":          { "eng": "Stun Shot",          "rus": "Stun Shot" },
+  "dash":               { "eng": "Dash",               "rus": "Dash" }
+}

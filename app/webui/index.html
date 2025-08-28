@@ -198,8 +198,73 @@
       <!-- Автофарм -->
       <div class="group">
         <h4>Автофарм</h4>
+        <div class="row compact wrap">
+          <label class="switch">
+            <input type="checkbox" id="chkAF">
+            <span class="slider"></span>
+            <span class="slabel">Включить</span>
+          </label>
 
+          <label class="ml">Режим:</label>
+          <select id="afMode" class="sm">
+            <option value="after_tp">После ТП</option>
+            <option value="manual">Ручной запуск</option>
+          </select>
 
+          <button id="btnAFSettings" class="ml">Настройки</button>
+          <span id="status-af" class="status gray ml">Не настроено</span>
+        </div>
+      </div>
+
+      <!-- ПОПАП НАСТРОЕК -->
+      <div id="afModal" class="modal hidden">
+        <div class="modal__box">
+          <div class="modal__hdr">
+            <div>Настройки автофарма</div>
+            <button id="afClose" class="icon-btn">✕</button>
+          </div>
+          <div class="modal__body">
+            <div class="row compact">
+              <label>Профессия:</label>
+              <select id="afProf" class="md"></select>
+            </div>
+
+            <div class="group">
+              <h4>Атакующие скиллы</h4>
+              <div id="afSkillRows" class="rows"></div>
+              <div class="row compact">
+                <button id="afAddSkill" class="icon-btn">＋</button>
+                <button id="afDelSkill" class="icon-btn ml">−</button>
+              </div>
+            </div>
+
+            <div class="group">
+              <h4>Зона</h4>
+              <div class="row compact">
+                <label>Зона автофарма:</label>
+                <select id="afZone" class="md"></select>
+                <button id="btnAFZoneInfo" class="ml">Инфо</button>
+
+                <!-- попап инфо о зоне -->
+                <div id="afZoneInfoModal" class="modal hidden">
+                  <div class="modal__box">
+                    <div class="modal__hdr">
+                      <div id="afZoneInfoTitle">Зона</div>
+                      <button id="afZoneInfoClose" class="icon-btn">✕</button>
+                    </div>
+                    <div id="afZoneInfoBody" class="modal__body zoneinfo-body">
+                      <!-- сюда прилетят изображения и текст -->
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+          <div class="modal__ftr">
+            <button id="afSave" class="primary">Сохранить</button>
+          </div>
+        </div>
       </div>
 
     </section>
@@ -211,5 +276,6 @@
   </main>
 
   <script src="js/app.js"></script>
+  <script src="js/autofarm.ui.js?v=debug1"></script>
 </body>
 </html>
