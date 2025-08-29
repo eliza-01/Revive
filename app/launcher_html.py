@@ -263,6 +263,62 @@ class Bridge:
         _schedule(self._periodic_update_check, 2_000)
 
     # ---------- helpers ----------
+    # ---------- не дает запускать что-либо пока цикл запущен
+    def _is_cycle_busy(self) -> bool:
+        """Любой из основных шагов в работе → занято."""
+        try:
+            if getattr(self.restart,  "is_running", lambda: False)(): return True
+            if getattr(self.to_village,"is_running", lambda: False)(): return True
+            if getattr(self.postrow,  "is_running", lambda: False)(): return True
+            if getattr(self.autobuff, "is_busy",   lambda: False)(): return True
+        except Exception:
+            pass
+        return False
+
+    def _on_dead_proxy(self, st):
+        if self._is_cycle_busy():
+            self._emit_status("watcher", "[flow] busy → skip on_dead", None)
+            return
+        self.orch.on_dead(st)
+
+    def _on_alive_proxy(self, st):
+        if self._is_cycle_busy():
+            self._emit_status("watcher", "[flow] busy → skip on_alive", None)
+            try: self.autofarm.notify_after_tp()
+            except Exception: pass
+            return
+        self.orch.on_alive(st)
+        try:
+            self.autofarm.notify_after_tp()
+        except Exception:
+            pass
+
+    def buff_run_once(self) -> bool:
+        if self._is_cycle_busy():
+            self._emit_status("buff", "Занято основным циклом", False)
+            return False
+        if not self._window_found:
+            self._emit_status("buff", "Окно не найдено", False)
+            return False
+        w = self._ensure_buff_worker()
+        ok = w.run_once()
+        self._emit_status("buff", "Баф выполнен" if ok else "Баф не выполнен", ok)
+        return bool(ok)
+
+    def macros_run_once(self) -> bool:
+        if self._is_cycle_busy():
+            self._emit_status("macros", "Занято основным циклом", False)
+            return False
+        ok = self.afterbuff_runner.run_once()
+        self._emit_status("macros", "Макросы выполнены" if ok else "Макросы не выполнены", ok)
+        return bool(ok)
+
+    def tp_teleport_now(self) -> bool:
+        if self._is_cycle_busy():
+            self._emit_status("tp", "Занято основным циклом", False)
+            return False
+    ############################
+
     def _log(self, *a):
         try:
             print(*a)
