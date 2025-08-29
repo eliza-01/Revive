@@ -100,7 +100,7 @@ void processCommand(String cmd) {
     if (cmd.startsWith("enter ") && cmd.length() > 6) {
       payload = cmd.substring(6); // всё после "enter "
     }
-    Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
+    Keyboard.press(KEY_RETURN); delay(25); Keyboard.release(KEY_RETURN);
     delay(200);
     if (payload.length() > 0) {
       typeSlow(payload.c_str());

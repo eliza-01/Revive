@@ -2,7 +2,7 @@
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
     {"op": "sleep", "ms": 1000},
-    {"op": "send_message", "text": "Привет гандоны", "delay_ms": 200},
+    {"op": "send_message", "text": "/target Grazing Antelope", "delay_ms": 200},
     {"op": "sleep", "ms": 5000},
     # {"op": "send_arduino", "cmd": "wheel_click", "delay_ms": 300},  # повернуть
     # {"op": "sleep", "ms": 900},
