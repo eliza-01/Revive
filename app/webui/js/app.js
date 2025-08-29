@@ -54,32 +54,26 @@
     }
   };
 
-  // --- macros rows as numeric inputs (1 char, small reserve) ---
-  function sanitizeKey(val) {
-    const v = (val || "").replace(/[^\d]/g, "").slice(0, 2);
-    return v.length ? v : "1";
-  }
+  // --- macros rows: dropdown like AF keys (без new Option) ---
   function buildMacrosRow(val) {
-    const inp = create("input", {
-      type: "text",
-      class: "key",
-      inputmode: "numeric",
-      pattern: "[0-9]{1,2}",
-      maxlength: "2",
-      value: sanitizeKey(val || "1")
+    const KEYS = ["1","2","3","4","5","6","7","8","9","0"];
+    const sel = create("select", { class: "key", "data-scope": "macros-key" });
+    KEYS.forEach(k => sel.appendChild(create("option", { value: k }, k)));
+    sel.value = (val && KEYS.includes(String(val))) ? String(val) : "1";
+    sel.addEventListener("change", () => {
+      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
     });
-    inp.addEventListener("input", () => {
-      inp.value = sanitizeKey(inp.value);
-      pywebview.api.macros_set_sequence(readMacrosSequence());
-    });
-    return inp;
+    return sel;
   }
   function readMacrosSequence() {
-    return Array.from($("#macrosRows").querySelectorAll("input.key")).map(x => x.value || "1");
+    return Array
+      .from($("#macrosRows").querySelectorAll('select[data-scope="macros-key"]'))
+      .map(x => x.value);
   }
   function ensureAtLeastOneRow() {
     const cont = $("#macrosRows");
     if (!cont.children.length) cont.appendChild(buildMacrosRow("1"));
+    try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
   }
 
   // periodic state poll
@@ -200,12 +194,12 @@
     // macros
     $("#btnAddRow").addEventListener("click", () => {
       $("#macrosRows").appendChild(buildMacrosRow("1"));
-      pywebview.api.macros_set_sequence(readMacrosSequence());
+      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
     });
     $("#btnDelRow").addEventListener("click", () => {
       const cont = $("#macrosRows");
       if (cont.children.length > 1) cont.removeChild(cont.lastElementChild);
-      pywebview.api.macros_set_sequence(readMacrosSequence());
+      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
     });
     $("#chkMacros").addEventListener("change", e => pywebview.api.macros_set_enabled(e.target.checked));
     $("#chkMacrosAlways").addEventListener("change", e => pywebview.api.macros_set_run_always(e.target.checked));

@@ -78,11 +78,7 @@ select:focus, input:focus, button:focus { outline: 2px solid rgba(255,154,0,.25)
 .md { width: 220px; }
 
 /* Macros key input: one digit with small reserve */
-input.key {
-  width: 28px;
-  padding: 6px 4px;
-  text-align: center;
-}
+select.key { width: 60px; }
 
 /* Status */
 .status { font-size: 11px; color: var(--muted); }

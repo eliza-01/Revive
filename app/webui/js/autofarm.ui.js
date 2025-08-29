@@ -1,25 +1,6 @@
 // app/webui/js/autofarm.ui.js
 (function () {
   // === STUB-данные: замените позже вызовами из core/engines/autofarm ===
-  const STUB = {
-    professions: ["mystic_muse", "sagittarius"],
-    attackSkills: {
-      mystic_muse: [
-        { slug: "hydro_blast", name: "Hydro Blast", icon: null },
-        { slug: "solar_flare", name: "Solar Flare", icon: null },
-        { slug: "aura_flare",  name: "Aura Flare",  icon: null },
-        { slug: "ice_vortex",  name: "Ice Vortex",  icon: null }
-      ],
-      sagittarius: [
-        { slug: "attack",    name: "Attack",    icon: null },
-        { slug: "stun_shot", name: "Stun Shot", icon: null }
-      ]
-    },
-    zones: [
-      { id: "Varka_1",    title: "Varka 1" },
-      { id: "Primeval_1", title: "Primeval Isle 1" }
-    ]
-  };
   async function fetchProfessions() {
     const api = (window.pywebview && window.pywebview.api) ? window.pywebview.api : null;
     if (!api || typeof api.af_get_professions !== "function") {
