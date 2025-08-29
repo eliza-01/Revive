@@ -1,4 +1,4 @@
-# core/servers/l2mad/locations_map.py
+﻿# core/servers/boh/locations_map.py
 # Категории/локации для ТП читаем из структуры templates.
 from typing import List, Dict
 from .templates import resolver as tpl  # ← относительный импорт

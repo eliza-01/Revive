@@ -1,1 +1,1 @@
-﻿# core/servers/l2mad/templates/__init__.py
+﻿# core/servers/boh/templates/__init__.py

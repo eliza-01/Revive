@@ -1,3 +1,4 @@
+﻿# core/engines/autofarm/skill_repo.py
 from __future__ import annotations
 import os, json, sys, base64
 from typing import Dict, List

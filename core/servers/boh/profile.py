@@ -1,4 +1,4 @@
-# core/servers/l2mad/profile.py
+﻿# core/servers/boh/profile.py
 from __future__ import annotations
 from typing import List
 from core.servers.registry import (

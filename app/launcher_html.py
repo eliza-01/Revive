@@ -1,3 +1,4 @@
+﻿# app/launcher_html.py
 # === FILE: app/launcher_html.py
 from __future__ import annotations
 import os
@@ -42,6 +43,7 @@ from core.engines.autofarm.skill_repo import list_skills as af_list_skills
 from core.engines.autofarm.skill_repo import list_professions as af_list_profs
 from core.engines.autofarm.skill_repo import debug_professions as af_debug_profs
 from core.engines.autofarm.service import AutoFarmService
+from core.engines.autofarm.runner import run_af_click_button as af_run_click
 
 LOG_PATH = "revive.log"
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
@@ -121,6 +123,7 @@ class Bridge:
             get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
             on_status=lambda msg, ok: self._emit_status("postrow", msg, ok),
+            on_finished=lambda: self._af_after_tp()   # ← НОВОЕ
         )
         self.to_village = ToVillage(
             controller=self.controller,
@@ -157,12 +160,18 @@ class Bridge:
             get_language=lambda: self.language,
         )
         self._last_status: Dict[str, Dict[str, Any]] = {}
+        self.orch.set_autofarm_start(lambda: self.af_start())
 
         # --- AutoFarm сервис (гейт перед стартом) ---
         self.autofarm = AutoFarmService(
-            schedule=lambda fn, ms: _schedule(fn, ms),
+            controller=self.controller,
+            get_server=lambda: self.server,
+            get_language=lambda: self.language,
+            get_window=lambda: self._safe_window(),
+            is_alive=lambda: self.watcher.is_alive(),
+            schedule=_schedule,
+            on_status=lambda text, ok=None: self._emit_status("af", text, ok),
             log=self._log,
-            on_start=self._autofarm_start_stub,   # заглушка старта
         )
         # приоритеты: true -> шаг завершён
         # если у объекта нет is_running/is_busy — считаем, что готов.
@@ -312,6 +321,14 @@ class Bridge:
         self.find_window()
         if not self._window_found:
             _schedule(self._autofind_tick, 3000)
+
+    def _af_after_tp(self):
+        try:
+            # запускать только если AF включён и режим "После ТП"
+            if getattr(self, "autofarm", None) and self.autofarm.enabled and self.autofarm.mode == "after_tp":
+                self.autofarm.arm()  # ← мягкий «вооружить»; реальный старт сделает сервис
+        except Exception as e:
+            self._emit_status("af", f"[AF] arm after TP failed: {e}", False)
 
     def _periodic_update_check(self):
         try:
@@ -674,8 +691,23 @@ class Bridge:
         return {"ok": ok, "reason": reason}
 
     def autofarm_save(self, ui_state: Dict[str, Any]):
-        self.autofarm.configure(ui_state or {})
+        # сохраняем конфиг в сервисе, не включая/выключая
+        self.autofarm.set_enabled(self.autofarm.enabled, ui_state or {})
         return {"ok": True}
+
+    def af_start(self, mode: str = "after_tp") -> bool:
+        """
+        Заглушка: жмём кнопку автофарма через шаблон из движка.
+        Позже сюда можно вставить ожидание окончания приоритетных флоу.
+        """
+        def _st(msg, ok=None): self._emit_status("postrow", f"[AF] {msg}", ok)
+        return af_run_click(
+            server=self.server,
+            controller=self.controller,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            on_status=_st
+        )
 
     # --- window close hook (called from JS) ---
     def _py_exit(self) -> None:
@@ -813,6 +845,7 @@ def launch_gui(local_version: str):
         api.af_zone_info,
         api.af_professions_debug,
         api.autofarm_set_mode, api.autofarm_set_enabled, api.autofarm_validate, api.autofarm_save,
+        api.af_start,
     )
 
     # 4) события

@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-08-28 23:00:40
+Generated: 2025-08-29 04:20:09
 
 Revive
 ├── app
@@ -46,6 +46,7 @@ Revive
 ├── collected
 │   ├── A.manifest.txt
 │   ├── A_core_io.py
+│   ├── Arduino.py
 │   ├── B.manifest.txt
 │   ├── B_features.py
 │   ├── C.manifest.txt
@@ -55,7 +56,8 @@ Revive
 │   ├── E.manifest.txt
 │   ├── E_wrappers.py
 │   ├── F.manifest.txt
-│   └── F_vision.py
+│   ├── F_vision.py
+│   └── G.manifest.txt
 ├── core
 │   ├── arduino
 │   │   ├── safe_serial.py
@@ -75,6 +77,8 @@ Revive
 │   │       │   │           └── spot_south.png
 │   │       │   └── zones.json
 │   │       ├── common
+│   │       │   ├── flows
+│   │       │   │   └── af_click.json
 │   │       │   ├── skills
 │   │       │   │   ├── attack.png
 │   │       │   │   ├── aura_flare.png
@@ -92,10 +96,36 @@ Revive
 │   │       │   │   ├── solar_flare.png
 │   │       │   │   ├── stun_shot.png
 │   │       │   │   └── surrender_to_water.png
+│   │       │   ├── zones
+│   │       │   │   └── Varka_1
+│   │       │   │       └── gallery
+│   │       │   │           ├── map.png
+│   │       │   │           ├── spot_north.png
+│   │       │   │           └── spot_south.png
 │   │       │   ├── professions.json
-│   │       │   └── skills_catalog.json
-│   │       ├── la2mad
+│   │       │   ├── skills_catalog.json
+│   │       │   ├── templates_map.py
+│   │       │   └── zones.json
+│   │       ├── l2mad
+│   │       │   ├── flows
+│   │       │   │   └── af_click.json
+│   │       │   ├── templates
+│   │       │   │   ├── eng
+│   │       │   │   │   └── interface
+│   │       │   │   │       └── autofarm.png
+│   │       │   │   └── rus
+│   │       │   │       └── interface
+│   │       │   │           └── autofarm.png
+│   │       │   ├── zones
+│   │       │   │   └── Varka_1
+│   │       │   │       └── gallery
+│   │       │   │           ├── map.png
+│   │       │   │           ├── spot_north.png
+│   │       │   │           └── spot_south.png
+│   │       │   ├── engine.py
+│   │       │   └── zones.json
 │   │       ├── __init__.py
+│   │       ├── runner.py
 │   │       ├── service.py
 │   │       ├── skill_repo.py
 │   │       └── zone_repo.py

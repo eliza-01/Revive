@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib
 from typing import Optional, Tuple, Dict, Sequence
 
-import cv2
+import cv2, os
 import numpy as np
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 
@@ -44,6 +44,18 @@ def match_in_zone(
 
     # загрузка шаблона
     tpath = _resolve_path(server, lang, template_parts)
+     # Fallback: templates из engines/autofarm
+    if not tpath:
+        try:
+            ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))  # -> core
+            af1 = os.path.join(ROOT, "engines", "autofarm", server, "templates", lang, *template_parts)
+            af2 = os.path.join(ROOT, "engines", "autofarm", "common", "templates", lang, *template_parts)
+            if os.path.exists(af1):
+                tpath = af1
+            elif os.path.exists(af2):
+                tpath = af2
+        except Exception:
+            tpath = None
     if not tpath:
         return None
     templ = _load_template_abs(tpath)

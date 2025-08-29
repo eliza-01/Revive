@@ -1,3 +1,4 @@
+﻿# core/engines/autofarm/zone_repo.py
 from __future__ import annotations
 import re, sys, os, json, base64
 from typing import Dict, List
@@ -63,10 +64,12 @@ def load_zones_merged(server: str) -> Dict:
     d = dict(common); d.update(srv)
     return d
 
-def list_zones_declared(server: str, lang: str) -> List[Dict]:
-    srv_path = _zones_json(server)[0]
+def list_zones_declared(server: str, lang: str) -> list[dict]:
+    srv_path, com_path = _zones_json(server)[0], _zones_json("common")[1]
     data = _read_json_relaxed(srv_path)
-    out: List[Dict] = []
+    if not data:                      # ← если в серверном нет — берём common
+        data = _read_json_relaxed(com_path)
+    out = []
     for zid, meta in data.items():
         title = meta.get(f"title_{lang}") or meta.get("title") or zid
         out.append({"id": zid, "title": title})

@@ -309,19 +309,32 @@
     const infoBtn   = $("btnAFZoneInfo");
     const infoClose = $("afZoneInfoClose");
 
-    if (chk) chk.addEventListener("change", () => {
-      const v = validate();
-      if (!v.ok) {
-        chk.checked = false;
-        if (status) { status.textContent = v.reason; status.classList.remove("ok"); status.classList.add("warn"); }
-        showModal("afModal", true);
-        return;
+    if (chk) chk.addEventListener("change", async () => {
+      if (chk.checked) {
+        const v = validate();
+        if (!v.ok) {
+          chk.checked = false;
+          const st = document.getElementById("status-af");
+          if (st) { st.textContent = v.reason; st.classList.remove("ok"); st.classList.add("warn"); }
+          document.getElementById("afModal")?.classList.remove("hidden");
+          return;
+        }
+        try {
+          await pywebview.api.autofarm_set_mode(state.mode || "after_tp");
+          await pywebview.api.autofarm_set_enabled(true);
+          // Не стартуем сразу: после ТП postrow вызовет .arm() и сервис сам запустится
+        } catch (e) { console.error(e); }
+      } else {
+        try { await pywebview.api.autofarm_set_enabled(false); } catch (e) { console.error(e); }
       }
-      state.enabled = chk.checked;
-      if (status) { status.textContent = chk.checked ? "Включено" : "Выключено"; status.classList.toggle("ok", chk.checked); }
     });
 
-    if (mode) mode.addEventListener("change", ()=> state.mode = mode.value);
+    if (mode) mode.addEventListener("change", async () => {
+      state.mode = mode.value;
+      if (window.pywebview?.api?.autofarm_set_mode) {
+        try { await pywebview.api.autofarm_set_mode(state.mode); } catch(e) { console.error(e); }
+      }
+    });
 
     if (btn) btn.addEventListener("click", async () => {
       try {
@@ -338,14 +351,24 @@
 
     if (close) close.addEventListener("click", ()=> { showModal("afModal", false); });
 
-    if (save)  save.addEventListener("click", () => {
+    if (save)  save.addEventListener("click", async () => {
       const v = validate();
       if (status) {
         status.textContent = v.ok ? "Настроено" : (v.reason || "Не настроено");
         status.classList.toggle("ok", v.ok);
         status.classList.toggle("warn", !v.ok);
       }
-      if (v.ok) showModal("afModal", false); // закрываем только если всё настроено
+      if (v.ok) {
+        try {
+          await pywebview.api.autofarm_save({
+            profession: state.profession,
+            skills: state.skills,
+            zone: state.zone,
+            monsters: state.monsters
+          });
+        } catch(e) { console.error(e); }
+        showModal("afModal", false);
+      }
     });
 
     if (prof) prof.addEventListener("change", async () => {
