@@ -21,12 +21,22 @@ def _abort(ctx_base) -> bool:
     f = ctx_base.get("should_abort")
     return bool(f and f())
 
+
 def _target_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
     """Зона 500x120, верх-центр клиентской области."""
+    # Ширина и высота окна игры
     w, h = int(win["width"]), int(win["height"])
+
+    # Размеры зоны (ширина 500px, высота 120px)
     zw, zh = 500, 120
-    l = max(0, (w - zw) // 2)
-    t = max(0, 24)
+
+    # Расчет левой границы зоны (по центру экрана)
+    l = max(0, (w - zw) // 2)  # l - левая граница (отступ слева)
+
+    # Расчет верхней границы зоны (небольшой отступ от верхней кромки)
+    t = max(0, 1)  # t - верхняя граница (отступ сверху)
+
+    # Возвращаем кортеж из 4-х чисел: (левая, верхняя, правая, нижняя границы)
     return (l, t, l + zw, t + zh)
 
 def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,int,int]], int]:
@@ -152,7 +162,7 @@ def _zone_monster_display_names(server: str, zone_id: str, lang: str) -> List[st
 
 def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
     flow = [
-        {"op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
+        # {"op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
         {"op": "send_message", "layout": "en", "text": text, "wait_ms": 60},
         {"op": "sleep", "ms": max(0, int(wait_ms))}
     ]

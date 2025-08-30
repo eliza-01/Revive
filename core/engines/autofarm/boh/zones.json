@@ -18,5 +18,25 @@
       "eng": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Людоед Тумран"],
       "rus": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Людоед Тумран"]
     }
+  },
+  "Ruins_of_agony_start": {
+    "title_rus": "Ruins of Agony. ТП.",
+    "title_eng": "Ruins of Agony. ТП.",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng": ["Главарь Скелетов Следопытов", "Скелет Разведчик"],
+      "rus": ["Главарь Скелетов Следопытов", "Скелет Разведчик"]
+    }
+  },
+  "Dwarf_village": {
+    "title_rus": "Деревня Гномов. За воротами 1.",
+    "title_eng": "Dwarf Village. Behind the Gates 1.",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng": ["Орк Утуку", "Черный Волк", "Сыщик Гоблинов"],
+      "rus": ["Орк Утуку", "Черный Волк", "Сыщик Гоблинов"]
+    }
   }
 }
