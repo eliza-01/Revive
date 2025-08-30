@@ -332,8 +332,8 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
         alive = _target_alive_by_hp(win, server)
         if alive is False:
             ctx_base["on_status"]("[AF boh] цель мертва/пропала", True)
-            _press_esc(ex)
-            time.sleep(0.05)
+            # _press_esc(ex)
+            time.sleep(0.2)
             return True
         if alive is None:
             time.sleep(probe_sleep)
