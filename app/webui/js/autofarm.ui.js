@@ -1,33 +1,44 @@
 // app/webui/js/autofarm.ui.js
 (function () {
-  // === STUB-данные: замените позже вызовами из core/engines/autofarm ===
+  // === API helpers (мягкие фолбэки, без throw) ===
+  const api = () => (window.pywebview && window.pywebview.api) ? window.pywebview.api : {};
+
   async function fetchProfessions() {
-    const api = (window.pywebview && window.pywebview.api) ? window.pywebview.api : null;
-    if (!api || typeof api.af_get_professions !== "function") {
-      throw new Error("[AF] pywebview.api.af_get_professions отсутствует");
-    }
-    const langEl = document.getElementById("lang");
-    const lang = (langEl && langEl.value) ? langEl.value : "eng";
-    const list = await api.af_get_professions(lang);
-    console.log("[AF] professions ->", list);
-    return Array.isArray(list) ? list : [];
+    try {
+      const a = api();
+      if (typeof a.af_get_professions === "function") {
+        const lang = (document.getElementById("lang")?.value) || "eng";
+        const list = await a.af_get_professions(lang);
+        return Array.isArray(list) ? list : [];
+      }
+    } catch (e) { console.warn("[AF] professions error:", e); }
+    return [];
   }
+
   async function fetchAttackSkills(prof) {
-    const langEl = document.getElementById("lang");
-    const lang = (langEl && langEl.value) ? langEl.value : "eng";
-    if (window.pywebview && window.pywebview.api && typeof pywebview.api.af_get_attack_skills === "function") {
-      return await pywebview.api.af_get_attack_skills(prof, lang);
-    }
-    return []; // без API не показываем
+    try {
+      const a = api();
+      const lang = (document.getElementById("lang")?.value) || "eng";
+      if (typeof a.af_get_attack_skills === "function") {
+        return await a.af_get_attack_skills(prof, lang);
+      }
+    } catch (e) { console.warn("[AF] attack skills error:", e); }
+    return [];
   }
+
   async function fetchZones() {
-    const langEl = document.getElementById("lang");
-    const lang = (langEl && langEl.value) ? langEl.value : "eng";
-    if (window.pywebview && window.pywebview.api && typeof pywebview.api.af_list_zones_declared_only === "function") {
-      const list = await pywebview.api.af_list_zones_declared_only(lang);
-      return Array.isArray(list) ? list : [];
-    }
-    // нет API → ничего не показываем, чтобы не было "левых" зон
+    try {
+      const a = api();
+      const lang = (document.getElementById("lang")?.value) || "eng";
+      if (typeof a.af_list_zones_declared_only === "function") {
+        const list = await a.af_list_zones_declared_only(lang);
+        return Array.isArray(list) ? list : [];
+      }
+      if (typeof a.af_list_zones === "function") {
+        const list = await a.af_list_zones(lang);
+        return Array.isArray(list) ? list : [];
+      }
+    } catch (e) { console.warn("[AF] zones error:", e); }
     return [];
   }
 
@@ -37,8 +48,8 @@
     enabled: false,
     mode: "after_tp",
     profession: "",
-    skills: [],   // [{key, slug, cast_ms}]
-    monsters: [],   // массив slug выбранных монстров
+    skills: [],     // [{key, slug, cast_ms}]
+    monsters: [],   // [slug,...]
     zone: ""
   };
 
@@ -46,29 +57,6 @@
   const $ = (id) => document.getElementById(id);
   const showModal = (id, on) => { const el = $(id); if (el) el.classList.toggle("hidden", !on); };
   const cap = (s)=> (s||"").split("_").map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(" ");
-
-  function validate() {
-    const hasProf = !!state.profession;
-    const hasSkill = state.skills.some(s => s.key && s.slug && Number(s.cast_ms) > 0);
-    const hasZone = !!state.zone;
-    return { ok: hasProf && hasSkill && hasZone,
-      reason: hasProf ? (hasSkill ? (hasZone ? null : "Выберите зону") : "Добавьте атакующий скилл") : "Выберите профессию" };
-  }
-  // --- автоинициализация попапа настроек ---
-  let afInitedOnce = false;
-
-  async function openAFSettings() {
-    await fillProfessions();
-    await renderSkillsBlock();
-    await fillZones();
-    showModal("afModal", true);
-    afInitedOnce = true;
-
-    // на всякий случай закрыть инфо-попап, чтобы он не перекрывал селект зоны
-    // showModal("afZoneInfoModal", false);
-    // showModal("afModal", true);
-  }
-
   function slugifyName(s){
     return String(s||"").toLowerCase()
       .replace(/[’`]/g, "'")
@@ -78,23 +66,34 @@
       .replace(/^_+|_+$/g, "");
   }
 
-  //для отображения иконки около выпадающего списка?)
+  function validate() {
+    const hasProf = !!state.profession;
+    const hasSkill = state.skills.some(s => s.key && s.slug && Number(s.cast_ms) > 0);
+    const hasZone = !!state.zone;
+    return {
+      ok: hasProf && hasSkill && hasZone,
+      reason: hasProf ? (hasSkill ? (hasZone ? null : "Выберите зону") : "Добавьте атакующий скилл") : "Выберите профессию"
+    };
+  }
+
+  // селект с иконками
   function buildSkillCombo(skillsList, item){
     const wrap = document.createElement("div"); wrap.className = "combo";
     const btn  = document.createElement("button"); btn.type = "button"; btn.className = "combo-btn";
     const ico  = document.createElement("img"); ico.className = "combo-ico";
-    const cap  = document.createElement("span"); cap.className = "combo-label";
-    btn.appendChild(ico); btn.appendChild(cap);
+    const lab  = document.createElement("span"); lab.className = "combo-label";
+    btn.appendChild(ico); btn.appendChild(lab);
 
     const menu = document.createElement("div"); menu.className = "combo-menu hidden";
     (skillsList || []).forEach(s => {
       const it  = document.createElement("div"); it.className = "combo-item";
       const im  = document.createElement("img"); im.src = s.icon || "";
-      const lab = document.createElement("span"); lab.textContent = s.name || (s.slug || "");
-      it.appendChild(im); it.appendChild(lab);
+      const tx  = document.createElement("span"); tx.textContent = s.name || (s.slug || "");
+      it.appendChild(im); it.appendChild(tx);
       it.addEventListener("click", () => {
         item.slug = s.slug;
-        ico.src = s.icon || ""; cap.textContent = s.name || s.slug;
+        ico.src = s.icon || "";
+        lab.textContent = s.name || s.slug;
         menu.classList.add("hidden");
       });
       menu.appendChild(it);
@@ -103,56 +102,65 @@
     btn.addEventListener("click", () => { menu.classList.toggle("hidden"); });
     document.addEventListener("click", (e) => { if (!wrap.contains(e.target)) menu.classList.add("hidden"); });
 
-    // начальное состояние
     const cur = (skillsList || []).find(x => x.slug === item.slug);
-    if (cur) { ico.src = cur.icon || ""; cap.textContent = cur.name || cur.slug; }
-    else { ico.src = ""; cap.textContent = "— выбрать —"; }
+    if (cur) { ico.src = cur.icon || ""; lab.textContent = cur.name || cur.slug; }
+    else { ico.src = ""; lab.textContent = "— выбрать —"; }
 
     wrap.appendChild(btn); wrap.appendChild(menu);
     return wrap;
   }
 
-  // === Рендер строк скиллов ===
+  // строка скилла
   function buildSkillRow(item, skillsList) {
     const row = document.createElement("div");
     row.className = "af-skill";
 
-    // Клавиша
     const keySel = document.createElement("select");
     AF_KEYS.forEach(k => keySel.appendChild(new Option(k, k)));
     keySel.value = item.key || "1";
     keySel.addEventListener("change", () => { item.key = keySel.value; });
     row.appendChild(keySel);
 
-    // Скилл: кастомный дропдаун с иконками
     row.appendChild(buildSkillCombo(skillsList, item));
 
-    // Каст, мс
     const cast = document.createElement("input");
     cast.type = "number"; cast.min = "1"; cast.step = "1"; cast.className = "xs";
-    cast.value = item.cast_ms ?? 500;
+    cast.value = item.cast_ms ?? 2000;
     cast.addEventListener("change", () => { item.cast_ms = Math.max(1, parseInt(cast.value || "0", 10)); });
     row.appendChild(cast);
 
     return row;
   }
 
-  // Функция отрисовки монстров
+  async function renderSkillsBlock() {
+    const cont = $("afSkillRows"); if (!cont) return;
+    cont.innerHTML = "";
+
+    const hdr = document.createElement("div");
+    hdr.className = "row compact";
+    hdr.innerHTML = '<span class="col col-key">Клавиша</span><span class="col col-skill">Скилл</span><span class="col col-cast">Каст, мс</span>';
+    cont.appendChild(hdr);
+
+    if (!state.skills.length) state.skills.push({ key:"1", slug:"", cast_ms:2000 });
+    const list = await fetchAttackSkills(state.profession);
+    state.skills.forEach(item => cont.appendChild(buildSkillRow(item, list)));
+  }
+
+  // монстры
   async function renderMonsters() {
     const box = $("afMonsters"); if (!box) return;
     box.innerHTML = "";
     const zoneId = ($("afZone") && $("afZone").value) || "";
     if (!zoneId) return;
 
-    const langEl = document.getElementById("lang");
-    const lang = (langEl && langEl.value) ? langEl.value : "eng";
+    const lang = (document.getElementById("lang")?.value) || "eng";
 
     let info = null;
-    if (window.pywebview && window.pywebview.api && window.pywebview.api.af_zone_info) {
-      info = await pywebview.api.af_zone_info(zoneId, lang);
-    }
-    const list = (info && info.monsters) || []; // [{slug,name}] или []
-    // по умолчанию — все выбраны
+    try {
+      if (api().af_zone_info) info = await api().af_zone_info(zoneId, lang);
+    } catch (e) { console.warn("[AF] zone info error:", e); }
+    const list = (info && info.monsters) || [];
+
     const allSlugs = list.map(m => (typeof m === "string" ? slugifyName(m) : m.slug));
     if (!state.monsters.length) state.monsters = allSlugs.slice();
 
@@ -167,11 +175,8 @@
       cb.type = "checkbox";
       cb.checked = state.monsters.includes(slug);
       cb.addEventListener("change", () => {
-        if (cb.checked) {
-          if (!state.monsters.includes(slug)) state.monsters.push(slug);
-        } else {
-          state.monsters = state.monsters.filter(x => x !== slug);
-        }
+        if (cb.checked) { if (!state.monsters.includes(slug)) state.monsters.push(slug); }
+        else { state.monsters = state.monsters.filter(x => x !== slug); }
       });
 
       const span = document.createElement("span");
@@ -183,47 +188,25 @@
     });
   }
 
-  async function renderSkillsBlock() {
-    const cont = $("afSkillRows"); if (!cont) return;
-    cont.innerHTML = "";
-
-    // заголовки
-    const hdr = document.createElement("div");
-    hdr.className = "row compact";
-    hdr.innerHTML = '<span class="col col-key">Клавиша</span><span class="col col-skill">Скилл</span><span class="col col-cast">Каст, мс</span>';
-    cont.appendChild(hdr);
-
-    if (!state.skills.length) state.skills.push({ key:"1", slug:"", cast_ms:500 });
-    const list = await fetchAttackSkills(state.profession);
-    state.skills.forEach(item => cont.appendChild(buildSkillRow(item, list)));
-  }
-
-  // === Профы и зоны ===
+  // профы и зоны
   async function fillProfessions() {
-    const sel = document.getElementById("afProf"); if (!sel) return;
+    const sel = $("afProf"); if (!sel) return;
     sel.innerHTML = "";
-    try {
-      const profs = await fetchProfessions(); // [{slug,title}]
-      if (!profs.length) {
-        sel.appendChild(new Option("— нет данных —", ""));
-        const st = document.getElementById("status-af");
-        if (st) { st.textContent = "Профессии не найдены (см. консоль)"; st.classList.add("warn"); }
-        return;
-      }
-      sel.appendChild(new Option("— выбрать —",""));
-      profs.forEach(p => {
-        const slug = typeof p === "string" ? p : p.slug;
-        const title = typeof p === "string" ? (p.split("_").map(s=>s[0].toUpperCase()+s.slice(1)).join(" ")) : (p.title || slug);
-        sel.appendChild(new Option(title, slug));
-      });
-      sel.disabled = false;
-      sel.value = state.profession || "";
-    } catch (e) {
-      console.error(e);
-      sel.appendChild(new Option("— API недоступен —", ""));
-      const st = document.getElementById("status-af");
-      if (st) { st.textContent = "Нет API af_get_professions"; st.classList.add("warn"); }
+    const profs = await fetchProfessions(); // [{slug,title}]
+    if (!profs.length) {
+      sel.appendChild(new Option("— нет данных —", ""));
+      const st = $("status-af");
+      if (st) { st.textContent = "Профессии не найдены"; st.classList.add("warn"); }
+      return;
     }
+    sel.appendChild(new Option("— выбрать —",""));
+    profs.forEach(p => {
+      const slug = typeof p === "string" ? p : p.slug;
+      const title = typeof p === "string" ? cap(p) : (p.title || slug);
+      sel.appendChild(new Option(title, slug));
+    });
+    sel.disabled = false;
+    sel.value = state.profession || "";
   }
 
   async function fillZones() {
@@ -239,19 +222,19 @@
     if (!valid) state.zone = "";
   }
 
-  // === Инфо по зоне ===
+  // попап инфо по зоне
   async function openZoneInfo() {
     const zoneId = ($("afZone")?.value) || "";
     if (!zoneId) return;
-    const langEl = document.getElementById("lang");
-    const lang = (langEl && langEl.value) ? langEl.value : "eng";
+    const lang = (document.getElementById("lang")?.value) || "eng";
 
-    let info = null;
-    if (window.pywebview && window.pywebview.api && window.pywebview.api.af_zone_info) {
-      info = await pywebview.api.af_zone_info(zoneId, lang);
-    } else {
-      info = { id: zoneId, title: zoneId, about: "", images: [] };
-    }
+    let info = { id: zoneId, title: zoneId, about: "", images: [] };
+    try {
+      if (api().af_zone_info) {
+        const r = await api().af_zone_info(zoneId, lang);
+        if (r) info = r;
+      }
+    } catch (e) { console.warn("[AF] zone info error:", e); }
 
     const titleEl = $("afZoneInfoTitle");
     const body = $("afZoneInfoBody");
@@ -290,33 +273,10 @@
     const infoBtn   = $("btnAFZoneInfo");
     const infoClose = $("afZoneInfoClose");
 
-    if (chk) chk.addEventListener("change", async () => {
-      if (chk.checked) {
-        const v = validate();
-        if (!v.ok) {
-          chk.checked = false;
-          const st = document.getElementById("status-af");
-          if (st) { st.textContent = v.reason; st.classList.remove("ok"); st.classList.add("warn"); }
-          document.getElementById("afModal")?.classList.remove("hidden");
-          return;
-        }
-        try {
-          await pywebview.api.autofarm_set_mode(state.mode || "after_tp");
-          await pywebview.api.autofarm_set_enabled(true);
-          // Не стартуем сразу: после ТП postrow вызовет .arm() и сервис сам запустится
-        } catch (e) { console.error(e); }
-      } else {
-        try { await pywebview.api.autofarm_set_enabled(false); } catch (e) { console.error(e); }
-      }
-    });
+    // режим
+    if (mode) mode.addEventListener("change", ()=> state.mode = mode.value);
 
-    if (mode) mode.addEventListener("change", async () => {
-      state.mode = mode.value;
-      if (window.pywebview?.api?.autofarm_set_mode) {
-        try { await pywebview.api.autofarm_set_mode(state.mode); } catch(e) { console.error(e); }
-      }
-    });
-
+    // открыть настройки
     if (btn) btn.addEventListener("click", async () => {
       try {
         await fillProfessions();
@@ -332,57 +292,134 @@
 
     if (close) close.addEventListener("click", ()=> { showModal("afModal", false); });
 
-    if (save)  save.addEventListener("click", async () => {
+    // сохранить настройки (бекенд: любой доступный метод)
+    if (save) save.addEventListener("click", async () => {
       const v = validate();
       if (status) {
         status.textContent = v.ok ? "Настроено" : (v.reason || "Не настроено");
         status.classList.toggle("ok", v.ok);
         status.classList.toggle("warn", !v.ok);
       }
-      if (v.ok) {
-        try {
-          await pywebview.api.autofarm_save({
-            profession: state.profession,
-            skills: state.skills,
-            zone: state.zone,
-            monsters: state.monsters
-          });
-        } catch(e) { console.error(e); }
-        showModal("afModal", false);
-      }
+      if (!v.ok) return;
+
+      const payload = {
+        profession: state.profession,
+        skills: state.skills,
+        zone: state.zone,
+        monsters: state.monsters
+      };
+      try {
+        const a = api();
+        if (a.autofarm_save)        await a.autofarm_save(payload);
+        else if (a.af_save_settings)await a.af_save_settings(payload);
+        else if (a.af_set_config)   await a.af_set_config(payload);
+      } catch (e) { console.warn("[AF] save settings error:", e); }
+      showModal("afModal", false);
     });
 
+    // профа/скиллы
     if (prof) prof.addEventListener("change", async () => {
       state.profession = prof.value || "";
-      state.skills = [{ key:"1", slug:"", cast_ms:500 }];
+      state.skills = [{ key:"1", slug:"", cast_ms:2000 }];
       await renderSkillsBlock();
     });
-
     if (add) add.addEventListener("click", async ()=> {
-      state.skills.push({ key:"1", slug:"", cast_ms:500 });
+      state.skills.push({ key:"1", slug:"", cast_ms:2000 });
       await renderSkillsBlock();
     });
-
     if (del) del.addEventListener("click", async ()=> {
       if (state.skills.length > 1) state.skills.pop();
       await renderSkillsBlock();
     });
 
+    // зона/монстры
     if (zone) zone.addEventListener("change", async () => {
       state.zone = zone.value || "";
-      state.monsters = [];          // сброс выбора при смене зоны
-      await renderMonsters();       // перерисовать список
+      state.monsters = [];
+      await renderMonsters();
     });
-
     if (infoBtn)   infoBtn.addEventListener("click", openZoneInfo);
     if (infoClose) infoClose.addEventListener("click", ()=> showModal("afZoneInfoModal", false));
 
-    // если модал откроют не через кнопку, заполним данные автоматически один раз
+    // включение/выключение АФ — поддержка старого и нового API
+    async function afEnable(mode) {
+      const a = api();
+      try {
+        if (a.autofarm_set_mode && a.autofarm_set_enabled) {
+          await a.autofarm_set_mode(mode || "after_tp");
+          await a.autofarm_set_enabled(true);
+          return true;
+        }
+        if (a.af_start) {
+          await a.af_start(mode || "after_tp");
+          return true;
+        }
+      } catch (e) { console.error("[AF] start error:", e); }
+      return false;
+    }
+    async function afDisable() {
+      const a = api();
+      try {
+        if (a.autofarm_set_enabled) { await a.autofarm_set_enabled(false); return true; }
+        if (a.af_stop)              { await a.af_stop(); return true; }
+      } catch (e) { console.error("[AF] stop error:", e); }
+      return false;
+    }
+
+    if (chk) chk.addEventListener("change", async () => {
+      const st = document.getElementById("status-af");
+
+      if (chk.checked) {
+        const v = validate();
+        if (!v.ok) {
+          chk.checked = false;
+          if (st) { st.textContent = v.reason; st.classList.remove("ok"); st.classList.add("warn"); }
+          document.getElementById("afModal")?.classList.remove("hidden");
+          return;
+        }
+        try {
+          await pywebview.api.autofarm_set_mode(state.mode || "after_tp");
+          await pywebview.api.autofarm_set_enabled(true);
+          if (st) { st.textContent = "Настроено"; st.classList.add("ok"); st.classList.remove("warn"); }
+        } catch (e) {
+          console.error(e);
+          chk.checked = false;
+          if (st) { st.textContent = "Ошибка запуска АФ"; st.classList.remove("ok"); st.classList.add("warn"); }
+        }
+      } else {
+        try {
+          // используем универсальную остановку
+          const a = (window.pywebview && window.pywebview.api) ? window.pywebview.api : {};
+          if (a.autofarm_set_enabled) await a.autofarm_set_enabled(false);
+          else if (a.af_stop)         await a.af_stop();
+
+          // хард-кансел на случай «висящего» цикла (если есть в бэкенде)
+          if (a.autofarm_cancel_cycle) await a.autofarm_cancel_cycle();
+          if (a.af_abort)              await a.af_abort();
+          if (st) { st.textContent = "Отключено"; st.classList.remove("ok","warn"); }
+        } catch (e) {
+          console.error(e);
+          chk.checked = true; // не врём UI
+          if (st) { st.textContent = "Не удалось остановить АФ"; st.classList.remove("ok"); st.classList.add("warn"); }
+        }
+      }
+    });
+
+    // автоинициализация при первом ручном открытии
     const modal = $("afModal");
     if (modal && typeof MutationObserver !== "undefined") {
+      let inited = false;
       const mo = new MutationObserver(() => {
         const isOpen = !modal.classList.contains("hidden");
-        if (isOpen && !afInitedOnce) openAFSettings();
+        if (isOpen && !inited) {
+          inited = true;
+          Promise.resolve().then(async () => {
+            await fillProfessions();
+            await renderSkillsBlock();
+            await fillZones();
+            await renderMonsters();
+          });
+        }
       });
       mo.observe(modal, { attributes: true, attributeFilter: ["class"] });
     }

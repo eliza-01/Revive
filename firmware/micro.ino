@@ -92,6 +92,9 @@ void processCommand(String cmd) {
   } else if (cmd == "wheel_down") {
     Mouse.move(0, 0, -1);
 
+  } else if (cmd == "esc") {
+    Keyboard.press(KEY_ESC); delay(50); Keyboard.release(KEY_ESC);
+
   } else if (cmd == "backspace_click") {
     Keyboard.press(KEY_BACKSPACE); delay(50); Keyboard.release(KEY_BACKSPACE);
 
