@@ -120,14 +120,11 @@ SECTIONS: dict[str, list[str]] = {
 
     # F) Vision
     "F": [
-        "core/vision/__init__.py",
         "core/vision/matching.py",
         "core/vision/utils/colors.py",
         "core/vision/win32/gdi_backend.py",
-        "core/vision/capture/__init__.py",
         "core/vision/capture/gdi.py",
         "core/vision/capture/window_bgr_capture.py",
-        "core/vision/matching/__init__.py",
         "core/vision/matching/template_matcher.py",
     ],
 

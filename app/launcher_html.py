@@ -489,11 +489,13 @@ class Bridge:
                 if all(k in info for k in ("x", "y", "width", "height")):
                     self._window_info = info
                     self._window_found = True
-                    self._emit_status("window", "[✓] Окно найдено", True)
+                    self._emit_status("window", f"[✓] Окно найдено: {t} ({info['width']}x{info['height']})", True)
+                    print(f"[AF boh] Найдено окно: {t}, Размеры: {info['width']}x{info['height']}")
                     return {"found": True, "title": t, "info": info}
         self._window_info = None
         self._window_found = False
         self._emit_status("window", "[×] Окно не найдено", False)
+        print("[AF boh] Окно не найдено")
         return {"found": False}
 
     def test_connect(self) -> str:

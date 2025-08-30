@@ -151,7 +151,15 @@
       await refreshTPCats();
     });
 
-    $("#btnFind").addEventListener("click", async () => { await pywebview.api.find_window(); });
+    $("#btnFind").addEventListener("click", async () => {
+        const res = await pywebview.api.find_window();
+        if (res.found) {
+            console.log(`Окно найдено: ${res.title}, Размеры: ${res.info.width}x${res.info.height}`);
+            setStatus("#status-window", `Окно найдено: ${res.title} (${res.info.width}x${res.info.height})`, true);
+        } else {
+            setStatus("#status-window", "Окно не найдено", false);
+        }
+    });
     $("#btnTest").addEventListener("click", async () => { await pywebview.api.test_connect(); });
 
     $("#btnUpdate").addEventListener("click", async () => {

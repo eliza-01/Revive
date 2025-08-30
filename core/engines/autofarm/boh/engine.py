@@ -21,6 +21,17 @@ def _abort(ctx_base) -> bool:
     f = ctx_base.get("should_abort")
     return bool(f and f())
 
+def _capture_window_region(win: Dict, l: int, t: int, r: int, b: int):
+    """
+    Захват изображения с экрана в указанной области.
+    """
+    # Вместо чтения из файла, используем захват с экрана
+    screen = capture_window_region_bgr(win, (l, t, r, b))
+    if screen is None or screen.size == 0:
+        print("[AF boh] Ошибка захвата экрана, пустой или некорректный кадр.")
+        return None
+    return screen
+
 
 def _target_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
     """Зона 500x120, верх-центр клиентской области."""
@@ -35,6 +46,23 @@ def _target_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
 
     # Расчет верхней границы зоны (небольшой отступ от верхней кромки)
     t = max(0, 1)  # t - верхняя граница (отступ сверху)
+
+    # Возвращаем кортеж из 4-х чисел: (левая, верхняя, правая, нижняя границы)
+    return (l, t, l + zw, t + zh)
+
+def _target_sys_message_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
+    """Зона для поиска sys_message: отступ слева 24px, отступ снизу 240px, размер зоны 100x17."""
+    # Ширина и высота окна игры
+    w, h = int(win["width"]), int(win["height"])
+
+    # Размеры зоны (ширина 100px, высота 17px)
+    zw, zh = 93, 16
+
+    # Расчет левой границы зоны (отступ слева 24px)
+    l = 22  # фиксированный отступ слева
+
+    # Расчет верхней границы зоны (снизу отступ 240px)
+    t = max(0, h - 252 - zh)  # t - верхняя граница (отступ снизу)
 
     # Возвращаем кортеж из 4-х чисел: (левая, верхняя, правая, нижняя границы)
     return (l, t, l + zw, t + zh)
@@ -86,17 +114,17 @@ def _detect_target_bands(win: Dict, server: str):
     rect_alive = biggest_horizontal_band(mask_alive)
     rect_any   = biggest_horizontal_band(mask_any)
 
-    if rect_alive:
-        xa, ya, wa, ha = rect_alive
-        print(f"[AF boh][hp/alive] band: x={xa} y={ya} w={wa} h={ha} (tol={tol})")
-    else:
-        print(f"[AF boh][hp/alive] band: none (tol={tol})")
-
-    if rect_any:
-        xn, yn, wn, hn = rect_any
-        print(f"[AF boh][hp/any]   band: x={xn} y={yn} w={wn} h={hn} (tol={tol})")
-    else:
-        print(f"[AF boh][hp/any]   band: none (tol={tol})")
+    # if rect_alive:
+    #     xa, ya, wa, ha = rect_alive
+    #     print(f"[AF boh][hp/alive] band: x={xa} y={ya} w={wa} h={ha} (tol={tol})")
+    # else:
+    #     print(f"[AF boh][hp/alive] band: none (tol={tol})")
+    #
+    # if rect_any:
+    #     xn, yn, wn, hn = rect_any
+    #     print(f"[AF boh][hp/any]   band: x={xn} y={yn} w={wn} h={hn} (tol={tol})")
+    # else:
+    #     print(f"[AF boh][hp/any]   band: none (tol={tol})")
 
     if not _debug_dump_done:
         try:
@@ -207,8 +235,10 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     global _RESTART_STREAK
 
     server = (ctx_base["server"] or "boh").lower()
-    lang   = (ctx_base["get_language"]() or "eng").lower()
-    win    = ctx_base["get_window"]()
+    lang = (ctx_base["get_language"]() or "eng").lower()
+    win = ctx_base["get_window"]()
+    print(f"[AF boh] Window size: {win['width']}x{win['height']}")
+
     if not win:
         ctx_base["on_status"]("[AF boh] окно не найдено", False)
         return False
@@ -217,10 +247,10 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     zones = {
         "fullscreen": {"fullscreen": True},
         "target_zone": {
-            "left":  _target_zone_ltrb(win)[0],
-            "top":   _target_zone_ltrb(win)[1],
+            "left": _target_zone_ltrb(win)[0],
+            "top": _target_zone_ltrb(win)[1],
             "width": 400,
-            "height":80,
+            "height": 80,
         }
     }
     ctx = FlowCtx(
@@ -230,9 +260,11 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
         get_language=lambda: lang,
         zones=zones,
         templates={},
-        extras={}
+        extras={},
     )
     ex = FlowOpExecutor(ctx, on_status=ctx_base["on_status"])
+
+    last_target_alive = None  # Переменная для хранения состояния цели
 
     while True:
         if _abort(ctx_base):
@@ -243,7 +275,14 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
         _send_chat(ex, "/targetnext", wait_ms=500)
         if _abort(ctx_base):
             return False
-        if _has_target_by_hp(win, server, tries=3, delay_ms=250, should_abort=lambda: _abort(ctx_base)):
+        current_alive = _target_alive_by_hp(win, server)
+
+        if current_alive is None:
+            # Если цель не определена (ошибка)
+            print("[AF boh] Цель не определена.")
+            return False
+
+        if current_alive:
             ctx_base["on_status"]("[AF boh] цель получена /targetnext", True)
             if _abort(ctx_base):
                 return False
@@ -257,7 +296,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             else:
                 _RESTART_STREAK += 1
         else:
-            # 2) перебор имен зоны
+            # Если цель не живая после /targetnext, начинаем перебирать по именам
             zone_id = (cfg or {}).get("zone") or ""
             names = _zone_monster_display_names(server, zone_id, lang)
             if not names:
@@ -296,6 +335,8 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
         time.sleep(0.3)
 
+
+
 def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lang: str,
                   win: Dict, cfg: Dict[str, Any]) -> bool:
     """
@@ -332,7 +373,6 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
         alive = _target_alive_by_hp(win, server)
         if alive is False:
             ctx_base["on_status"]("[AF boh] цель мертва/пропала", True)
-            # _press_esc(ex)
             time.sleep(0.2)
             return True
         if alive is None:
@@ -354,8 +394,74 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
         else:
             time.sleep(probe_sleep)
 
+        # Завершение круга скиллов
         if all(it["used"] for it in plan):
             print("[AF boh] круг скиллов завершён → новый круг", flush=True)
+
+            # Проверка на видимость новой цели
+            zone_id = (cfg or {}).get("zone") or ""
+            if _check_target_visibility(ex, server, lang, win, zone_id):
+                _send_chat(ex, "/", wait_ms=22)  # Отправляем команду /s для невидимой цели
+                _send_chat(ex, "/", wait_ms=22)  # Отправляем команду /s для невидимой цели
+                _send_chat(ex, "/", wait_ms=22)  # Отправляем команду /s для невидимой цели
+
+            # Сбрасываем флаги использования скиллов
             for it in plan:
                 it["used"] = False
-            # не выходим — продолжаем, пока цель жива
+            continue
+
+
+# Функция для проверки видимости цели после первой атаки
+def _check_target_visibility(ex: FlowOpExecutor, server: str, lang: str, win: Dict, zone_id: str) -> bool:
+    """
+    Проверяем видимость цели после первой атаки.
+    Теперь используем OpenCV для поиска изображения, а не match_in_zone.
+    """
+    image_path = f"core/engines/autofarm/{server}/templates/{lang}/sys_messages/target_unvisible.png"
+
+    # Загружаем изображение для поиска
+    target_img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if target_img is None:
+        print(f"[AF boh] Ошибка загрузки изображения {image_path}")
+        return False  # Если изображение не найдено, цель видна
+
+    # Получаем зону для поиска sys_message
+    l, t, r, b = _target_sys_message_zone_ltrb(win)
+
+    # Используем новую функцию для захвата экрана
+    search_zone = _capture_window_region(win, l, t, r, b)
+
+    if search_zone is None or search_zone.size == 0:
+        print(f"[AF boh] Ошибка захвата экрана в зоне {l},{t},{r},{b}")
+        return False  # Если не удалось захватить экран, цель видна
+
+    # Проверка на корректную размерность массива (оно должно быть 2D или 3D)
+    if search_zone.ndim != 3:
+        print(f"[AF boh] Ошибка: захваченный экран имеет неправильную размерность (ndim={search_zone.ndim})")
+        return False  # Если размерность неправильная, цель видна
+
+    # Сохраняем захваченную область для дебага
+    try:
+        dbg_dir = os.path.abspath("debug_af_boh")
+        os.makedirs(dbg_dir, exist_ok=True)
+        debug_image_path = os.path.join(dbg_dir, "captured_zone.png")
+        cv2.imwrite(debug_image_path, search_zone)
+        print(f"[AF boh][debug] saved captured zone to {debug_image_path}")
+    except Exception as e:
+        print(f"[AF boh][debug] failed to save captured zone: {e}")
+
+    # Преобразуем в оттенки серого для удобства поиска
+    search_zone_gray = cv2.cvtColor(search_zone, cv2.COLOR_BGR2GRAY)
+
+    # Используем метод сравнения шаблонов OpenCV (например, `cv2.matchTemplate`)
+    result = cv2.matchTemplate(search_zone_gray, target_img, cv2.TM_CCOEFF_NORMED)
+
+    # Пороговое значение для нахождения шаблона
+    threshold = 0.40
+    if np.any(result >= threshold):
+        print(f"[AF boh] Цель не видна, отсылаем /s команду.")
+        return True  # Если шаблон найден, цель не видна
+
+    # Если совпадение не найдено, цель видна
+    print(f"[AF boh] Цель видна — продолжаем бой.")
+    return False
