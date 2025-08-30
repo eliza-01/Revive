@@ -72,7 +72,9 @@ void loop() {
 }
 
 void processCommand(String cmd) {
-  cmd.trim();
+  while (cmd.length() && (cmd[cmd.length()-1] == '\n' || cmd[cmd.length()-1] == '\r')) {
+    cmd.remove(cmd.length()-1);
+  }
 
   if (cmd == "ping") {
     Serial.println("pong");
@@ -98,17 +100,30 @@ void processCommand(String cmd) {
   } else if (cmd == "backspace_click") {
     Keyboard.press(KEY_BACKSPACE); delay(50); Keyboard.release(KEY_BACKSPACE);
 
-  } else if (cmd == "enter" || cmd.startsWith("enter ")) {
-    String payload = "";
-    if (cmd.startsWith("enter ") && cmd.length() > 6) {
-      payload = cmd.substring(6); // всё после "enter "
-    }
-    Keyboard.press(KEY_RETURN); delay(25); Keyboard.release(KEY_RETURN);
-    delay(200);
+  } else if (cmd == "press_enter") {
+    Keyboard.press(KEY_RETURN); delay(40); Keyboard.release(KEY_RETURN);
+
+  } else if (cmd.startsWith("enter_text ")) {   // печать без Enter
+    String payload = cmd.substring(11);         // после "enter_text "
     if (payload.length() > 0) {
       typeSlow(payload.c_str());
     }
-    Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
+
+  } else if (cmd == "enter_text") {             // пустая печать (ничего не делаем)
+    // no-op
+
+  } else if (cmd == "enter" || cmd.startsWith("enter ")) {
+    String payload = "";
+    if (cmd.startsWith("enter ") && cmd.length() > 6) {
+      payload = cmd.substring(6);
+    }
+    Keyboard.press(KEY_RETURN); delay(25); Keyboard.release(KEY_RETURN);
+    delay(200);
+
+  if (payload.length() > 0) {
+    typeSlow(payload.c_str());
+  }
+  Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
 
   } else if (cmd == "layout_toggle_altshift") {
     Keyboard.press(KEY_LEFT_SHIFT);

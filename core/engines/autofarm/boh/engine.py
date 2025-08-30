@@ -159,15 +159,27 @@ def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
     return bool(run_flow(flow, ex))
 
 def _send_target_with_ru_name(ex: FlowOpExecutor, mob_name: str, wait_ms: int = 500) -> bool:
-    """
-    '/target ' (EN, без Enter) → Alt+Shift (RU) → имя + Enter → Alt+Shift назад.
-    """
     flow = [
-        {"op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
-        {"op": "send_message", "layout": "en", "text": "/target ", "press_enter": False},
-        {"op": "send_arduino", "cmd": "layout_toggle_altshift", "delay_ms": 50},
-        {"op": "send_message", "layout": "ru", "text": mob_name, "wait_ms": 60},
-        {"op": "send_arduino", "cmd": "layout_toggle_altshift", "delay_ms": 50},
+        # {"op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
+
+        # один Enter
+        {"op": "press_enter"},
+
+        # '/target ' на EN без Enter
+        {"op": "enter_text", "layout": "en", "text": "/target "},
+
+        # переключаемся на RU
+        {"op": "set_layout", "layout": "ru", "delay_ms": 120},
+
+        # печатаем имя без Enter
+        {"op": "enter_text", "layout": "ru", "text": mob_name, "wait_ms": 60},
+
+        # один Enter
+        {"op": "press_enter"},
+
+        # возвращаемся на EN
+        {"op": "set_layout", "layout": "en", "delay_ms": 120},
+
         {"op": "sleep", "ms": max(0, int(wait_ms))}
     ]
     return bool(run_flow(flow, ex))

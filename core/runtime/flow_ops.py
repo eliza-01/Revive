@@ -316,6 +316,24 @@ class FlowOpExecutor:
                     if delay_ms > 0 and i < count - 1:
                         time.sleep(delay_ms / 1000.0)
                 ok = True
+
+
+
+
+            elif op == "enter_text":
+                text = self._subst(str(step.get("text", "")))
+                layout = (step.get("layout") or "auto").lower()
+                # ВАЖНО: если печатаем русское слово при RU-раскладке — конвертим
+                if layout == "ru" or (layout == "auto" and any(ord(c) > 127 for c in text)):
+                    text = _ru_to_us_keys(text)
+                self.ctx.controller.send(f"enter_text {text}")
+                ok = True
+
+
+            elif op == "press_enter":
+                self.ctx.controller.send("press_enter")
+                ok = True
+
             elif op == "send_message":
                 text = self._subst(str(step.get("text", "")))  # ← плейсхолдеры
                 layout = (step.get("layout") or "auto").lower()
