@@ -5,7 +5,7 @@
 
 String command = "";
 
-void typeSlow(const char *text, int delayMs = 50) {
+void typeSlow(const char *text, int delayMs = 25) {
   while (*text) {
     Keyboard.print(*text++);
     delay(delayMs);

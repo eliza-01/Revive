@@ -296,6 +296,11 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                     ctx_base["af_unvisible"] = False
                     zone_id = (cfg or {}).get("zone") or ""
                     names = _zone_monster_display_names(server, zone_id, lang)
+
+                    if names and all(nm in excluded_targets for nm in names):
+                        print("[AF boh] все цели в blacklist → очищаю список")
+                        excluded_targets.clear()
+
                     if not names:
                         ctx_base["on_status"]("[AF boh] нет списка монстров зоны", False)
                         return False
@@ -340,6 +345,11 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             # /targetnext не дал живую цель → перебираем имена
             zone_id = (cfg or {}).get("zone") or ""
             names = _zone_monster_display_names(server, zone_id, lang)
+
+            if names and all(nm in excluded_targets for nm in names):
+                print("[AF boh] все цели в blacklist → очищаю список")
+                excluded_targets.clear()
+
             if not names:
                 ctx_base["on_status"]("[AF boh] нет списка монстров зоны", False)
                 return False
@@ -356,9 +366,16 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 if _abort(ctx_base):
                     return False
                 if _has_target_by_hp(win, server, tries=3, delay_ms=250, should_abort=lambda: _abort(ctx_base)):
+                    # NEW: если цель мёртвая (труп) → в чёрный список и к следующему имени
+                    alive_state = _target_alive_by_hp(win, server)
+                    if alive_state is False:
+                        excluded_targets.add(nm)
+                        print(f"[AF boh] '{nm}' мёртв → blacklist до следующего убийства")
+                        continue
+
                     found = True
                     ctx_base["on_status"](f"[AF boh] цель найдена: {nm}", True)
-                    ctx_base["af_current_target_name"] = nm  # запоминаем кого бьём по имени
+                    ctx_base["af_current_target_name"] = nm
                     if _abort(ctx_base):
                         return False
                     ok = _attack_cycle(ex, ctx_base, server, lang, win, cfg)
@@ -386,6 +403,12 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             ctx_base["on_status"](f"[AF boh] цель не найдена, рестарт цикла #{_RESTART_STREAK}", None)
 
         if _RESTART_STREAK >= _RESTART_STREAK_LIMIT:
+            try:
+                _send_chat(ex, "/unstuck", wait_ms=2222)
+                _press_esc(ex)
+                print("[AF boh] streak лимит → отправлен /unstuck")
+            except Exception as e:
+                print(f"[AF boh] /unstuck failed: {e}")
             ctx_base["on_status"]("[AF boh] 10 безрезультатных циклов → запустить ПОЛНЫЙ ЦИКЛ (как после смерти)", False)
             return False
 
@@ -424,6 +447,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
 
         if (time.time() - start_ts) > hard_timeout:
             ctx_base["on_status"]("[AF boh] таймаут атаки", False)
+            print("[AF boh] таймаут атаки")
             return False
 
         alive = _target_alive_by_hp(win, server)
@@ -459,7 +483,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
             if _check_target_visibility(ex, server, lang, win, zone_id):
                 _send_chat(ex, "/", wait_ms=22)
                 _send_chat(ex, "/", wait_ms=22)
-                _send_chat(ex, "/", wait_ms=22)
+                _press_esc(ex)
                 # сигнал наружу: цель невидима → нужно сменить цель
                 ctx_base["af_unvisible"] = True
                 print("[AF boh] цель не видна → выходим из attack_cycle для смены цели")
