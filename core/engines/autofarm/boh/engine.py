@@ -1,7 +1,7 @@
 from __future__ import annotations
 import time
 import importlib
-import os
+import os, re
 from typing import Dict, Any, List, Tuple, Optional
 
 import cv2
@@ -19,6 +19,13 @@ _RESTART_STREAK_LIMIT = 10
 excluded_targets = set()
 
 # --- helpers ---
+def _slugify_name_py(s: str) -> str:
+    s = (s or "").lower()
+    s = re.sub(r"[’`]", "'", s)
+    s = re.sub(r"[^a-z0-9а-яё_' -]", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"[\s\-']+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s
 
 def _abort(ctx_base) -> bool:
     f = ctx_base.get("should_abort")
@@ -297,6 +304,15 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                     zone_id = (cfg or {}).get("zone") or ""
                     names = _zone_monster_display_names(server, zone_id, lang)
 
+                    allowed_slugs = set((cfg or {}).get("monsters") or [])
+                    if allowed_slugs:
+                        names = [n for n in names if _slugify_name_py(n) in allowed_slugs]
+                        print(f"[AF boh] фильтр по чекбоксам: {len(names)} имён")
+                        if not names:
+                            ctx_base["on_status"]("[AF boh] все мобы сняты галками — пропускаю тик", None)
+                            time.sleep(0.5)
+                            continue
+
                     if names and all(nm in excluded_targets for nm in names):
                         print("[AF boh] все цели в blacklist → очищаю список")
                         excluded_targets.clear()
@@ -345,6 +361,15 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             # /targetnext не дал живую цель → перебираем имена
             zone_id = (cfg or {}).get("zone") or ""
             names = _zone_monster_display_names(server, zone_id, lang)
+
+            allowed_slugs = set((cfg or {}).get("monsters") or [])
+            if allowed_slugs:
+                names = [n for n in names if _slugify_name_py(n) in allowed_slugs]
+                print(f"[AF boh] фильтр по чекбоксам: {len(names)} имён")
+                if not names:
+                    ctx_base["on_status"]("[AF boh] все мобы сняты галками — пропускаю тик", None)
+                    time.sleep(0.5)
+                    continue
 
             if names and all(nm in excluded_targets for nm in names):
                 print("[AF boh] все цели в blacklist → очищаю список")
