@@ -47,9 +47,9 @@ def _target_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
 def _target_sys_message_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
     """Зона для поиска sys_message: отступ слева 24px, отступ снизу 240px, размер зоны 100x17."""
     w, h = int(win["width"]), int(win["height"])
-    zw, zh = 93, 16
+    zw, zh = 93, 40
     l = 22
-    t = max(0, h - 252 - zh)
+    t = max(0, h - 220 - zh)
     return (l, t, l + zw, t + zh)
 
 def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,int,int]], int]:
@@ -239,12 +239,22 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             return False
 
         # 1) /targetnext
-        _send_chat(ex, "/targetnext", wait_ms=500)
+        _send_chat(ex, "/targetnext", wait_ms=1000)
         if _abort(ctx_base):
             return False
+
+        # NEW: есть ли вообще цель (полоса любого цвета)
+        has_any = _has_target_by_hp(win, server, tries=1, delay_ms=150, should_abort=lambda: _abort(ctx_base))
         current_alive = _target_alive_by_hp(win, server)
 
         if current_alive is None:
+            has_any = _has_target_by_hp(win, server, tries=1, delay_ms=150, should_abort=lambda: _abort(ctx_base))
+            if has_any and not current_alive:
+                # возможная задержка обновления HP-полосы — короткая перепроверка
+                time.sleep(0.2)
+                current_alive = _target_alive_by_hp(win, server)
+
+            print(f"[AF boh] /targetnext → has_any={has_any} alive={current_alive}")
             # захват дал пустой кадр → не выходим, а делаем несколько повторов
             for i in range(10):
                 time.sleep(0.3)
@@ -260,10 +270,11 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             if current_alive is None:
                 # пропускаем тик, главный цикл продолжается
                 print("[AF boh][warn] кадр пустой → пропускаю тик")
-                continueget рк Утуку
+                current_alive = False  # форсим переход в ветку перебора имён
 
+        print(f"[AF boh] /targetnext → has_any={has_any} alive={current_alive}")
 
-        if current_alive:
+        if has_any and current_alive:
             ctx_base["on_status"]("[AF boh] цель получена /targetnext", True)
             if _abort(ctx_base):
                 return False
