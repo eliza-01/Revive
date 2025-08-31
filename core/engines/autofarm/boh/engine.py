@@ -15,6 +15,9 @@ from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 _RESTART_STREAK = 0
 _RESTART_STREAK_LIMIT = 10
 
+# В глобальной области добавляем список исключенных целей
+excluded_targets = set()
+
 # --- helpers ---
 
 def _abort(ctx_base) -> bool:
@@ -35,36 +38,18 @@ def _capture_window_region(win: Dict, l: int, t: int, r: int, b: int):
 
 def _target_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
     """Зона 500x120, верх-центр клиентской области."""
-    # Ширина и высота окна игры
     w, h = int(win["width"]), int(win["height"])
-
-    # Размеры зоны (ширина 500px, высота 120px)
     zw, zh = 500, 120
-
-    # Расчет левой границы зоны (по центру экрана)
-    l = max(0, (w - zw) // 2)  # l - левая граница (отступ слева)
-
-    # Расчет верхней границы зоны (небольшой отступ от верхней кромки)
-    t = max(0, 1)  # t - верхняя граница (отступ сверху)
-
-    # Возвращаем кортеж из 4-х чисел: (левая, верхняя, правая, нижняя границы)
+    l = max(0, (w - zw) // 2)
+    t = max(0, 1)
     return (l, t, l + zw, t + zh)
 
 def _target_sys_message_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
     """Зона для поиска sys_message: отступ слева 24px, отступ снизу 240px, размер зоны 100x17."""
-    # Ширина и высота окна игры
     w, h = int(win["width"]), int(win["height"])
-
-    # Размеры зоны (ширина 100px, высота 17px)
     zw, zh = 93, 16
-
-    # Расчет левой границы зоны (отступ слева 24px)
-    l = 22  # фиксированный отступ слева
-
-    # Расчет верхней границы зоны (снизу отступ 240px)
-    t = max(0, h - 252 - zh)  # t - верхняя граница (отступ снизу)
-
-    # Возвращаем кортеж из 4-х чисел: (левая, верхняя, правая, нижняя границы)
+    l = 22
+    t = max(0, h - 252 - zh)
     return (l, t, l + zw, t + zh)
 
 def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,int,int]], int]:
@@ -92,9 +77,7 @@ def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,
 _debug_dump_done = False
 
 def _detect_target_bands(win: Dict, server: str):
-    """
-    Возвращает (rect_alive, rect_any) в локальных коорд. зоны.
-    """
+    """Возвращает (rect_alive, rect_any) в локальных коорд. зоны."""
     global _debug_dump_done
     l, t, r, b = _target_zone_ltrb(win)
     img = capture_window_region_bgr(win, (l, t, r, b))
@@ -113,18 +96,6 @@ def _detect_target_bands(win: Dict, server: str):
 
     rect_alive = biggest_horizontal_band(mask_alive)
     rect_any   = biggest_horizontal_band(mask_any)
-
-    # if rect_alive:
-    #     xa, ya, wa, ha = rect_alive
-    #     print(f"[AF boh][hp/alive] band: x={xa} y={ya} w={wa} h={ha} (tol={tol})")
-    # else:
-    #     print(f"[AF boh][hp/alive] band: none (tol={tol})")
-    #
-    # if rect_any:
-    #     xn, yn, wn, hn = rect_any
-    #     print(f"[AF boh][hp/any]   band: x={xn} y={yn} w={wn} h={hn} (tol={tol})")
-    # else:
-    #     print(f"[AF boh][hp/any]   band: none (tol={tol})")
 
     if not _debug_dump_done:
         try:
@@ -147,6 +118,21 @@ def _has_target_by_hp(win: Dict, server: str, tries: int = 3, delay_ms: int = 20
             return False
         _, rect_any = _detect_target_bands(win, server)
         if rect_any:
+            x, y, w, h = rect_any
+            ok = (w >= 40 and h >= 3)
+            print(f"[AF boh][target] any-colors → {'YES' if ok else 'NO'} (w={w},h={h}) try={i+1}/{tries}")
+            if ok:
+                return True
+        time.sleep(delay_ms / 1000.0)
+    return False
+
+def _has_target_by_hp(win: Dict, server: str, tries: int = 3, delay_ms: int = 200, should_abort=None) -> bool:
+    """Есть ли вообще цель (любой «полосатый» цвет: alive+dead)? С досрочной отменой."""
+    for i in range(max(1, tries)):
+        if should_abort and should_abort():
+            return False
+        _, rect_any = _detect_target_bands(win, server)
+        if rect_any:
             x,y,w,h = rect_any
             ok = (w >= 40 and h >= 3)
             print(f"[AF boh][target] any-colors → {'YES' if ok else 'NO'} (w={w},h={h}) try={i+1}/{tries}")
@@ -156,18 +142,14 @@ def _has_target_by_hp(win: Dict, server: str, tries: int = 3, delay_ms: int = 20
     return False
 
 def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
-    """
-    True  — «живая» полоса присутствует,
-    False — полосы нет или только «мертвые» оттенки,
-    None  — кадр пустой/ошибка.
-    """
+    """True  — «живая» полоса присутствует, False — полосы нет или только «мертвые» оттенки, None  — кадр пустой/ошибка."""
     rect_alive, rect_any = _detect_target_bands(win, server)
     if rect_any is None:
         return None
     if not rect_any:
         return False
     if rect_alive:
-        _,_,w,h = rect_alive
+        _, _, w, h = rect_alive
         alive = (w >= 40 and h >= 3)
         print(f"[AF boh][hp/alive] → {'ALIVE' if alive else 'DEAD'}")
         return alive
@@ -190,7 +172,6 @@ def _zone_monster_display_names(server: str, zone_id: str, lang: str) -> List[st
 
 def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
     flow = [
-        # {"op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
         {"op": "send_message", "layout": "en", "text": text, "wait_ms": 60},
         {"op": "sleep", "ms": max(0, int(wait_ms))}
     ]
@@ -198,26 +179,12 @@ def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
 
 def _send_target_with_ru_name(ex: FlowOpExecutor, mob_name: str, wait_ms: int = 500) -> bool:
     flow = [
-        # {"op": "send_arduino", "cmd": "backspace_click", "delay_ms": 12, "count": 30},
-
-        # один Enter
         {"op": "press_enter"},
-
-        # '/target ' на EN без Enter
         {"op": "enter_text", "layout": "en", "text": "/target "},
-
-        # переключаемся на RU
         {"op": "set_layout", "layout": "ru", "delay_ms": 120},
-
-        # печатаем имя без Enter
         {"op": "enter_text", "layout": "ru", "text": mob_name, "wait_ms": 60},
-
-        # один Enter
         {"op": "press_enter"},
-
-        # возвращаемся на EN
         {"op": "set_layout", "layout": "en", "delay_ms": 120},
-
         {"op": "sleep", "ms": max(0, int(wait_ms))}
     ]
     return bool(run_flow(flow, ex))
@@ -278,25 +245,88 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
         current_alive = _target_alive_by_hp(win, server)
 
         if current_alive is None:
-            # Если цель не определена (ошибка)
-            print("[AF boh] Цель не определена.")
-            return False
+            # захват дал пустой кадр → не выходим, а делаем несколько повторов
+            for i in range(10):
+                time.sleep(0.3)
+                # обновим info окна на случай его смещения/ресайза
+                try:
+                    win = ctx_base["get_window"]() or win
+                except Exception:
+                    pass
+                current_alive = _target_alive_by_hp(win, server)
+                if current_alive is not None:
+                    print(f"[AF boh][retry] кадр ок на попытке {i + 1}/10")
+                    break
+            if current_alive is None:
+                # пропускаем тик, главный цикл продолжается
+                print("[AF boh][warn] кадр пустой → пропускаю тик")
+                continueget рк Утуку
+
 
         if current_alive:
             ctx_base["on_status"]("[AF boh] цель получена /targetnext", True)
             if _abort(ctx_base):
                 return False
+            # цель взяли не по имени
+            ctx_base["af_current_target_name"] = None
             ok = _attack_cycle(ex, ctx_base, server, lang, win, cfg)
             if _abort(ctx_base):
                 return False
             if ok:
                 _RESTART_STREAK = 0
                 print("[AF boh] цель добита → новый поиск", flush=True)
+                # очистить исключённые цели после убийства
+                excluded_targets.clear()
                 continue
             else:
-                _RESTART_STREAK += 1
+                # если в бою словили "цель не видна" — переходим к перебору имён
+                if ctx_base.get("af_unvisible"):
+                    print("[AF boh] 'цель не видна' после /targetnext → начинаем перебор имён")
+                    ctx_base["af_unvisible"] = False
+                    zone_id = (cfg or {}).get("zone") or ""
+                    names = _zone_monster_display_names(server, zone_id, lang)
+                    if not names:
+                        ctx_base["on_status"]("[AF boh] нет списка монстров зоны", False)
+                        return False
+
+                    found = False
+                    for nm in names:
+                        if nm in excluded_targets:
+                            print(f"[AF boh] skip (blacklisted): {nm}")
+                            continue
+                        if _abort(ctx_base):
+                            return False
+                        _send_target_with_ru_name(ex, nm, wait_ms=500)
+                        if _abort(ctx_base):
+                            return False
+                        if _has_target_by_hp(win, server, tries=3, delay_ms=250, should_abort=lambda: _abort(ctx_base)):
+                            ctx_base["on_status"](f"[AF boh] цель найдена (fallback): {nm}", True)
+                            ctx_base["af_current_target_name"] = nm
+                            ok2 = _attack_cycle(ex, ctx_base, server, lang, win, cfg)
+                            if _abort(ctx_base):
+                                return False
+
+                            # если снова "цель не видна" — чёрный список и дальше
+                            if ctx_base.get("af_unvisible"):
+                                excluded_targets.add(nm)
+                                ctx_base["af_unvisible"] = False
+                                print(f"[AF boh] '{nm}' невидима → в чёрный список; ищем дальше")
+                                continue
+
+                            if ok2:
+                                _RESTART_STREAK = 0
+                                excluded_targets.clear()
+                                found = True
+                                break
+
+                    if found:
+                        continue
+                    _RESTART_STREAK += 1
+                    ctx_base["on_status"](f"[AF boh] цель не найдена (fallback), рестарт цикла #{_RESTART_STREAK}", None)
+                else:
+                    _RESTART_STREAK += 1
         else:
-            # Если цель не живая после /targetnext, начинаем перебирать по именам
+            # /targetnext не дал живую цель → перебираем имена
             zone_id = (cfg or {}).get("zone") or ""
             names = _zone_monster_display_names(server, zone_id, lang)
             if not names:
@@ -305,6 +335,10 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
             found = False
             for nm in names:
+                if nm in excluded_targets:
+                    print(f"[AF boh] Пропускаем цель (blacklisted): {nm}")
+                    continue
+
                 if _abort(ctx_base):
                     return False
                 _send_target_with_ru_name(ex, nm, wait_ms=500)
@@ -313,13 +347,24 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 if _has_target_by_hp(win, server, tries=3, delay_ms=250, should_abort=lambda: _abort(ctx_base)):
                     found = True
                     ctx_base["on_status"](f"[AF boh] цель найдена: {nm}", True)
+                    ctx_base["af_current_target_name"] = nm  # запоминаем кого бьём по имени
                     if _abort(ctx_base):
                         return False
                     ok = _attack_cycle(ex, ctx_base, server, lang, win, cfg)
                     if _abort(ctx_base):
                         return False
+
+                    # если в бою поймали "цель не видна" — заносим имя в чёрный список и пробуем следующего
+                    if ctx_base.get("af_unvisible"):
+                        excluded_targets.add(nm)
+                        ctx_base["af_unvisible"] = False
+                        print(f"[AF boh] '{nm}' невидима → в чёрный список; ищем дальше")
+                        found = False
+                        continue
+
                     if ok:
                         _RESTART_STREAK = 0
+                        excluded_targets.clear()
                         found = False  # сразу уходим на новый круг поиска
                         break
 
@@ -401,14 +446,13 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
             # Проверка на видимость новой цели
             zone_id = (cfg or {}).get("zone") or ""
             if _check_target_visibility(ex, server, lang, win, zone_id):
-                _send_chat(ex, "/", wait_ms=22)  # Отправляем команду /s для невидимой цели
-                _send_chat(ex, "/", wait_ms=22)  # Отправляем команду /s для невидимой цели
-                _send_chat(ex, "/", wait_ms=22)  # Отправляем команду /s для невидимой цели
-
-            # Сбрасываем флаги использования скиллов
-            for it in plan:
-                it["used"] = False
-            continue
+                _send_chat(ex, "/", wait_ms=22)
+                _send_chat(ex, "/", wait_ms=22)
+                _send_chat(ex, "/", wait_ms=22)
+                # сигнал наружу: цель невидима → нужно сменить цель
+                ctx_base["af_unvisible"] = True
+                print("[AF boh] цель не видна → выходим из attack_cycle для смены цели")
+                return False
 
 
 # Функция для проверки видимости цели после первой атаки
