@@ -125,7 +125,7 @@
 
     const cast = document.createElement("input");
     cast.type = "number"; cast.min = "1"; cast.step = "1"; cast.className = "xs";
-    cast.value = item.cast_ms ?? 2000;
+    cast.value = item.cast_ms ?? 1100;
     cast.addEventListener("change", () => { item.cast_ms = Math.max(1, parseInt(cast.value || "0", 10)); });
     row.appendChild(cast);
 
@@ -141,7 +141,7 @@
     hdr.innerHTML = '<span class="col col-key">Клавиша</span><span class="col col-skill">Скилл</span><span class="col col-cast">Каст, мс</span>';
     cont.appendChild(hdr);
 
-    if (!state.skills.length) state.skills.push({ key:"1", slug:"", cast_ms:2000 });
+    if (!state.skills.length) state.skills.push({ key:"1", slug:"", cast_ms:1100 });
     const list = await fetchAttackSkills(state.profession);
     state.skills.forEach(item => cont.appendChild(buildSkillRow(item, list)));
   }
@@ -320,11 +320,11 @@
     // профа/скиллы
     if (prof) prof.addEventListener("change", async () => {
       state.profession = prof.value || "";
-      state.skills = [{ key:"1", slug:"", cast_ms:2000 }];
+      state.skills = [{ key:"1", slug:"", cast_ms:1100 }];
       await renderSkillsBlock();
     });
     if (add) add.addEventListener("click", async ()=> {
-      state.skills.push({ key:"1", slug:"", cast_ms:2000 });
+      state.skills.push({ key:"1", slug:"", cast_ms:1100 });
       await renderSkillsBlock();
     });
     if (del) del.addEventListener("click", async ()=> {

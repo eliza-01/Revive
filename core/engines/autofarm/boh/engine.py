@@ -149,19 +149,31 @@ def _has_target_by_hp(win: Dict, server: str, tries: int = 3, delay_ms: int = 20
     return False
 
 def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
-    """True  — «живая» полоса присутствует, False — полосы нет или только «мертвые» оттенки, None  — кадр пустой/ошибка."""
-    rect_alive, rect_any = _detect_target_bands(win, server)
-    if rect_any is None:
+    """
+    Живой, если найдено >= 10 пикселей из палитры 'alive'.
+    False — если меньше; None — если кадр пустой/ошибка.
+    """
+    # захватываем ту же целевую зону
+    l, t, r, b = _target_zone_ltrb(win)
+    img = capture_window_region_bgr(win, (l, t, r, b))
+    if img is None or img.size == 0:
+        print("[AF boh][hp] frame: empty → UNKNOWN")
         return None
-    if not rect_any:
-        return False
-    if rect_alive:
-        _, _, w, h = rect_alive
-        alive = (w >= 40 and h >= 3)
-        print(f"[AF boh][hp/alive] → {'ALIVE' if alive else 'DEAD'}")
-        return alive
-    print("[AF boh][hp/alive] → DEAD (only dead colors)")
-    return False
+
+    alive_rgb, _, tol = _hp_palettes(server)
+    mask_alive = mask_for_colors_bgr(img, colors_rgb=alive_rgb, tol=tol)
+
+    # считаем количество «живых» пикселей (robust к 1/3 каналам)
+    if mask_alive.ndim == 3:
+        alive_px = int(np.count_nonzero(np.any(mask_alive > 0, axis=2)))
+    else:
+        alive_px = int(np.count_nonzero(mask_alive > 0))
+
+    print(f"[AF boh][hp/alive_px] count={alive_px} (tol={tol})")
+    alive = (alive_px >= 10)
+    print(f"[AF boh][hp/alive] → {'ALIVE' if alive else 'DEAD'} (>=10px rule)")
+    return alive
+
 
 def _zone_monster_display_names(server: str, zone_id: str, lang: str) -> List[str]:
     try:
