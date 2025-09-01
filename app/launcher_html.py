@@ -489,13 +489,11 @@ class Bridge:
                 if all(k in info for k in ("x", "y", "width", "height")):
                     self._window_info = info
                     self._window_found = True
-                    self._emit_status("window", f"[✓] Окно найдено: {t} ({info['width']}x{info['height']})", True)
-                    print(f"[AF boh] Найдено окно: {t}, Размеры: {info['width']}x{info['height']}")
+                    self._emit_status("window", "[✓] Окно найдено", True)
                     return {"found": True, "title": t, "info": info}
         self._window_info = None
         self._window_found = False
         self._emit_status("window", "[×] Окно не найдено", False)
-        print("[AF boh] Окно не найдено")
         return {"found": False}
 
     def test_connect(self) -> str:
@@ -695,10 +693,79 @@ class Bridge:
         except Exception:
             pass
 
+    # --- helpers для zones.json ---
+    def _zones_json_path(self, server: str) -> str:
+        # относительный путь от корня проекта
+        return os.path.join("core", "engines", "autofarm", server, "zones.json")
+
+    def _read_zones(self, server: str) -> dict:
+        p = self._zones_json_path(server)
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            self._emit_status("af", f"[zones] read fail: {p}: {e}", False)
+            return {}
+
+    def _pick_title(self, z: dict, lang: str) -> str:
+        lang = (lang or "eng").lower()
+        return z.get(f"title_{lang}") or z.get("title_eng") or z.get("title_rus") or ""
+
+    def _pick_about(self, z: dict, lang: str) -> str:
+        lang = (lang or "eng").lower()
+        about = z.get("about")
+        if isinstance(about, dict):
+            return about.get(lang) or about.get("eng") or about.get("rus") or ""
+        if isinstance(about, str):
+            return about
+        return ""
+
+    def _pick_full_names(self, z: dict, lang: str) -> list:
+        lang = (lang or "eng").lower()
+        mons = z.get("monsters") or {}
+        # приоритет *_full, затем исторические ключи
+        for key in (f"{lang}_full", "eng_full", "rus_full", lang, "eng", "rus"):
+            arr = mons.get(key)
+            if isinstance(arr, list) and arr:
+                return list(arr)
+        return []
+
+    def _zone_gallery(self, server: str, zone_id: str, z: dict) -> list:
+        # ожидаем файлы в: core/engines/servers/<server>/zones/<zone_id>/
+        base = Path("core") / "engines" / "autofarn" / server / "zones" / zone_id
+        out = []
+        for name in (z.get("gallery") or []):
+            p = (base / name)
+            try:
+                if p.exists():
+                    out.append({"name": name, "src": p.resolve().as_uri()})
+            except Exception:
+                pass
+        return out
+
     # -- попап инфо зоны автофарма
-    def af_zone_info(self, zone_id: str, lang: str):
-        server = getattr(self, "server", "") or getattr(self, "_server", "") or "common"
-        return af_get_zone_info(server, zone_id, lang or "eng")
+    def af_list_zones_declared_only(self, lang: str = "eng"):
+        server = getattr(self, "server", "") or "common"
+        data = self._read_zones(server)
+        out = []
+        for zid, z in (data or {}).items():
+            if isinstance(z, dict):
+                title = self._pick_title(z, lang) or zid
+                out.append({"id": zid, "title": title})
+        return out
+
+    def af_zone_info(self, zone_id: str, lang: str = "eng"):
+        server = getattr(self, "server", "") or "common"
+        data = self._read_zones(server)
+        z = (data or {}).get(zone_id) or {}
+        return {
+            "id": zone_id,
+            "title": self._pick_title(z, lang) or zone_id,
+            "about": self._pick_about(z, lang),
+            "images": self._zone_gallery(server, zone_id, z),
+            # ВАЖНО: для UI отдаём длинные имена
+            "monsters": self._pick_full_names(z, lang),
+        }
 
     # вернуть только объявленные в server/zones.json
     def af_list_zones_declared_only(self, lang: str):

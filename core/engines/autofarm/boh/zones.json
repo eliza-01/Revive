@@ -15,8 +15,8 @@
     "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {
-      "eng": ["Grizzly of Dion", "Gnoll Ranger", "Seeker Eyemonster", "Tumran Cannibal"],
-      "rus": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Людоед Тумран"],
+      "eng_full": ["Grizzly of Dion", "Gnoll Ranger", "Seeker Eyemonster", "Tumran Cannibal"],
+      "rus_full": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Людоед Тумран"],
       "eng_short": ["Grizzly", "Ranger", "Eyemonster", "Cannibal"],
       "rus_short": ["Гризли", "Рейнджер", "Монстроглаз", "Людоед"]
     }

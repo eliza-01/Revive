@@ -4,6 +4,8 @@ import importlib
 import os, re
 from typing import Dict, Any, List, Tuple, Optional
 
+import json
+from pathlib import Path
 import cv2
 import numpy as np
 
@@ -159,19 +161,104 @@ def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
     print(f"[AF boh][hp/alive] → {'ALIVE' if alive else 'DEAD'} (>=10px rule)")
     return alive
 
+def _zone_monsters_raw(server: str, zone_id: str):
+    try:
+        p = os.path.join("core", "engines", "autofarm", server, "zones.json")
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        z = data.get(zone_id) or {}
+        mons = z.get("monsters")
+        return mons if isinstance(mons, dict) else None
+    except Exception as e:
+        print(f"[AF boh] zones.json read fail: {p}: {e}")
+        return None
+
+def _pick_lang_list(raw: dict, lang: str, kind: str) -> List[str]:
+    """
+    kind: 'short' | 'full'
+    Берём массив имен в приоритете:
+      <lang>_<kind> → rus_<kind> → eng_<kind>
+    Для обратной совместимости, если *_short отсутствуют, пробуем просто <lang>/rus/eng.
+    """
+    lang = (lang or "eng").lower()
+    order = [f"{lang}_{kind}", f"rus_{kind}", f"eng_{kind}"]
+    for key in order:
+        arr = raw.get(key)
+        if isinstance(arr, list) and arr:
+            return list(arr)
+    # fallback: исторические ключи без _short/_full
+    if kind == "short":
+        arr = raw.get(lang) or raw.get("rus") or raw.get("eng") or []
+        return list(arr) if isinstance(arr, list) else []
+    if kind == "full":
+        arr = raw.get(lang) or raw.get("rus") or raw.get("eng") or []
+        return list(arr) if isinstance(arr, list) else []
+    return []
+
+def _normalize_allowed_slugs(server: str, zone_id: str, lang: str, allowed_slugs: set) -> set:
+    """
+    Приводим слуги, пришедшие из UI, к слугам от 'short'.
+    Если UI сохранил слуги по 'full', маппим их в соответствующие 'short' по индексу.
+    Если длины списков не совпадают, берём по максимуму с безопасными fallbacks.
+    """
+    raw = _zone_monsters_raw(server, zone_id) or {}
+    short_list = _pick_lang_list(raw, lang, "short")
+    full_list  = _pick_lang_list(raw, lang, "full")
+
+    L = max(len(short_list), len(full_list))
+    full_to_short = {}
+    for i in range(L):
+        s_name = short_list[i] if i < len(short_list) else (full_list[i] if i < len(full_list) else "")
+        f_name = full_list[i]  if i < len(full_list)  else ""
+        s_slug = _slugify_name_py(s_name) if s_name else ""
+        f_slug = _slugify_name_py(f_name) if f_name else ""
+        if f_slug:
+            full_to_short[f_slug] = s_slug or f_slug  # если short пуст, используем full
+
+    normalized = set()
+    for sl in (allowed_slugs or set()):
+        sl_norm = full_to_short.get(sl, sl)  # если это full-слуг, переведём к short
+        normalized.add(sl_norm)
+    return normalized
 
 def _zone_monster_display_names(server: str, zone_id: str, lang: str) -> List[str]:
+    """
+    Имена ДЛЯ ВВОДА В ЧАТ: сначала короткие из zones.json.
+    Приоритет: rus_short → eng_short → <lang>_short → rus → eng → <lang>.
+    Если raw не доступен, падаем на репозиторий (может быть длинный список).
+    """
+    # 1) Пробуем взять короткие из zones.json
+    raw = _zone_monsters_raw(server, zone_id)
+    if raw:
+        for key in ("rus_short", "eng_short", f"{lang}_short", "rus", "eng", lang):
+            arr = raw.get(key)
+            if arr:
+                out = []
+                for m in arr:
+                    if isinstance(m, dict):
+                        out.append(m.get("name") or m.get("slug") or "")
+                    else:
+                        out.append(str(m))
+                out = [s for s in out if s]
+                print(f"[AF boh] names_for_chat (zones.json {key}): {out}")
+                return out
+
+    # 2) Fallback: что вернёт репозиторий (часто длинные)
     try:
         from core.engines.autofarm.zone_repo import get_zone_info
         info = get_zone_info(server, zone_id, lang or "eng")
-        names = []
-        for m in (info.get("monsters") or []):
+        mon = (info or {}).get("monsters") or []
+        out: List[str] = []
+        for m in mon:
             if isinstance(m, dict):
-                names.append(m.get("name") or m.get("slug") or "")
-            elif isinstance(m, str):
-                names.append(m)
-        return [n for n in names if n]
-    except Exception:
+                out.append(m.get("name") or m.get("slug") or "")
+            else:
+                out.append(str(m))
+        out = [s for s in out if s]
+        print(f"[AF boh] names_for_chat (repo fallback): {out}")
+        return out
+    except Exception as e:
+        print(f"[AF boh] zone names fetch error: {e}")
         return []
 
 def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
@@ -303,12 +390,9 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
                     allowed_slugs = set((cfg or {}).get("monsters") or [])
                     if allowed_slugs:
+                        zone_id = (cfg or {}).get("zone") or ""
+                        allowed_slugs = _normalize_allowed_slugs(server, zone_id, lang, allowed_slugs)
                         names = [n for n in names if _slugify_name_py(n) in allowed_slugs]
-                        print(f"[AF boh] фильтр по чекбоксам: {len(names)} имён")
-                        if not names:
-                            ctx_base["on_status"]("[AF boh] все мобы сняты галками — пропускаю тик", None)
-                            time.sleep(0.5)
-                            continue
 
                     if names and all(nm in excluded_targets for nm in names):
                         print("[AF boh] все цели в blacklist → очищаю список")
@@ -361,12 +445,9 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
             allowed_slugs = set((cfg or {}).get("monsters") or [])
             if allowed_slugs:
+                zone_id = (cfg or {}).get("zone") or ""
+                allowed_slugs = _normalize_allowed_slugs(server, zone_id, lang, allowed_slugs)
                 names = [n for n in names if _slugify_name_py(n) in allowed_slugs]
-                print(f"[AF boh] фильтр по чекбоксам: {len(names)} имён")
-                if not names:
-                    ctx_base["on_status"]("[AF boh] все мобы сняты галками — пропускаю тик", None)
-                    time.sleep(0.5)
-                    continue
 
             if names and all(nm in excluded_targets for nm in names):
                 print("[AF boh] все цели в blacklist → очищаю список")
