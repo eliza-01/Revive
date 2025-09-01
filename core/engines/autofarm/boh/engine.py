@@ -4,6 +4,7 @@ import importlib
 import os, re
 from typing import Dict, Any, List, Tuple, Optional
 
+import ctypes
 import json
 from pathlib import Path
 import cv2
@@ -261,6 +262,160 @@ def _zone_monster_display_names(server: str, zone_id: str, lang: str) -> List[st
         print(f"[AF boh] zone names fetch error: {e}")
         return []
 
+# поиск монстров по темплейтам
+def _monster_template_candidates(server: str, lang: str, short_slug: str, full_slug: str) -> List[str]:
+    base = os.path.join("core", "engines", "autofarm", server, "templates", lang, "monsters")
+    names_dir = os.path.join(base, "names")
+    cand = []
+    fs = (full_slug or "").strip()
+    ss = (short_slug or "").strip()
+
+    # Каноника: full в monsters/names/
+    if fs:
+        cand.append(os.path.join(names_dir, f"{fs}.png"))
+
+    # Фолбэк: short в monsters/names/
+    if ss and ss != fs:
+        cand.append(os.path.join(names_dir, f"{ss}.png"))
+
+    # Легаси-фолбэки (если где-то ещё лежат старые файлы)
+    if ss:
+        cand.append(os.path.join(base, f"{ss}.png"))
+    if fs:
+        cand.append(os.path.join(base, f"{fs}.png"))
+
+    return cand
+
+def _full_to_short_map(server: str, zone_id: str, lang: str) -> Dict[str, str]:
+    raw = _zone_monsters_raw(server, zone_id) or {}
+    short_list = _pick_lang_list(raw, lang, "short")
+    full_list  = _pick_lang_list(raw, lang, "full")
+    L = max(len(short_list), len(full_list))
+    m: Dict[str, str] = {}
+    for i in range(L):
+        s_name = short_list[i] if i < len(short_list) else ""
+        f_name = full_list[i]  if i < len(full_list)  else ""
+        s_slug = _slugify_name_py(s_name) if s_name else ""
+        f_slug = _slugify_name_py(f_name) if f_name else ""
+        if f_slug:
+            m[f_slug] = s_slug or f_slug
+    return m
+
+def _resolve_monster_template(server: str, lang: str, zone_id: str, name: str) -> Optional[str]:
+    """
+    name может быть full или short. Возвращает первый существующий путь к шаблону.
+    """
+    full_slug  = _slugify_name_py(name)
+    short_slug = full_slug
+    # если пришёл full → переведём к short по карте зоны
+    m = _full_to_short_map(server, zone_id, lang)
+    if full_slug in m:
+        short_slug = m[full_slug] or full_slug
+
+    for p in _monster_template_candidates(server, lang, short_slug, full_slug):
+        if os.path.isfile(p):
+            return p
+    return None
+
+def _zone_monster_full_names(server: str, zone_id: str, lang: str) -> List[str]:
+    raw = _zone_monsters_raw(server, zone_id) or {}
+    for key in (f"{(lang or 'eng').lower()}_full", "eng_full", "rus_full", (lang or 'eng').lower(), "eng", "rus"):
+        arr = raw.get(key)
+        if isinstance(arr, list) and arr:
+            return [str(x) for x in arr if x]
+    return []
+
+def _match_template_on_window(win: Dict, tpl_path: str, threshold: float = 0.84) -> Optional[Tuple[int,int,int,int]]:
+    if not (tpl_path and os.path.isfile(tpl_path)):
+        return None
+    tpl = cv2.imread(tpl_path, cv2.IMREAD_GRAYSCALE)
+    if tpl is None or tpl.size == 0:
+        return None
+    th, tw = tpl.shape[:2]
+    frame = capture_window_region_bgr(win, (0, 0, int(win["width"]), int(win["height"])))
+    if frame is None or frame.size == 0:
+        return None
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    _, maxVal, _, maxLoc = cv2.minMaxLoc(cv2.matchTemplate(gray, tpl, cv2.TM_CCOEFF_NORMED))
+    if float(maxVal) < float(threshold):
+        return None
+    x, y = int(maxLoc[0]), int(maxLoc[1])
+    return (x, y, tw, th)
+
+USER32 = ctypes.windll.user32
+
+def _move_client(win: Dict, x: int, y: int) -> None:
+    abs_x = int((win.get("x") or 0) + x)
+    abs_y = int((win.get("y") or 0) + y)
+    try:
+        USER32.SetCursorPos(abs_x, abs_y)
+    except Exception as e:
+        print(f"[AF boh][move] failed: {e}")
+
+def _left_click(controller) -> None:
+    try:
+        controller.send("l")  # прошивка: Mouse.click(MOUSE_LEFT) на 'l'
+        return
+    except Exception:
+        pass
+    try:
+        USER32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+        USER32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
+    except Exception as e:
+        print(f"[AF boh][lclick] failed: {e}")
+
+def _movenclick_client(controller, win: Dict, x: int, y: int) -> None:
+    _move_client(win, x, y)
+    time.sleep(0.4)
+    _left_click(controller)
+
+def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win: Dict, cfg: Dict[str, Any]) -> bool:
+    """
+    Пытается один клик по первому найденному шаблону любого «разрешённого» full-имени.
+    НИЧЕГО не проверяет. Возвращает True, если клик выполнен.
+    Дальше всё делает уже существующая логика HP/живости.
+    """
+    zone_id = (cfg or {}).get("zone") or ""
+    if not zone_id:
+        return False
+
+    full_names = _zone_monster_full_names(server, zone_id, lang)
+    if not full_names:
+        return False
+
+    # учёт чекбоксов (short-slugs)
+    allowed_ui = set((cfg or {}).get("monsters") or [])
+    if allowed_ui:
+        allowed_short = _normalize_allowed_slugs(server, zone_id, lang, allowed_ui)
+        full2short = _full_to_short_map(server, zone_id, lang)
+        full_names = [nm for nm in full_names if full2short.get(_slugify_name_py(nm), "") in allowed_short]
+        if not full_names:
+            return False
+
+    controller = ctx_base["controller"]
+
+    for nm in full_names:
+        if _abort(ctx_base):
+            return False
+        tpl = _resolve_monster_template(server, lang, zone_id, nm)
+        if not tpl:
+            continue
+        rect = _match_template_on_window(win, tpl, threshold=0.84)
+        if not rect:
+            continue
+
+        x, y, w, h = rect
+        cx = int(x + w/2)
+        cy = int(y + h + 35)  # центр низа +35px
+        cx = min(max(0, cx), int(win["width"])  - 1)
+        cy = min(max(0, cy), int(win["height"]) - 1)
+
+        _movenclick_client(controller, win, cx, cy)
+        # _move_client(win, cx, cy)  # только двигаем
+        # _left_click(controller)       # клик
+        return True  # один клик достаточно, дальше проверит существующая логика
+    return False
+
 def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
     flow = [
         {"op": "send_message", "layout": "en", "text": text, "wait_ms": 60},
@@ -329,10 +484,17 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             ctx_base["on_status"]("[AF boh] остановлено пользователем", None)
             return False
 
-        # 1) /targetnext
-        _send_chat(ex, "/targetnext", wait_ms=1000)
-        if _abort(ctx_base):
-            return False
+        used_template = False
+        zone_id = (cfg or {}).get("zone") or ""
+        if zone_id:
+            used_template = _template_probe_click(ctx_base, server, lang, win, cfg)
+            if used_template:
+                time.sleep(0.35)  # дать полосе HP обновиться
+
+        if not used_template:
+            _send_chat(ex, "/targetnext", wait_ms=1000)
+            if _abort(ctx_base):
+                return False
 
         # NEW: есть ли вообще цель (полоса любого цвета)
         has_any = _has_target_by_hp(win, server, tries=1, delay_ms=150, should_abort=lambda: _abort(ctx_base))
