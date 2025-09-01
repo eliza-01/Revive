@@ -157,8 +157,8 @@ def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
     else:
         alive_px = int(np.count_nonzero(mask_alive > 0))
 
-    print(f"[AF boh][hp/alive_px] count={alive_px} (tol={tol})")
-    alive = (alive_px >= 10)
+    # print(f"[AF boh][hp/alive_px] count={alive_px} (tol={tol})")
+    alive = (alive_px >= 5)
     print(f"[AF boh][hp/alive] → {'ALIVE' if alive else 'DEAD'} (>=10px rule)")
     return alive
 
@@ -369,6 +369,54 @@ def _movenclick_client(controller, win: Dict, x: int, y: int) -> None:
     time.sleep(0.4)
     _left_click(controller)
 
+# ищем target dots по цветам вокруг ника
+# --- DOT by color (friend/enemy) ---
+FRIEND_RGB = [
+    (16, 69, 131), (21, 74, 136), (25, 77, 138),
+    (32, 82, 143), (32, 85, 147), (46, 99, 161),
+]
+ENEMY_RGB = [
+    (169, 30, 0), (183, 58, 23), (196, 69, 32),
+    (204, 89, 58), (221, 100, 73), (239, 138, 114),
+]
+
+def _mask_for_rgb_pool(img_bgr: np.ndarray, pool_rgb: List[Tuple[int,int,int]], tol: int) -> np.ndarray:
+    """Пиксели, попавшие в допуск tol вокруг любого цвета из pool_rgb (RGB!)."""
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    R, G, B = img_rgb[:,:,0], img_rgb[:,:,1], img_rgb[:,:,2]
+    mask = np.zeros(img_rgb.shape[:2], dtype=np.uint8)
+    for (r,g,b) in pool_rgb:
+        m = (np.abs(R - r) <= tol) & (np.abs(G - g) <= tol) & (np.abs(B - b) <= tol)
+        mask |= m.astype(np.uint8)
+    return mask
+
+def _has_dot_colors_near_rect(win: Dict, rect: Tuple[int,int,int,int],
+                              pad: int = 20, tol: int = 12, min_px: int = 10) -> Tuple[bool,bool,int,int]:
+    """(has_friend, has_enemy, friend_px, enemy_px) в зоне pad вокруг ника."""
+    x, y, w, h = rect
+    W, H = int(win["width"]), int(win["height"])
+    l = max(0, x - pad); t = max(0, y - pad)
+    r = min(W, x + w + pad); b = min(H, y + h + pad)
+    if r <= l or b <= t:
+        print(f"[AF boh][dot-colors] bad roi ltrb=({l},{t},{r},{b})")
+        return (False, False, 0, 0)
+
+    roi = capture_window_region_bgr(win, (l,t,r,b))
+    if roi is None or roi.size == 0:
+        print(f"[AF boh][dot-colors] empty roi ltrb=({l},{t},{r},{b})")
+        return (False, False, 0, 0)
+
+    m_friend = _mask_for_rgb_pool(roi, FRIEND_RGB, tol)
+    m_enemy  = _mask_for_rgb_pool(roi, ENEMY_RGB,  tol)
+
+    friend_px = int(np.count_nonzero(m_friend))
+    enemy_px  = int(np.count_nonzero(m_enemy))
+
+    print(f"[AF boh][dot-colors] roi=({l},{t},{r},{b}) friend_px={friend_px} enemy_px={enemy_px} "
+          f"min={min_px} tol={tol}")
+    return (friend_px >= min_px, enemy_px >= min_px, friend_px, enemy_px)
+
+
 def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win: Dict, cfg: Dict[str, Any]) -> bool:
     """
     Пытается один клик по первому найденному шаблону любого «разрешённого» full-имени.
@@ -383,7 +431,6 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
     if not full_names:
         return False
 
-    # учёт чекбоксов (short-slugs)
     allowed_ui = set((cfg or {}).get("monsters") or [])
     if allowed_ui:
         allowed_short = _normalize_allowed_slugs(server, zone_id, lang, allowed_ui)
@@ -397,23 +444,38 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
     for nm in full_names:
         if _abort(ctx_base):
             return False
+        # ⬇️ не трогаем blacklisted
+        if nm in excluded_targets:
+            print(f"[AF boh][tpl] skip (blacklisted): {nm}")
+            continue
+
         tpl = _resolve_monster_template(server, lang, zone_id, nm)
         if not tpl:
             continue
+
         rect = _match_template_on_window(win, tpl, threshold=0.84)
         if not rect:
             continue
 
         x, y, w, h = rect
-        cx = int(x + w/2)
-        cy = int(y + h + 35)  # центр низа +35px
-        cx = min(max(0, cx), int(win["width"])  - 1)
-        cy = min(max(0, cy), int(win["height"]) - 1)
 
+        # ⬇️ ЛОГИ и проверка точек по цвету вокруг ника (20px)
+        has_friend, has_enemy, fpx, epx = _has_dot_colors_near_rect(
+            win, rect, pad=20, tol=12, min_px=10
+        )
+        print(f"[AF boh][dot-colors] name='{nm}' friend={has_friend}({fpx}) enemy={has_enemy}({epx}) "
+              f"rect=({x},{y},{w},{h})")
+
+        if has_friend or has_enemy:
+            print(f"[AF boh][tpl] SKIP '{nm}' — dot-color near nickname")
+            continue
+        # ⬇️ запоминаем кого кликнули по шаблону
+        ctx_base["af_current_target_name"] = nm
+        cx = min(max(0, int(x + w / 2)), int(win["width"]) - 1)
+        cy = min(max(0, int(y + h + 30)), int(win["height"]) - 1)
         _movenclick_client(controller, win, cx, cy)
-        # _move_client(win, cx, cy)  # только двигаем
-        # _left_click(controller)       # клик
-        return True  # один клик достаточно, дальше проверит существующая логика
+        return True
+
     return False
 
 def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
@@ -700,7 +762,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
     probe_sleep = max((it["cd"] for it in plan), default=0.5)
 
     start_ts = time.time()
-    hard_timeout = 45.0
+    hard_timeout = 30.0
 
     def ready(item) -> bool:
         return (time.time() - (item["last"] or 0.0)) >= item["cd"]
@@ -785,14 +847,14 @@ def _check_target_visibility(ex: FlowOpExecutor, server: str, lang: str, win: Di
         return False  # Если размерность неправильная, цель видна
 
     # Сохраняем захваченную область для дебага
-    try:
-        dbg_dir = os.path.abspath("debug_af_boh")
-        os.makedirs(dbg_dir, exist_ok=True)
-        debug_image_path = os.path.join(dbg_dir, "captured_zone.png")
-        cv2.imwrite(debug_image_path, search_zone)
-        print(f"[AF boh][debug] saved captured zone to {debug_image_path}")
-    except Exception as e:
-        print(f"[AF boh][debug] failed to save captured zone: {e}")
+    # try:
+    #     dbg_dir = os.path.abspath("debug_af_boh")
+    #     os.makedirs(dbg_dir, exist_ok=True)
+    #     debug_image_path = os.path.join(dbg_dir, "captured_zone.png")
+    #     cv2.imwrite(debug_image_path, search_zone)
+    #     print(f"[AF boh][debug] saved captured zone to {debug_image_path}")
+    # except Exception as e:
+    #     print(f"[AF boh][debug] failed to save captured zone: {e}")
 
     # Преобразуем в оттенки серого для удобства поиска
     search_zone_gray = cv2.cvtColor(search_zone, cv2.COLOR_BGR2GRAY)
