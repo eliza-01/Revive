@@ -546,17 +546,11 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             ctx_base["on_status"]("[AF boh] остановлено пользователем", None)
             return False
 
-        used_template = False
         zone_id = (cfg or {}).get("zone") or ""
-        if zone_id:
-            used_template = _template_probe_click(ctx_base, server, lang, win, cfg)
-            if used_template:
-                time.sleep(0.35)  # дать полосе HP обновиться
-
-        if not used_template:
-            _send_chat(ex, "/targetnext", wait_ms=1000)
-            if _abort(ctx_base):
-                return False
+        # всегда сперва /targetnext
+        _send_chat(ex, "/targetnext", wait_ms=1000)
+        if _abort(ctx_base):
+            return False
 
         # NEW: есть ли вообще цель (полоса любого цвета)
         has_any = _has_target_by_hp(win, server, tries=1, delay_ms=150, should_abort=lambda: _abort(ctx_base))
@@ -588,6 +582,17 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 current_alive = False  # форсим переход в ветку перебора имён
 
         print(f"[AF boh] /targetnext → has_any={has_any} alive={current_alive}")
+
+        # ⬇️ ФОЛЛБЭК: если /targetnext не дал живую цель — пробуем шаблоны
+        if not (has_any and current_alive) and zone_id:
+            print("[AF boh][tpl] fallback: probing templates…")
+            if _template_probe_click(ctx_base, server, lang, win, cfg):
+                time.sleep(0.35)
+                has_any = _has_target_by_hp(
+                    win, server, tries=1, delay_ms=150, should_abort=lambda: _abort(ctx_base)
+                )
+                current_alive = _target_alive_by_hp(win, server)
+                print(f"[AF boh][tpl] after fallback → has_any={has_any} alive={current_alive}")
 
         if has_any and current_alive:
             ctx_base["on_status"]("[AF boh] цель получена /targetnext", True)
