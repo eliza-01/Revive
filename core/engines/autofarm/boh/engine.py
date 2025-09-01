@@ -133,21 +133,6 @@ def _has_target_by_hp(win: Dict, server: str, tries: int = 3, delay_ms: int = 20
         time.sleep(delay_ms / 1000.0)
     return False
 
-def _has_target_by_hp(win: Dict, server: str, tries: int = 3, delay_ms: int = 200, should_abort=None) -> bool:
-    """Есть ли вообще цель (любой «полосатый» цвет: alive+dead)? С досрочной отменой."""
-    for i in range(max(1, tries)):
-        if should_abort and should_abort():
-            return False
-        _, rect_any = _detect_target_bands(win, server)
-        if rect_any:
-            x,y,w,h = rect_any
-            ok = (w >= 40 and h >= 3)
-            print(f"[AF boh][target] any-colors → {'YES' if ok else 'NO'} (w={w},h={h}) try={i+1}/{tries}")
-            if ok:
-                return True
-        time.sleep(delay_ms/1000.0)
-    return False
-
 def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
     """
     Живой, если найдено >= 10 пикселей из палитры 'alive'.

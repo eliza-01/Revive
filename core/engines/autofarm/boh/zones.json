@@ -15,8 +15,10 @@
     "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {
-      "eng": ["Гризли", "Рейнджер", "Монстроглаз", "Людоед"],
-      "rus": ["Гризли", "Рейнджер", "Монстроглаз", "Людоед"]
+      "eng": ["Grizzly of Dion", "Gnoll Ranger", "Seeker Eyemonster", "Tumran Cannibal"],
+      "rus": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Людоед Тумран"],
+      "eng_short": ["Grizzly", "Ranger", "Eyemonster", "Cannibal"],
+      "rus_short": ["Гризли", "Рейнджер", "Монстроглаз", "Людоед"]
     }
   },
   "Ruins_of_agony_start": {
