@@ -5,8 +5,10 @@
     "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {
-      "eng": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
-      "rus": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"]
+      "eng_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
+      "rus_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
+      "eng_short": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing"],
+      "rus_short": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing"]
     }
   },
   "Dion_1": {
@@ -27,8 +29,10 @@
     "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {
-      "eng": ["Главарь Скелетов Следопытов", "Скелет Разведчик"],
-      "rus": ["Главарь Скелетов Следопытов", "Скелет Разведчик"]
+      "eng_full": ["Главарь Скелетов Следопытов", "Скелет Разведчик"],
+      "rus_full": ["Главарь Скелетов Следопытов", "Скелет Разведчик"],
+      "eng_short": ["Главарь", "Скелет Разведчик"],
+      "rus_short": ["Главарь", "Скелет Разведчик"]
     }
   },
   "Dwarf_village": {
@@ -37,8 +41,10 @@
     "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {
-      "eng": ["Орк", "Черный", "Сыщик"],
-      "rus": ["Орк", "Черный", "Сыщик"]
+      "eng_full": ["Орк", "Черный", "Сыщик"],
+      "rus_full": ["Орк", "Черный", "Сыщик"],
+      "eng_short": ["Орк", "Черный", "Сыщик"],
+      "rus_short": ["Орк", "Черный", "Сыщик"]
     }
   },
   "Dragon_valley": {
@@ -49,8 +55,8 @@
     "monsters": {
       "eng_full": ["Придорожный Падальщик", "Василиск Стражник", "Змей"],
       "rus_full": ["Придорожный Падальщик", "Василиск Стражник", "Змей"],
-      "eng_short": ["Придорожный Падальщик", "Василиск Стражник", "Змей"],
-      "rus_short": ["Придорожный Падальщик", "Василиск Стражник", "Змей"]
+      "eng_short": ["Придорожный", "Василиск", "Змей"],
+      "rus_short": ["Придорожный", "Василиск", "Змей"]
     }
   }
 }

@@ -1,6 +1,6 @@
 # app/launcher/sections/respawn.py
 from __future__ import annotations
-from .base import BaseSection
+from ..base import BaseSection
 
 class RespawnSection(BaseSection):
     def __init__(self, window, controller, watcher, orch, sys_state, schedule):
