@@ -168,13 +168,7 @@ SECTIONS: dict[str, list[str]] = {
     # K) Документация/конфиги/скрипты сборки (текстовые)
     "K": [
         "main.py",
-        "Revive.spec",
-        "requirements.txt",
-        "requirements.build.txt",
         "build.bat",
-        "release.bat",
-        "run_release.bat",
-        "PROJECT_STRUCTURE.txt",
         "documents/**/*.md",
         "documents/**/*.txt",
     ],

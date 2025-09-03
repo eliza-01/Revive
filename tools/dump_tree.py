@@ -6,7 +6,7 @@ import os
 import sys
 import datetime
 
-IGNORED_DIRS = {"venv", ".idea", "_tmp", "__pycache__", ".git", "build"}
+IGNORED_DIRS = {"venv", ".idea", "_tmp", "__pycache__", ".git", "build", "dist", "documents", "collected"}
 
 def list_dir(path: str):
     try:
