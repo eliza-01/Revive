@@ -43,7 +43,7 @@ from core.engines.autofarm.skill_repo import list_skills as af_list_skills
 from core.engines.autofarm.skill_repo import list_professions as af_list_profs
 from core.engines.autofarm.skill_repo import debug_professions as af_debug_profs
 from core.engines.autofarm.service import AutoFarmService
-from core.engines.autofarm.runner import run_af_click_button as af_run_click
+from core.engines.autofarm.runner import run_autofarm
 
 LOG_PATH = "revive.log"
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
@@ -821,17 +821,15 @@ class Bridge:
         return {"ok": True}
 
     def af_start(self, mode: str = "after_tp") -> bool:
-        """
-        Заглушка: жмём кнопку автофарма через шаблон из движка.
-        Позже сюда можно вставить ожидание окончания приоритетных флоу.
-        """
         def _st(msg, ok=None): self._emit_status("postrow", f"[AF] {msg}", ok)
-        return af_run_click(
+
+        return run_autofarm(
             server=self.server,
             controller=self.controller,
             get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
-            on_status=_st
+            on_status=_st,
+            cfg=self.autofarm._cfg if hasattr(self.autofarm, "_cfg") else {},  # или твой стор настроек
         )
 
     # --- window close hook (called from JS) ---

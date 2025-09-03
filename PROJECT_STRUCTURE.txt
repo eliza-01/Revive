@@ -1,9 +1,21 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-03 14:05:23
+Generated: 2025-09-03 16:58:25
 
 Revive
 ├── app
 │   ├── dep
+│   ├── launcher
+│   │   ├── sections
+│   │   │   ├── autofarm.py
+│   │   │   ├── buff.py
+│   │   │   ├── macros.py
+│   │   │   ├── respawn.py
+│   │   │   ├── system.py
+│   │   │   └── tp.py
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── main.py
+│   │   └── wiring.py
 │   ├── ui
 │   │   ├── __init__.py
 │   │   ├── account_settings.py
@@ -476,6 +488,9 @@ Revive
 ├── debug
 │   └── match_preview
 ├── debug_af_boh
+│   ├── mask_alive.png
+│   ├── mask_any.png
+│   └── target_zone_bgr.png
 ├── firmware
 │   ├── .editorconfig
 │   ├── keys_test.py
@@ -493,4 +508,5 @@ Revive
 ├── release.bat
 ├── requirements.build.txt
 ├── requirements.txt
+├── revive.log
 └── run_release.bat
