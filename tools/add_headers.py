@@ -1,4 +1,4 @@
-﻿# tools/write_path_headers.py
+﻿# tools/add_headers.py
 from __future__ import annotations
 import sys, re
 from pathlib import Path, PurePosixPath

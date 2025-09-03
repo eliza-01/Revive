@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/autofarm/service.py
+from __future__ import annotations
 import importlib
 import time
 import threading

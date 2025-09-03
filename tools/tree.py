@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# tools/dump_tree.py
+# tools/tree.py
 
 import os
 import sys

@@ -1,5 +1,5 @@
-# tools/collect_sections.py
-# usage: python tools/collect_sections.py --root . --out collected --sections A,B,C,D,E,F,G,H,I,J,K
+﻿# tools/collect.py
+# usage: python tools/collect_sections.py --root . --out collected --sections A,B,C,D,E,F,G,H,I
 from __future__ import annotations
 import argparse, sys, os, io
 from pathlib import Path
@@ -32,7 +32,7 @@ def _is_text_file(p: Path) -> bool:
     # дефолт: пропускаем «неизвестные» (лучше явно добавить в TEXT_EXTS при необходимости)
     return False
 
-# ------------ РАЗДЕЛЫ ------------
+# ------------ РАЗДЕЛЫ (ТОЛЬКО САМОЕ ВАЖНОЕ) ------------
 SECTIONS: dict[str, list[str]] = {
     # A) Ядро и I/O
     "A": [
@@ -63,8 +63,7 @@ SECTIONS: dict[str, list[str]] = {
         "core/features/post_tp_row.py",
         "core/features/restart_manager.py",
         "core/features/to_village.py",
-        # архив — как справочник
-        "core/features/archive/*.py",
+        "core/features/tp_after_respawn.py",
     ],
 
     # C) Серверы: профили, карты, флоуы, зоны, rows (+ оба сервера l2mad/boh)
@@ -73,7 +72,7 @@ SECTIONS: dict[str, list[str]] = {
         "core/servers/base_config.py",
         "core/servers/registry.py",
 
-        # общий профиль/карта для l2mad
+        # l2mad
         "core/servers/l2mad/profile.py",
         "core/servers/l2mad/locations_map.py",
         "core/servers/l2mad/zones/*.py",
@@ -82,7 +81,7 @@ SECTIONS: dict[str, list[str]] = {
         "core/servers/l2mad/flows/rows/**/*.py",
         "core/servers/l2mad/templates/resolver.py",
 
-        # профиль/карта для boh
+        # boh
         "core/servers/boh/profile.py",
         "core/servers/boh/locations_map.py",
         "core/servers/boh/zones/*.py",
@@ -130,10 +129,10 @@ SECTIONS: dict[str, list[str]] = {
 
     # G) Arduino
     "G": [
-      "core/arduino/safe_serial.py",
-      "core/arduino/send_command.py",
-      "core/arduino/send_safe.py",
-      "core/arduino/serial_port.py",
+        "core/arduino/safe_serial.py",
+        "core/arduino/send_command.py",
+        "core/arduino/send_safe.py",
+        "core/arduino/serial_port.py",
     ],
 
     # H) Autofarm engine (весь движок + JSON)
@@ -152,25 +151,12 @@ SECTIONS: dict[str, list[str]] = {
         "core/engines/autofarm/*/**/*.json",
     ],
 
-    # I) WebUI (HTML/CSS/JS)
+    # I) WebUI (HTML/CSS/JS) — без бинарных ассетов
     "I": [
         "app/webui/index.html",
         "app/webui/css/*.css",
         "app/webui/js/*.js",
-        "app/webui/assets/*.txt",   # чтобы не тянуть бинарные .gif/.png
-    ],
-
-    # J) Tools
-    "J": [
-        "tools/*.py",
-    ],
-
-    # K) Документация/конфиги/скрипты сборки (текстовые)
-    "K": [
-        "main.py",
-        "build.bat",
-        "documents/**/*.md",
-        "documents/**/*.txt",
+        "app/webui/assets/*.txt",
     ],
 }
 
@@ -184,8 +170,6 @@ OUT_FILENAMES = {
     "G": "G_arduino.txt",
     "H": "H_autofarm.txt",
     "I": "I_webui.txt",
-    "J": "J_tools.txt",
-    "K": "K_docs_build.txt",
 }
 
 # ------------ СБОРЩИК ------------
@@ -254,7 +238,7 @@ def main():
     ap = argparse.ArgumentParser(description="Собрать файлы по разделам в один текстовый дамп на раздел.")
     ap.add_argument("--root", default=".", help="корень проекта")
     ap.add_argument("--out", default="collected", help="каталог вывода")
-    ap.add_argument("--sections", default="A,B,C,D,E,F,G,H,I,J,K", help="какие разделы собирать, через запятую")
+    ap.add_argument("--sections", default="A,B,C,D,E,F,G,H,I", help="какие разделы собирать, через запятую")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
