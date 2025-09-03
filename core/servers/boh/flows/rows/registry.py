@@ -12,6 +12,10 @@ ROWS_MAP: Dict[Tuple[str, str], List[Dict]] = {
         {"id": "Varka_1", "title_rus": "Варка. Маршрут 1", "title_eng": "Varka. Row 1"},
         # {"id": "fast_route", "title_rus": "Быстрый маршрут", "title_eng": "Fast route"},
     ],
+    ("Giran", "DragonValley"): [
+        {"id": "DragonValley_1", "title_rus": "ДВ. Маршрут 1", "title_eng": "DragonValley. Row 1"},
+        # {"id": "fast_route", "title_rus": "Быстрый маршрут", "title_eng": "Fast route"},
+    ]
 }
 
 def list_rows(village_id: str, location_id: str) -> List[Dict]:

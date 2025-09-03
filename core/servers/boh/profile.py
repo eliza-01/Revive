@@ -9,9 +9,9 @@ from core.servers.registry import (
 def _server_id() -> str:
     try:
         # 'core.servers.<server_id>'
-        return (__package__ or "").split(".")[-1] or "l2mad"
+        return (__package__ or "").split(".")[-1] or "boh"
     except Exception:
-        return "l2mad"
+        return "boh"
 
 class ServerProfile:
     id = _server_id()
