@@ -74,20 +74,7 @@ def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,
       - COLORS['hp_dead_monster_rgb_boh']
       - HP_COLOR_TOLERANCE
     """
-    try:
-        m = importlib.import_module(f"core.servers.{server}.zones.state")
-        cd = getattr(m, "COLORS", {}) or {}
-        alive = list(cd.get("hp_alive_monster_rgb_boh", []))
-        dead  = list(cd.get("hp_dead_monster_rgb_boh",  []))
-        tol   = int(getattr(m, "HP_COLOR_TOLERANCE", 2))
-        if alive or dead:
-            return alive, dead, tol
-    except Exception:
-        pass
-    # fallback
-    return ([(139, 98, 96), (128, 70, 68), (111, 23, 19), (136, 28, 24), (171, 48, 34)],
-            [(70, 61, 62), (61, 49, 50), (48, 28, 27), (57, 32, 31), (67, 38, 36)],
-            2)
+
 
 _debug_dump_done = False
 
