@@ -65,7 +65,7 @@ class AutoFarmService:
     def _runner(self, cfg: Dict[str, Any]):
         server = (self.get_server() or "l2mad").lower()
         try:
-            mod = importlib.import_module(f"core.engines.autofarm.{server}.engine")
+            mod = importlib.import_module(f"core.engines.autofarm.server.{server}.engine")
         except Exception as e:
             self.on_status(f"[af] engine import error: {e}", False)
             return

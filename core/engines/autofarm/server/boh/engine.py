@@ -23,6 +23,10 @@ _RESTART_STREAK_LIMIT = 10
 excluded_targets = set()
 
 # --- helpers ---
+
+def _af_server_root(server: str) -> str:
+    return os.path.join("core", "engines", "autofarm", "server", server)
+
 def _slugify_name_py(s: str) -> str:
     s = (s or "").lower()
     s = re.sub(r"[’`]", "'", s)
@@ -165,14 +169,14 @@ def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
 
 def _zone_monsters_raw(server: str, zone_id: str):
     try:
-        p = os.path.join("core", "engines", "autofarm", server, "zones.json")
+        p = os.path.join("core", "engines", "autofarm", "server", server, "zones.json")
         with open(p, "r", encoding="utf-8") as f:
             data = json.load(f)
         z = data.get(zone_id) or {}
         mons = z.get("monsters")
         return mons if isinstance(mons, dict) else None
     except Exception as e:
-        print(f"[AF boh] zones.json read fail: {p}: {e}")
+        print(f"[AF boh] zones.json read fail: {e}")
         return None
 
 def _pick_lang_list(raw: dict, lang: str, kind: str) -> List[str]:
@@ -265,26 +269,14 @@ def _zone_monster_display_names(server: str, zone_id: str, lang: str) -> List[st
 
 # поиск монстров по темплейтам
 def _monster_template_candidates(server: str, lang: str, short_slug: str, full_slug: str) -> List[str]:
-    base = os.path.join("core", "engines", "autofarm", server, "templates", lang, "monsters")
+    base = os.path.join("core", "engines", "autofarm", "server", server, "templates", lang, "monsters")
     names_dir = os.path.join(base, "names")
     cand = []
     fs = (full_slug or "").strip()
     ss = (short_slug or "").strip()
-
-    # Каноника: full в monsters/names/
-    if fs:
-        cand.append(os.path.join(names_dir, f"{fs}.png"))
-
-    # Фолбэк: short в monsters/names/
-    if ss and ss != fs:
-        cand.append(os.path.join(names_dir, f"{ss}.png"))
-
-    # Легаси-фолбэки (если где-то ещё лежат старые файлы)
-    if ss:
-        cand.append(os.path.join(base, f"{ss}.png"))
-    if fs:
-        cand.append(os.path.join(base, f"{fs}.png"))
-
+    if fs: cand.append(os.path.join(names_dir, f"{fs}.png"))
+    if ss and ss != fs: cand.append(os.path.join(names_dir, f"{ss}.png"))
+    # (без legacy-дублей)
     return cand
 
 def _full_to_short_map(server: str, zone_id: str, lang: str) -> Dict[str, str]:
@@ -825,11 +817,11 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
 
 # Функция для проверки видимости цели после первой атаки
 def _check_target_visibility(ex: FlowOpExecutor, server: str, lang: str, win: Dict, zone_id: str) -> bool:
+    image_path = os.path.join("core","engines","autofarm","server",server,"templates",lang,"sys_messages","target_unvisible.png")
     """
     Проверяем видимость цели после первой атаки.
     Теперь используем OpenCV для поиска изображения, а не match_in_zone.
     """
-    image_path = f"core/engines/autofarm/{server}/templates/{lang}/sys_messages/target_unvisible.png"
 
     # Загружаем изображение для поиска
     target_img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)

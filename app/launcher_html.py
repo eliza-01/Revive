@@ -696,7 +696,7 @@ class Bridge:
     # --- helpers для zones.json ---
     def _zones_json_path(self, server: str) -> str:
         # относительный путь от корня проекта
-        return os.path.join("core", "engines", "autofarm", server, "zones.json")
+        return os.path.join("core", "engines", "autofarm", "server", server, "zones.json")
 
     def _read_zones(self, server: str) -> dict:
         p = self._zones_json_path(server)

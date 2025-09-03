@@ -10,10 +10,16 @@ def _load_json(p: str) -> Any:
         return json.load(f)
 
 def _af_flow_path(server: str) -> str:
-    # server/flows/af_click.json, иначе common/flows/af_click.json (если сделаешь)
-    p = os.path.join(AF_ROOT, server, "flows", "af_click.json")
-    if os.path.exists(p): return p
-    return os.path.join(AF_ROOT, "common", "flows", "af_click.json")
+    """
+    Новый приоритет:
+      1) core/engines/autofarm/server/<server>/flows/af_click.json
+      2) core/engines/autofarm/server/common/flows/af_click.json (общий дефолт)
+    Никаких legacy-путей.
+    """
+    p_srv = os.path.join(AF_ROOT, "server", server, "flows", "af_click.json")
+    if os.path.exists(p_srv):
+        return p_srv
+    return os.path.join(AF_ROOT, "server", "common", "flows", "af_click.json")
 
 def run_af_click_button(
     server: str,
@@ -24,9 +30,8 @@ def run_af_click_button(
 ) -> bool:
     from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 
-    lang = (get_language() or "eng").lower()
-    zones = {"fullscreen": {"fullscreen": True}}   # нам хватает фуллскрина
-    templates: Dict[str, List[str]] = {}           # не нужны, т.к. в flow — parts-массивы
+    zones = {"fullscreen": {"fullscreen": True}}
+    templates: Dict[str, List[str]] = {}
 
     ctx = FlowCtx(
         server=server,

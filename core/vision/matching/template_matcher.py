@@ -1,10 +1,10 @@
 # core/vision/matching/template_matcher.py
-# Поиск шаблонов по зонам с учётом серверного resolver'а.
+# Поиск шаблонов по зонам через серверный resolver (общий, без привязки к engine).
 from __future__ import annotations
 import importlib
 from typing import Optional, Tuple, Dict, Sequence
 
-import cv2, os
+import cv2
 import numpy as np
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 
@@ -19,6 +19,10 @@ def _load_template_abs(path: str) -> Optional[np.ndarray]:
         return None
 
 def _resolve_path(server: str, lang: str, parts: Sequence[str]) -> Optional[str]:
+    """
+    Единственный источник истины — resolver сервера:
+    core.servers.<server>.templates.resolver.resolve(lang, *parts) -> abs_path
+    """
     mod = importlib.import_module(f"core.servers.{server}.templates.resolver")
     return getattr(mod, "resolve")(lang, *parts)
 
@@ -42,22 +46,11 @@ def match_in_zone(
     if zone_img is None or zone_img.size == 0:
         return None
 
-    # загрузка шаблона
+    # путь к шаблону — только через серверный resolver
     tpath = _resolve_path(server, lang, template_parts)
-     # Fallback: templates из engines/autofarm
-    if not tpath:
-        try:
-            ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))  # -> core
-            af1 = os.path.join(ROOT, "engines", "autofarm", server, "templates", lang, *template_parts)
-            af2 = os.path.join(ROOT, "engines", "autofarm", "common", "templates", lang, *template_parts)
-            if os.path.exists(af1):
-                tpath = af1
-            elif os.path.exists(af2):
-                tpath = af2
-        except Exception:
-            tpath = None
     if not tpath:
         return None
+
     templ = _load_template_abs(tpath)
     if templ is None:
         return None
@@ -67,7 +60,7 @@ def match_in_zone(
         return None
 
     res = cv2.matchTemplate(zone_img, templ, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+    _, max_val, _, max_loc = cv2.minMaxLoc(res)
     if max_val < float(threshold):
         return None
 
@@ -78,6 +71,4 @@ def match_in_zone(
     cy_client = int(zone_ltrb[1] + tly + h / 2)
 
     # перевод в экранные координаты
-    cx_screen = window["x"] + cx_client
-    cy_screen = window["y"] + cy_client
-    return (cx_screen, cy_screen)
+    return (window["x"] + cx_client, window["y"] + cy_client)

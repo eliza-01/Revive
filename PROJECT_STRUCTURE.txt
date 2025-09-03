@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-03 13:26:32
+Generated: 2025-09-03 14:05:23
 
 Revive
 ├── app
@@ -52,106 +52,149 @@ Revive
 │   ├── checks
 │   │   └── charged.py
 │   ├── engines
-│   │   └── autofarm
-│   │       ├── boh
-│   │       │   ├── templates
-│   │       │   │   ├── common
-│   │       │   │   │   └── interface
-│   │       │   │   │       ├── target_blue_dot.png
-│   │       │   │   │       └── target_red_dot.png
-│   │       │   │   ├── eng
-│   │       │   │   │   └── interface
-│   │       │   │   │       └── target_init.png
-│   │       │   │   └── rus
-│   │       │   │       ├── monsters
-│   │       │   │       │   └── names
-│   │       │   │       │       ├── василиск_стражник.png
-│   │       │   │       │       ├── гризли_диона.png
-│   │       │   │       │       ├── змей.png
-│   │       │   │       │       ├── людоед_тумран.png
-│   │       │   │       │       ├── монстроглаз_искатель.png
-│   │       │   │       │       ├── придорожный_падальщик.png
-│   │       │   │       │       ├── рейнджер_гноллов.png
-│   │       │   │       │       └── хобгоблин.png
-│   │       │   │       └── sys_messages
-│   │       │   │           └── target_unvisible.png
-│   │       │   ├── zones
-│   │       │   │   ├── Dion_1
-│   │       │   │   │   └── gallery
-│   │       │   │   │       ├── map.png
-│   │       │   │   │       ├── spot_north.png
-│   │       │   │   │       └── spot_south.png
-│   │       │   │   ├── Dwarf_village
-│   │       │   │   │   └── gallery
-│   │       │   │   │       ├── map.png
-│   │       │   │   │       ├── spot_north.png
-│   │       │   │   │       └── spot_south.png
-│   │       │   │   ├── Ruins_of_agony_start
-│   │       │   │   │   └── gallery
-│   │       │   │   │       ├── map.png
-│   │       │   │   │       ├── spot_north.png
-│   │       │   │   │       └── spot_south.png
-│   │       │   │   └── Varka_1
-│   │       │   │       └── gallery
-│   │       │   │           ├── map.png
-│   │       │   │           ├── spot_north.png
-│   │       │   │           └── spot_south.png
-│   │       │   ├── __init__.py
-│   │       │   ├── engine.py
-│   │       │   └── zones.json
-│   │       ├── common
-│   │       │   ├── flows
-│   │       │   │   └── af_click.json
-│   │       │   ├── skills
-│   │       │   │   ├── attack.png
-│   │       │   │   ├── aura_flare.png
-│   │       │   │   ├── aura_flash.png
-│   │       │   │   ├── cancellation.png
-│   │       │   │   ├── curse_fear.png
-│   │       │   │   ├── dash.png
-│   │       │   │   ├── freezing_skin.png
-│   │       │   │   ├── frost_bolt.png
-│   │       │   │   ├── hydro_blast.png
-│   │       │   │   ├── ice_dagger.png
-│   │       │   │   ├── ice_vortex.png
-│   │       │   │   ├── light_vortex.png
-│   │       │   │   ├── sleep.png
-│   │       │   │   ├── solar_flare.png
-│   │       │   │   ├── stun_shot.png
-│   │       │   │   └── surrender_to_water.png
-│   │       │   ├── zones
-│   │       │   │   └── Varka_1
-│   │       │   │       └── gallery
-│   │       │   │           ├── map.png
-│   │       │   │           ├── spot_north.png
-│   │       │   │           └── spot_south.png
-│   │       │   ├── professions.json
-│   │       │   ├── skills_catalog.json
-│   │       │   ├── templates_map.py
-│   │       │   └── zones.json
-│   │       ├── l2mad
-│   │       │   ├── flows
-│   │       │   │   └── af_click.json
-│   │       │   ├── templates
-│   │       │   │   ├── eng
-│   │       │   │   │   └── interface
-│   │       │   │   │       └── autofarm.png
-│   │       │   │   └── rus
-│   │       │   │       └── interface
-│   │       │   │           └── autofarm.png
-│   │       │   ├── zones
-│   │       │   │   └── Varka_1
-│   │       │   │       └── gallery
-│   │       │   │           ├── map.png
-│   │       │   │           ├── spot_north.png
-│   │       │   │           └── spot_south.png
-│   │       │   ├── engine.py
-│   │       │   └── zones.json
-│   │       ├── __init__.py
-│   │       ├── runner.py
-│   │       ├── service.py
-│   │       ├── skill_repo.py
-│   │       └── zone_repo.py
+│   │   ├── autofarm
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       ├── target_blue_dot.png
+│   │   │   │   │   │   │       └── target_red_dot.png
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── target_init.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       ├── monsters
+│   │   │   │   │   │       │   └── names
+│   │   │   │   │   │       │       ├── василиск_стражник.png
+│   │   │   │   │   │       │       ├── гризли_диона.png
+│   │   │   │   │   │       │       ├── змей.png
+│   │   │   │   │   │       │       ├── людоед_тумран.png
+│   │   │   │   │   │       │       ├── монстроглаз_искатель.png
+│   │   │   │   │   │       │       ├── придорожный_падальщик.png
+│   │   │   │   │   │       │       ├── рейнджер_гноллов.png
+│   │   │   │   │   │       │       └── хобгоблин.png
+│   │   │   │   │   │       └── sys_messages
+│   │   │   │   │   │           └── target_unvisible.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   ├── Dion_1
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Dwarf_village
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Ruins_of_agony_start
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── common
+│   │   │   │   │   ├── skills
+│   │   │   │   │   │   ├── attack.png
+│   │   │   │   │   │   ├── aura_flare.png
+│   │   │   │   │   │   ├── aura_flash.png
+│   │   │   │   │   │   ├── cancellation.png
+│   │   │   │   │   │   ├── curse_fear.png
+│   │   │   │   │   │   ├── dash.png
+│   │   │   │   │   │   ├── freezing_skin.png
+│   │   │   │   │   │   ├── frost_bolt.png
+│   │   │   │   │   │   ├── hydro_blast.png
+│   │   │   │   │   │   ├── ice_dagger.png
+│   │   │   │   │   │   ├── ice_vortex.png
+│   │   │   │   │   │   ├── light_vortex.png
+│   │   │   │   │   │   ├── sleep.png
+│   │   │   │   │   │   ├── solar_flare.png
+│   │   │   │   │   │   ├── stun_shot.png
+│   │   │   │   │   │   └── surrender_to_water.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── professions.json
+│   │   │   │   │   ├── skills_catalog.json
+│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── l2mad
+│   │   │   │   │   ├── flows
+│   │   │   │   │   │   └── af_click.json
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── autofarm.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       └── interface
+│   │   │   │   │   │           └── autofarm.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   ├── skill_repo.py
+│   │   │   └── zone_repo.py
+│   │   ├── buff
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   ├── macros
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   ├── player_state
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   ├── respawn
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   ├── restart_manager
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   ├── rows
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   ├── teleport
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   ├── ui_state
+│   │   │   └── server
+│   │   │       ├── boh
+│   │   │       ├── common
+│   │   │       └── l2mad
+│   │   └── __init__.py
 │   ├── features
 │   │   ├── __init__.py
 │   │   ├── afterbuff_macros.py
@@ -170,10 +213,6 @@ Revive
 │   │       ├── mouse.py
 │   │       └── window.py
 │   ├── runtime
-│   │   ├── archive
-│   │   │   ├── __init__.py
-│   │   │   ├── cycle_flow.py
-│   │   │   └── state_bus.py
 │   │   ├── __init__.py
 │   │   ├── dashboard_guard.py
 │   │   ├── flow_config.py
@@ -442,11 +481,11 @@ Revive
 │   ├── keys_test.py
 │   └── micro.ino
 ├── tools
-│   ├── collect_sections.py
-│   ├── dump_target_zone.py
-│   ├── dump_tree.py
-│   └── write_path_headers.py
+│   ├── add_headers.py
+│   ├── collect.py
+│   └── tree.py
 ├── .gitignore
+├── PROJECT_STRUCTURE.txt
 ├── Revive.spec
 ├── autofarm_settings_window.png
 ├── build.bat
