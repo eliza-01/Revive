@@ -1,9 +1,9 @@
 ﻿# tools/collect.py
-# usage: python tools/collect_sections.py --root . --out collected --sections A,B,C,D,E,F,G,H,I
+# usage: python tools/collect.py --root . --out collected --sections A,B,C,D,E,F,G,H,I
 from __future__ import annotations
 import argparse, sys, os, io
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Tuple, List
 
 # ------------ НАСТРОЙКИ ФИЛЬТРА ФАЙЛОВ ------------
 TEXT_EXTS = {
@@ -29,7 +29,6 @@ def _is_text_file(p: Path) -> bool:
     suf = p.suffix.lower()
     if suf in BINARY_EXTS: return False
     if suf in TEXT_EXTS: return True
-    # дефолт: пропускаем «неизвестные» (лучше явно добавить в TEXT_EXTS при необходимости)
     return False
 
 # ------------ РАЗДЕЛЫ (ТОЛЬКО САМОЕ ВАЖНОЕ) ------------
@@ -46,7 +45,6 @@ SECTIONS: dict[str, list[str]] = {
         "core/runtime/flow_runner.py",
         "core/runtime/flow_config.py",
         "core/runtime/dashboard_guard.py",
-        # ОС-утилиты
         "core/os/win/window.py",
         "core/os/win/mouse.py",
     ],
@@ -55,7 +53,6 @@ SECTIONS: dict[str, list[str]] = {
     "B": [
         "core/features/__init__.py",
         "core/features/afterbuff_macros.py",
-        "core/features/autobuff_service.py",
         "core/features/buff_after_respawn.py",
         "core/features/dashboard_reset.py",
         "core/features/flow_actions.py",
@@ -66,7 +63,7 @@ SECTIONS: dict[str, list[str]] = {
         "core/features/tp_after_respawn.py",
     ],
 
-    # C) Серверы: профили, карты, флоуы, зоны, rows (+ оба сервера l2mad/boh)
+    # C) Серверы
     "C": [
         "core/servers/__init__.py",
         "core/servers/base_config.py",
@@ -91,7 +88,7 @@ SECTIONS: dict[str, list[str]] = {
         "core/servers/boh/templates/resolver.py",
     ],
 
-    # D) Tk-UI как спецификация поведения
+    # D) Tk-UI
     "D": [
         "app/ui/__init__.py",
         "app/ui/account_settings.py",
@@ -106,13 +103,18 @@ SECTIONS: dict[str, list[str]] = {
         "app/ui/widgets.py",
     ],
 
-    # E) Обвязка/лаунчеры
+    # E) Обвязка/лаунчеры (новая структура launcher/)
     "E": [
         "app/__init__.py",
         "app/__main__.py",
-        "app/launcher.py",
         "app/launcher_bootstrap.py",
-        "app/launcher_html.py",
+
+        "app/launcher/__init__.py",
+        "app/launcher/base.py",
+        "app/launcher/main.py",
+        "app/launcher/wiring.py",
+        "app/launcher/sections/*.py",
+
         "core/updater.py",
         "core/logging_setup.py",
     ],
@@ -135,20 +137,18 @@ SECTIONS: dict[str, list[str]] = {
         "core/arduino/serial_port.py",
     ],
 
-    # H) Autofarm engine (весь движок + JSON)
+    # H) Autofarm engine (server/*)
     "H": [
         "core/engines/autofarm/__init__.py",
         "core/engines/autofarm/service.py",
         "core/engines/autofarm/runner.py",
         "core/engines/autofarm/skill_repo.py",
         "core/engines/autofarm/zone_repo.py",
-        # общие данные
         "core/engines/autofarm/common/*.py",
         "core/engines/autofarm/common/**/*.json",
-        # серверные реализации
-        "core/engines/autofarm/*/engine.py",
-        "core/engines/autofarm/*/*.py",
-        "core/engines/autofarm/*/**/*.json",
+        "core/engines/autofarm/server/*/engine.py",
+        "core/engines/autofarm/server/*/*.py",
+        "core/engines/autofarm/server/*/**/*.json",
     ],
 
     # I) WebUI (HTML/CSS/JS) — без бинарных ассетов
@@ -177,7 +177,6 @@ def _iter_matches(root: Path, patterns: Iterable[str]) -> list[Path]:
     seen: set[Path] = set()
     out: list[Path] = []
     for pat in patterns:
-        # Поддержка ** для рекурсии
         paths = sorted(root.glob(pat), key=lambda p: str(p).lower())
         if not paths and ("*" not in pat and "?" not in pat and "**" not in pat):
             out.append(root / f"__MISSING__::{pat}")
@@ -198,7 +197,7 @@ def _read_text(path: Path) -> str:
     except Exception as e:
         return f"# !!! ERROR reading {path}: {e}\n"
 
-def build_section(root: Path, out_dir: Path, letter: str) -> tuple[int,int]:
+def build_section(root: Path, out_dir: Path, letter: str) -> Tuple[int,int,List[str]]:
     patterns = SECTIONS[letter]
     files = _iter_matches(root, patterns)
 
@@ -207,6 +206,8 @@ def build_section(root: Path, out_dir: Path, letter: str) -> tuple[int,int]:
 
     included = 0
     missing = 0
+    manifest_entries: List[str] = []
+
     with io.open(dst, "w", encoding="utf-8", newline="\n") as w:
         w.write(f"# === SECTION {letter} ===\n# root: {root}\n\n")
         for p in files:
@@ -214,6 +215,7 @@ def build_section(root: Path, out_dir: Path, letter: str) -> tuple[int,int]:
                 missing += 1
                 miss = str(p.name).split("::",1)[1]
                 w.write(f"# --- MISSING: {miss}\n\n")
+                manifest_entries.append(f"{letter}\tMISSING\t{miss}")
                 continue
             rel = p.relative_to(root)
             w.write(f"# --- BEGIN FILE: {rel.as_posix()} ---\n")
@@ -223,37 +225,43 @@ def build_section(root: Path, out_dir: Path, letter: str) -> tuple[int,int]:
                 w.write("\n")
             w.write(f"# --- END FILE: {rel.as_posix()} ---\n\n")
             included += 1
+            manifest_entries.append(f"{letter}\tINCLUDE\t{rel.as_posix()}")
 
-    # манифест
-    (out_dir / f"{letter}.manifest.txt").write_text(
-        "\n".join(
-            [f"INCLUDE {p.relative_to(root).as_posix()}" for p in files if not p.name.startswith("__MISSING__::")]
-            + [f"MISSING {str(p.name).split('::',1)[1]}" for p in files if p.name.startswith("__MISSING__::")]
-        ),
-        encoding="utf-8",
-    )
-    return included, missing
+    return included, missing, manifest_entries
 
 def main():
-    ap = argparse.ArgumentParser(description="Собрать файлы по разделам в один текстовый дамп на раздел.")
+    ap = argparse.ArgumentParser(description="Собрать файлы по разделам в один текстовый дамп на раздел + единый манифест.")
     ap.add_argument("--root", default=".", help="корень проекта")
     ap.add_argument("--out", default="collected", help="каталог вывода")
     ap.add_argument("--sections", default="A,B,C,D,E,F,G,H,I", help="какие разделы собирать, через запятую")
+    ap.add_argument("--manifest-name", default="manifest.txt", help="имя файла единого манифеста")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    all_entries: List[str] = []
     letters = [s.strip().upper() for s in args.sections.split(",") if s.strip()]
     for l in letters:
         if l not in SECTIONS:
             print(f"[skip] неизвестный раздел: {l}")
             continue
-        inc, miss = build_section(root, out_dir, l)
+        inc, miss, entries = build_section(root, out_dir, l)
         print(f"[{l}] written -> {OUT_FILENAMES[l]}  files: {inc}  missing: {miss}")
+        all_entries.extend(entries)
+
+    # ЕДИНЫЙ МАНИФЕСТ
+    manifest_path = out_dir / args.manifest-name if hasattr(args, "manifest-name") else out_dir / args.manifest_name
+    # совместимость с argparse: использовать manifest_name
+    manifest_path = out_dir / getattr(args, "manifest_name", "manifest.txt")
+    with io.open(manifest_path, "w", encoding="utf-8", newline="\n") as mf:
+        mf.write("# section\tstatus\tpath\n")
+        for line in all_entries:
+            mf.write(line + "\n")
 
     print(f"[done] output: {out_dir}")
+    print(f"[manifest] {manifest_path.name}: {len(all_entries)} entries")
 
 if __name__ == "__main__":
     sys.exit(main())

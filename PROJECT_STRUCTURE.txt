@@ -1,9 +1,10 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-03 16:58:25
+Generated: 2025-09-03 19:45:47
 
 Revive
 ├── app
 │   ├── dep
+│   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 │   ├── launcher
 │   │   ├── sections
 │   │   │   ├── autofarm.py
@@ -40,9 +41,7 @@ Revive
 │   │   └── index.html
 │   ├── __init__.py
 │   ├── __main__.py
-│   ├── launcher.py
-│   ├── launcher_bootstrap.py
-│   └── launcher_html.py
+│   └── launcher_bootstrap.py
 ├── assets
 │   ├── upx
 │   │   ├── COPYING
@@ -167,50 +166,25 @@ Revive
 │   │   │   ├── skill_repo.py
 │   │   │   └── zone_repo.py
 │   │   ├── buff
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   ├── macros
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   ├── player_state
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   ├── respawn
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   ├── restart_manager
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   ├── rows
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   ├── teleport
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   ├── ui_state
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       ├── common
-│   │   │       └── l2mad
+│   │   │   └── __init__.py
 │   │   └── __init__.py
 │   ├── features
 │   │   ├── __init__.py
 │   │   ├── afterbuff_macros.py
-│   │   ├── autobuff_service.py
 │   │   ├── buff_after_respawn.py
 │   │   ├── dashboard_reset.py
 │   │   ├── flow_actions.py
@@ -485,8 +459,6 @@ Revive
 │   ├── logging_setup.py
 │   ├── revive.log
 │   └── updater.py
-├── debug
-│   └── match_preview
 ├── debug_af_boh
 │   ├── mask_alive.png
 │   ├── mask_any.png
