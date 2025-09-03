@@ -1,3 +1,4 @@
+﻿# app/launcher_html.py
 # === FILE: app/launcher_html.py
 from __future__ import annotations
 import os
@@ -35,6 +36,14 @@ from core.vision.capture.gdi import find_window, get_window_info
 
 # --- updater (используется только для проверки наличия апдейта) ---
 from core.updater import get_remote_version, is_newer_version
+
+from core.engines.autofarm.zone_repo import get_zone_info as af_get_zone_info
+from core.engines.autofarm.zone_repo import list_zones_declared
+from core.engines.autofarm.skill_repo import list_skills as af_list_skills
+from core.engines.autofarm.skill_repo import list_professions as af_list_profs
+from core.engines.autofarm.skill_repo import debug_professions as af_debug_profs
+from core.engines.autofarm.service import AutoFarmService
+from core.engines.autofarm.runner import run_af_click_button as af_run_click
 
 LOG_PATH = "revive.log"
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
@@ -114,6 +123,7 @@ class Bridge:
             get_window=lambda: self._safe_window(),
             get_language=lambda: self.language,
             on_status=lambda msg, ok: self._emit_status("postrow", msg, ok),
+            on_finished=lambda: self._af_after_tp()   # ← НОВОЕ
         )
         self.to_village = ToVillage(
             controller=self.controller,
@@ -150,6 +160,25 @@ class Bridge:
             get_language=lambda: self.language,
         )
         self._last_status: Dict[str, Dict[str, Any]] = {}
+        self.orch.set_autofarm_start(lambda: self.af_start())
+
+        # --- AutoFarm сервис (гейт перед стартом) ---
+        self.autofarm = AutoFarmService(
+            controller=self.controller,
+            get_server=lambda: self.server,
+            get_language=lambda: self.language,
+            get_window=lambda: self._safe_window(),
+            is_alive=lambda: self.watcher.is_alive(),
+            schedule=_schedule,
+            on_status=lambda text, ok=None: self._emit_status("af", text, ok),
+            log=self._log,
+        )
+        # приоритеты: true -> шаг завершён
+        # если у объекта нет is_running/is_busy — считаем, что готов.
+        self.autofarm.register_pre_step("restart", lambda: not getattr(self.restart, "is_running", lambda: False)())
+        self.autofarm.register_pre_step("to_village", lambda: not getattr(self.to_village, "is_running", lambda: False)())
+        self.autofarm.register_pre_step("postrow", lambda: not getattr(self.postrow, "is_running", lambda: False)())
+        self.autofarm.register_pre_step("autobuff", lambda: not getattr(self.autobuff, "is_busy", lambda: False)())
 
         # --- UI model ---
         self.ui: Dict[str, Any] = {
@@ -234,6 +263,62 @@ class Bridge:
         _schedule(self._periodic_update_check, 2_000)
 
     # ---------- helpers ----------
+    # ---------- не дает запускать что-либо пока цикл запущен
+    def _is_cycle_busy(self) -> bool:
+        """Любой из основных шагов в работе → занято."""
+        try:
+            if getattr(self.restart,  "is_running", lambda: False)(): return True
+            if getattr(self.to_village,"is_running", lambda: False)(): return True
+            if getattr(self.postrow,  "is_running", lambda: False)(): return True
+            if getattr(self.autobuff, "is_busy",   lambda: False)(): return True
+        except Exception:
+            pass
+        return False
+
+    def _on_dead_proxy(self, st):
+        if self._is_cycle_busy():
+            self._emit_status("watcher", "[flow] busy → skip on_dead", None)
+            return
+        self.orch.on_dead(st)
+
+    def _on_alive_proxy(self, st):
+        if self._is_cycle_busy():
+            self._emit_status("watcher", "[flow] busy → skip on_alive", None)
+            try: self.autofarm.notify_after_tp()
+            except Exception: pass
+            return
+        self.orch.on_alive(st)
+        try:
+            self.autofarm.notify_after_tp()
+        except Exception:
+            pass
+
+    def buff_run_once(self) -> bool:
+        if self._is_cycle_busy():
+            self._emit_status("buff", "Занято основным циклом", False)
+            return False
+        if not self._window_found:
+            self._emit_status("buff", "Окно не найдено", False)
+            return False
+        w = self._ensure_buff_worker()
+        ok = w.run_once()
+        self._emit_status("buff", "Баф выполнен" if ok else "Баф не выполнен", ok)
+        return bool(ok)
+
+    def macros_run_once(self) -> bool:
+        if self._is_cycle_busy():
+            self._emit_status("macros", "Занято основным циклом", False)
+            return False
+        ok = self.afterbuff_runner.run_once()
+        self._emit_status("macros", "Макросы выполнены" if ok else "Макросы не выполнены", ok)
+        return bool(ok)
+
+    def tp_teleport_now(self) -> bool:
+        if self._is_cycle_busy():
+            self._emit_status("tp", "Занято основным циклом", False)
+            return False
+    ############################
+
     def _log(self, *a):
         try:
             print(*a)
@@ -293,6 +378,14 @@ class Bridge:
         if not self._window_found:
             _schedule(self._autofind_tick, 3000)
 
+    def _af_after_tp(self):
+        try:
+            # запускать только если AF включён и режим "После ТП"
+            if getattr(self, "autofarm", None) and self.autofarm.enabled and self.autofarm.mode == "after_tp":
+                self.autofarm.arm()  # ← мягкий «вооружить»; реальный старт сделает сервис
+        except Exception as e:
+            self._emit_status("af", f"[AF] arm after TP failed: {e}", False)
+
     def _periodic_update_check(self):
         try:
             rv = get_remote_version()
@@ -312,6 +405,10 @@ class Bridge:
 
     def _on_alive_proxy(self, st):
         self.orch.on_alive(st)
+        try:
+            self.autofarm.notify_after_tp()
+        except Exception:
+            pass
 
     # ---------- JS API ----------
     def get_init_state(self) -> Dict[str, Any]:
@@ -596,6 +693,147 @@ class Bridge:
         except Exception:
             pass
 
+    # --- helpers для zones.json ---
+    def _zones_json_path(self, server: str) -> str:
+        # относительный путь от корня проекта
+        return os.path.join("core", "engines", "autofarm", server, "zones.json")
+
+    def _read_zones(self, server: str) -> dict:
+        p = self._zones_json_path(server)
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            self._emit_status("af", f"[zones] read fail: {p}: {e}", False)
+            return {}
+
+    def _pick_title(self, z: dict, lang: str) -> str:
+        lang = (lang or "eng").lower()
+        return z.get(f"title_{lang}") or z.get("title_eng") or z.get("title_rus") or ""
+
+    def _pick_about(self, z: dict, lang: str) -> str:
+        lang = (lang or "eng").lower()
+        about = z.get("about")
+        if isinstance(about, dict):
+            return about.get(lang) or about.get("eng") or about.get("rus") or ""
+        if isinstance(about, str):
+            return about
+        return ""
+
+    def _pick_full_names(self, z: dict, lang: str) -> list:
+        lang = (lang or "eng").lower()
+        mons = z.get("monsters") or {}
+        # приоритет *_full, затем исторические ключи
+        for key in (f"{lang}_full", "eng_full", "rus_full", lang, "eng", "rus"):
+            arr = mons.get(key)
+            if isinstance(arr, list) and arr:
+                return list(arr)
+        return []
+
+    def _zone_gallery(self, server: str, zone_id: str, z: dict) -> list:
+        # ожидаем файлы в: core/engines/servers/<server>/zones/<zone_id>/
+        base = Path("core") / "engines" / "autofarn" / server / "zones" / zone_id
+        out = []
+        for name in (z.get("gallery") or []):
+            p = (base / name)
+            try:
+                if p.exists():
+                    out.append({"name": name, "src": p.resolve().as_uri()})
+            except Exception:
+                pass
+        return out
+
+    # -- попап инфо зоны автофарма
+    def af_list_zones_declared_only(self, lang: str = "eng"):
+        server = getattr(self, "server", "") or "common"
+        data = self._read_zones(server)
+        out = []
+        for zid, z in (data or {}).items():
+            if isinstance(z, dict):
+                title = self._pick_title(z, lang) or zid
+                out.append({"id": zid, "title": title})
+        return out
+
+    def af_zone_info(self, zone_id: str, lang: str = "eng"):
+        server = getattr(self, "server", "") or "common"
+        data = self._read_zones(server)
+        z = (data or {}).get(zone_id) or {}
+        return {
+            "id": zone_id,
+            "title": self._pick_title(z, lang) or zone_id,
+            "about": self._pick_about(z, lang),
+            "images": self._zone_gallery(server, zone_id, z),
+            # ВАЖНО: для UI отдаём длинные имена
+            "monsters": self._pick_full_names(z, lang),
+        }
+
+    # вернуть только объявленные в server/zones.json
+    def af_list_zones_declared_only(self, lang: str):
+        server = getattr(self, "server", "") or getattr(self, "_server", "") or ""
+        return list_zones_declared(server, lang or "eng")
+
+    def af_get_professions(self, lang: str = ""):
+        try:
+            lang = (lang or self.language or "eng")
+            return af_list_profs(lang)
+        except Exception as e:
+            print(f"[autofarm] af_get_professions error: {e}")
+            return []
+
+    def af_professions_debug(self):
+        return af_debug_profs()
+
+    def af_get_attack_skills(self, profession: str, lang: str):
+        server = getattr(self, "server", "") or getattr(self, "_server", "") or "common"
+        return af_list_skills(profession, ["attack"], lang or "eng", server)
+
+    #Автофарм
+    def _autofarm_start_stub(self):
+        # сюда подключится реальный движок: core/engines/autofarm/<server>/engine.py
+        self._emit_status("af", "Старт автофарма (заглушка)", True)
+        # пример: вызвать серверный сценарий
+        # try:
+        #     from core.engines.autofarm.<server>.engine import start as af_start
+        #     af_start(self.controller, self._safe_window(), self.language, self.ui, self.account)
+        # except Exception as e:
+        #     self._emit_status("af", f"Не удалось запустить: {e}", False)
+    def autofarm_set_mode(self, mode: str):
+        self.autofarm.set_mode((mode or "after_tp").lower())
+
+    def autofarm_set_enabled(self, enabled: bool):
+        self.autofarm.set_enabled(bool(enabled))
+        self._emit_status("af", "Включено" if enabled else "Выключено", True if enabled else None)
+
+    def autofarm_validate(self, ui_state: Dict[str, Any]):
+        # ui_state: {profession, skills:[{slug,...}], zone, ...}
+        ok = True; reason = None
+        if not ui_state.get("profession"):
+            ok, reason = False, "Выберите профессию"
+        elif not any((s.get("slug") for s in (ui_state.get("skills") or []))):
+            ok, reason = False, "Добавьте атакующий скилл"
+        elif not ui_state.get("zone"):
+            ok, reason = False, "Выберите зону"
+        return {"ok": ok, "reason": reason}
+
+    def autofarm_save(self, ui_state: Dict[str, Any]):
+        # сохраняем конфиг в сервисе, не включая/выключая
+        self.autofarm.set_enabled(self.autofarm.enabled, ui_state or {})
+        return {"ok": True}
+
+    def af_start(self, mode: str = "after_tp") -> bool:
+        """
+        Заглушка: жмём кнопку автофарма через шаблон из движка.
+        Позже сюда можно вставить ожидание окончания приоритетных флоу.
+        """
+        def _st(msg, ok=None): self._emit_status("postrow", f"[AF] {msg}", ok)
+        return af_run_click(
+            server=self.server,
+            controller=self.controller,
+            get_window=lambda: self._safe_window(),
+            get_language=lambda: self.language,
+            on_status=_st
+        )
+
     # --- window close hook (called from JS) ---
     def _py_exit(self) -> None:
         self.shutdown()
@@ -630,7 +868,7 @@ $html = @"
 html,body{margin:0;height:100%;background:#111;color:#fff}
 .container{position:relative;width:360px;height:170px}
 img{position:absolute;left:144px;top:28px;width:72px;height:72px}
-p{position:absolute;top:110px;width:100%;text-align:center;font:600 13px 'Segoe UI', Tahoma, Verdana, system-ui}
+p{position:absolute;top:110px;width:100%;text-align:center;font:900 13px 'Segoe UI', Tahoma, Verdana, system-ui}
 </style></head>
 <body>
 <div class="container">
@@ -726,6 +964,13 @@ def launch_gui(local_version: str):
         api.tp_get_categories, api.tp_get_locations, api.tp_get_selected_row_id,
         api.tp_set_selected_row_id, api.tp_teleport_now, api.run_update_check,
         api.shutdown, api._py_exit,
+        api.af_get_professions,
+        api.af_get_attack_skills,
+        api.af_list_zones_declared_only,
+        api.af_zone_info,
+        api.af_professions_debug,
+        api.autofarm_set_mode, api.autofarm_set_enabled, api.autofarm_validate, api.autofarm_save,
+        api.af_start,
     )
 
     # 4) события

@@ -290,6 +290,23 @@ class FlowOrchestrator:
         finally:
             self._tp_success = False
 
+    # --- хуки автофарма ---
+    def set_autofarm_start(self, start_fn):
+        """Передай сюда функцию, которая реально запускает автофарм."""
+        self._af_start_fn = start_fn
+
+    def step_autofarm_after_rows(self):
+        """Шаг после маршрута: старт автофарма (если хук задан)."""
+        fn = getattr(self, "_af_start_fn", None)
+        if not callable(fn):
+            self._log("[orch] autofarm hook not set; skip")
+            return
+        try:
+            ok = bool(fn())
+            self._log(f"[orch] autofarm start → {'OK' if ok else 'FAIL'}")
+        except Exception as e:
+            self._log(f"[orch] autofarm start error: {e}")
+
     # ---------------- helpers ----------------
     def _raise_after_death(self):
         try:

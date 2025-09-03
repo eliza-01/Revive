@@ -5,12 +5,15 @@ from typing import Callable, Optional, Dict, List, Any, Tuple
 from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 
 class PostTPRowRunner:
-    def __init__(self, controller, server: str, get_window, get_language, on_status=lambda *_: None):
+    def __init__(self, controller, server: str, get_window, get_language,
+                 on_status: Callable[[str, Optional[bool]], None] = lambda *_: None,
+                 on_finished: Callable[[], None] = lambda: None):
         self.controller = controller
         self.server = server
         self.get_window = get_window
         self.get_language = get_language
         self._on_status = on_status
+        self._on_finished = on_finished   # ← NEW
 
     def set_server(self, server: str): self.server = server
 
@@ -22,7 +25,6 @@ class PostTPRowRunner:
         except Exception:
             zones, templates = {}, {}
 
-        # flow лежит: core/servers/<server>/flows/rows/<village>/<location>/<row_id>.py
         mod_path = f"core.servers.{self.server}.flows.rows.{village_id}.{location_id}.{row_id}"
         try:
             flow_mod = importlib.import_module(mod_path)
@@ -44,7 +46,13 @@ class PostTPRowRunner:
             extras={},
         )
         execu = FlowOpExecutor(ctx, on_status=self._on_status, logger=lambda m: print(m))
-        return run_flow(flow, execu)
+        try:
+            return run_flow(flow, execu)
+        finally:
+            try:
+                self._on_finished()   # ← вызов по окончании маршрута (успех/фейл — не важно)
+            except Exception:
+                pass
 
 class RowsController:
     """

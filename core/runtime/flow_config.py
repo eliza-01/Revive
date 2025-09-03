@@ -4,5 +4,6 @@ PRIORITY = [
     "macros_after_buff",
     "recheck_charged",
     "tp_if_ready",
-    "post_tp_row",            # ← новый шаг после ТП
+    "post_tp_row",
+    "autofarm_after_rows",
 ]

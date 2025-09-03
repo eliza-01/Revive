@@ -1,4 +1,4 @@
-# core/servers/l2mad/zones/restart.py
+﻿# core/servers/boh/zones/restart.py
 from typing import Dict, Tuple, Union, List
 
 ZoneLTRB = Tuple[int, int, int, int]

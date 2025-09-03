@@ -1,0 +1,22 @@
+{
+  "mystic_muse": {
+    "title_eng": "Mystic Muse",
+    "title_rus": "СС",
+    "skills": {
+      "attack": { "eng": ["hydro_blast","solar_flare","aura_flare","ice_vortex"],
+                  "rus": ["hydro_blast","solar_flare","aura_flare","ice_vortex"] },
+      "debuff": { "eng": ["surrender_to_water","curse_fear","sleep","aura_flash","cancellation"],
+                  "rus": ["surrender_to_water","curse_fear","sleep","aura_flash","cancellation"] },
+      "buff":   { "eng": ["freezing_skin"], "rus": ["freezing_skin"] }
+    }
+  },
+  "sagittarius": {
+    "title_eng": "Sagittarius",
+    "title_rus": "Хавк",
+    "skills": {
+      "attack": { "eng": ["attack"], "rus": ["attack"] },
+      "debuff": { "eng": ["stun_shot"], "rus": ["stun_shot"] },
+      "buff":   { "eng": ["dash"], "rus": ["dash"] }
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "Varka_1": {
+    "title_rus": "Варка. Маршрут 1",
+    "title_eng": "Varka. Route 1",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
+      "rus": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"]
+    }
+  },
+  "Dion_1": {
+    "title_rus": "Дион. Маршрут 1",
+    "title_eng": "Dion. Route 1",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng_full": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Хобгоблин", "Людоед Тумран"],
+      "rus_full": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Хобгоблин", "Людоед Тумран"],
+      "eng_short": ["Гризли", "Рейнджер", "Монстроглаз", "Хобгоблин", "Людоед"],
+      "rus_short": ["Гризли", "Рейнджер", "Монстроглаз", "Хобгоблин", "Людоед"]
+    }
+  },
+  "Ruins_of_agony_start": {
+    "title_rus": "Ruins of Agony. ТП.",
+    "title_eng": "Ruins of Agony. ТП.",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng": ["Главарь Скелетов Следопытов", "Скелет Разведчик"],
+      "rus": ["Главарь Скелетов Следопытов", "Скелет Разведчик"]
+    }
+  },
+  "Dwarf_village": {
+    "title_rus": "Деревня Гномов. За воротами 1.",
+    "title_eng": "Dwarf Village. Behind the Gates 1.",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng": ["Орк", "Черный", "Сыщик"],
+      "rus": ["Орк", "Черный", "Сыщик"]
+    }
+  },
+  "Dragon_valley": {
+    "title_rus": "Долина драконов. На споте снаружи.",
+    "title_eng": "Dragon_valley. Behind the Gates .",
+    "about": { "rus": "Сосаловка 35+", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng_full": ["Придорожный Падальщик", "Василиск Стражник", "Змей"],
+      "rus_full": ["Придорожный Падальщик", "Василиск Стражник", "Змей"],
+      "eng_short": ["Придорожный Падальщик", "Василиск Стражник", "Змей"],
+      "rus_short": ["Придорожный Падальщик", "Василиск Стражник", "Змей"]
+    }
+  }
+}

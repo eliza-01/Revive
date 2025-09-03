@@ -1,4 +1,4 @@
-﻿# core/servers/l2mad/zones/rows.py
+﻿# core/servers/boh/zones/rows.py
 from typing import Dict, Tuple, Union, List
 
 ZoneLTRB = Tuple[int, int, int, int]
