@@ -1,2 +1,2 @@
-﻿# engines/respawn/__init__.py
+﻿# core/engines/respawn/__init__.py
 # namespace package

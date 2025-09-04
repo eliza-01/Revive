@@ -1,4 +1,4 @@
-# core/engines/autofarm/common/templates_map.py
+﻿# core/engines/autofarm/server/common/templates_map.py
 TEMPLATES_AF = {
     "autofarm": ["interface", "autofarm.png"],
 }

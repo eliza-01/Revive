@@ -1,4 +1,4 @@
-# core/features/player_state.py
+﻿# core/features/archive/player_state.py
 # Подсчёт HP по цветам в общей зоне STATE. Без OCR.
 import importlib
 import threading

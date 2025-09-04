@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-04 00:35:10
+Generated: 2025-09-04 18:48:48
 
 Revive
 ├── app
@@ -55,22 +55,75 @@ Revive
 │   │   └── upx.exe
 │   └── icon.ico
 ├── core
-│   ├── arduino
-│   │   ├── safe_serial.py
-│   │   ├── send_command.py
-│   │   ├── send_safe.py
-│   │   └── serial_port.py
-│   ├── checks
-│   │   └── charged.py
 │   ├── engines
+│   │   ├── autofarm
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── orchestrator_rules.py
+│   │   │   │   ├── common
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── professions.json
+│   │   │   │   │   ├── skills_catalog.json
+│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── l2mad
+│   │   │   │   │   ├── flows
+│   │   │   │   │   │   └── af_click.json
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── autofarm.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       └── interface
+│   │   │   │   │   │           └── autofarm.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   ├── skill_repo.py
+│   │   │   └── zone_repo.py
+│   │   ├── buff
+│   │   │   └── __init__.py
+│   │   ├── macros
+│   │   │   └── __init__.py
+│   │   ├── player_state
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── state_data.py
+│   │   │   │   ├── l2mad
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   └── watcher.py
 │   │   ├── respawn
 │   │   │   ├── server
 │   │   │   │   ├── boh
 │   │   │   │   │   ├── templates
 │   │   │   │   │   │   ├── eng
-│   │   │   │   │   │   └── rus
+│   │   │   │   │   │   ├── rus
+│   │   │   │   │   │   │   └── to_village_button.png
+│   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── orchestrator_rules.py
 │   │   │   │   │   └── respawn_data.py
 │   │   │   │   ├── l2mad
 │   │   │   │   └── __init__.py
@@ -99,6 +152,9 @@ Revive
 │   │   ├── restart_manager.py
 │   │   ├── to_village.py
 │   │   └── tp_after_respawn.py
+│   ├── orchestrators
+│   │   ├── rules_base.py
+│   │   └── runtime.py
 │   ├── os
 │   │   └── win
 │   │       ├── mouse.py
@@ -357,7 +413,8 @@ Revive
 │   │   ├── win32
 │   │   │   └── gdi_backend.py
 │   │   ├── __init__.py
-│   │   └── matching.py
+│   │   ├── matching.py
+│   │   └── zones.py
 │   ├── __init__.py
 │   ├── connection.py
 │   ├── connection_test.py

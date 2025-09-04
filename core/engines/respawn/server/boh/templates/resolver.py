@@ -1,3 +1,4 @@
+﻿# core/engines/respawn/server/boh/templates/resolver.py
 # engines/respawn/server/<server>/templates/resolver.py
 # Жёсткий, предсказуемый резолвер для шаблонов respawn-движка.
 # Поддерживает только известные файлы. Никаких плейсхолдеров.
