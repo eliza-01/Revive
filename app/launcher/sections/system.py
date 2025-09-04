@@ -46,6 +46,8 @@ class SystemSection(BaseSection):
         self.s.setdefault("server", (list_servers() or ["l2mad"])[0])
         self.s.setdefault("_last_status", {})
         self.s.setdefault("respawn_enabled", True)
+        self.s.setdefault("respawn_wait_enabled", False)
+        self.s.setdefault("respawn_wait_seconds", 120)
         self.s.setdefault("buff_enabled", False)
         self.s.setdefault("buff_mode", "profile")
         self.s.setdefault("buff_method", "")
@@ -176,7 +178,7 @@ class SystemSection(BaseSection):
         if self.s["server"] not in servers:
             self._apply_profile(servers[0])
 
-        # если ещё не было driver-статуса — продублируем ping
+        # повторный ping при первом заходе
         if "driver" not in self.s["_last_status"]:
             try:
                 self.controller.send("ping")
@@ -196,6 +198,12 @@ class SystemSection(BaseSection):
             "buff_current": self.s.get("buff_method") or "",
             "tp_methods": [TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER],
             "driver_status": self.s["_last_status"].get("driver", {"text": "Состояние связи: неизвестно", "ok": None}),
+            # ⬇️ конфиг респавна для UI
+            "respawn": {
+                "enabled": bool(self.s.get("respawn_enabled", False)),
+                "wait_enabled": bool(self.s.get("respawn_wait_enabled", False)),
+                "wait_seconds": int(self.s.get("respawn_wait_seconds", 120)),
+            },
         }
 
     def set_language(self, lang: str):

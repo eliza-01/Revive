@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 IGNORED_DIRS = {"venv", ".idea", "_tmp", "__pycache__", ".git", "build"}
 
 ENCODING_RE = re.compile(r"coding[:=]\s*([-\w.]+)")
-PATH_HEADER_RE = re.compile(r"^#\s+([A-Za-z0-9_\-./\\]+\.py)\s*$")
+PATH_HEADER_RE = re.compile(r"^(?:#|//)\s+([A-Za-z0-9_\-./\\]+?\.[A-Za-z0-9]+)\s*$")
 
 def detect_encoding(lines: list[str]) -> str | None:
     # PEP 263: cookie must be on line 1 or 2 (index 0 or 1), possibly after shebang
@@ -38,7 +38,8 @@ def is_ignored(p: Path) -> bool:
 
 def compute_header(root: Path, file_path: Path) -> str:
     rel_posix = PurePosixPath(file_path.relative_to(root)).as_posix()
-    return f"# {rel_posix}"
+    prefix = "//" if file_path.suffix.lower() == ".js" else "#"
+    return f"{prefix} {rel_posix}"
 
 def place_header(lines: list[str], header: str) -> tuple[list[str], bool]:
     if not lines:
@@ -88,8 +89,13 @@ def process_file(root: Path, p: Path) -> tuple[bool, str]:
     header = compute_header(root, p)
     new_lines, changed = place_header(lines, header)
     if changed:
-        enc_cookie = detect_encoding(lines)
-        write_text(p, "\n".join(ln.rstrip("\r\n") for ln in new_lines) + ("\n" if new_lines and not new_lines[-1].endswith("\n") else ""), enc_cookie or enc_read)
+        enc_cookie = detect_encoding(lines) if p.suffix.lower() == ".py" else None
+        write_text(
+            p,
+            "\n".join(ln.rstrip("\r\n") for ln in new_lines) + (
+                "\n" if new_lines and not new_lines[-1].endswith("\n") else ""),
+            enc_cookie or enc_read
+        )
     return changed, header
 
 def main():
@@ -99,20 +105,21 @@ def main():
         sys.exit(2)
     changed_cnt = 0
     total = 0
-    for p in root.rglob("*.py"):
-        if is_ignored(p) or any(part.startswith(".") and part != ".git" for part in p.parts if part != p.name):
-            continue
-        total += 1
-        try:
-            changed, header = process_file(root, p)
-            if changed:
-                changed_cnt += 1
-                print(f"[UPDATED] {p}  ->  {header}")
-            else:
-                print(f"[OK]      {p}")
-        except Exception as e:
-            print(f"[SKIP]    {p}  ({e})")
-    print(f"\nDone. {changed_cnt} updated of {total} files.")
+    for pattern in ("*.py", "*.js"):
+        for p in root.rglob(pattern):
+            if is_ignored(p) or any(part.startswith(".") and part != ".git" for part in p.parts if part != p.name):
+                continue
+            total += 1
+            try:
+                changed, header = process_file(root, p)
+                if changed:
+                    changed_cnt += 1
+                    print(f"[UPDATED] {p}  ->  {header}")
+                else:
+                    print(f"[OK]      {p}")
+            except Exception as e:
+                print(f"[SKIP]    {p}  ({e})")
+        print(f"\nDone. {changed_cnt} updated of {total} files.")
 
 if __name__ == "__main__":
     main()

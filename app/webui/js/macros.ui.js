@@ -1,3 +1,4 @@
+﻿// app/webui/js/macros.ui.js
 (function () {
   const $ = (sel) => document.querySelector(sel);
 

@@ -1,3 +1,4 @@
+﻿// app/webui/js/buff.ui.js
 (function () {
   const $ = (sel) => document.querySelector(sel);
 

@@ -58,6 +58,15 @@
   async function init() {
     const init = await pywebview.api.get_init_state();
 
+    const r = init.respawn || {};
+    const chkRespawn = document.querySelector("#chkRespawn");
+    const chkWait    = document.querySelector("#chkRespawnWait");
+    const sec        = document.querySelector("#respawnWaitSec");
+
+    if (chkRespawn) chkRespawn.checked = !!r.enabled;
+    if (chkWait)    chkWait.checked    = !!r.wait_enabled;
+    if (sec)        sec.value          = (typeof r.wait_seconds === "number" ? r.wait_seconds : 120);
+
     $("#ver").textContent = `Версия: ${init.version}`;
     $("#lang").value = init.language;
 
@@ -97,6 +106,7 @@
     if (window.UIBuff)    window.UIBuff.init();
     if (window.UIMacros)  window.UIMacros.init();
     if (window.UIRespawn) window.UIRespawn.init();
+    if (window.UIState)   window.UIState.init();
     if (window.UITP)      {
       window.UITP.init();
       await window.UITP.refreshTPCats();

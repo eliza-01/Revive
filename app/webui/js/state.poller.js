@@ -1,3 +1,5 @@
+﻿// app/webui/js/state.poller.js
+//кнопка «Мониторинг»
 (function () {
   const $ = (sel) => document.querySelector(sel);
 

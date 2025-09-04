@@ -1,4 +1,4 @@
-# app/ui/window_probe.py
+﻿# _archive/app/ui/window_probe.py
 import tkinter as tk
 import time
 from typing import Callable, Optional, Dict, List

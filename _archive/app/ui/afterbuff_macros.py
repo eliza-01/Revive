@@ -1,4 +1,4 @@
-﻿# app/ui/afterbuff_macros.py
+﻿# _archive/app/ui/afterbuff_macros.py
 import tkinter as tk
 import tkinter.ttk as ttk
 

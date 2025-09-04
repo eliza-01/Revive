@@ -1,4 +1,4 @@
-﻿# app/ui/respawn_controls.py
+﻿# _archive/app/ui/respawn_controls.py
 import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable

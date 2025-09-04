@@ -1,4 +1,4 @@
-# app/ui/tp_controls.py
+﻿# _archive/app/ui/tp_controls.py
 import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable, Optional, Tuple

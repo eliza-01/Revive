@@ -1,5 +1,5 @@
-﻿# tools/collect.py
-# usage: python tools/collect.py --root . --out collected --sections A,B,C,D,E,F,G,H,I
+﻿# tools/dump.py
+# usage: python tools/dump.py --root . --out collected --sections A,B,C,D,E,F,G,H,I
 from __future__ import annotations
 import argparse, sys, os, io
 from pathlib import Path
@@ -90,33 +90,35 @@ SECTIONS: dict[str, list[str]] = {
 
     # D) Tk-UI
     "D": [
-        "app/ui/__init__.py",
-        "app/ui/account_settings.py",
-        "app/ui/afterbuff_macros.py",
-        "app/ui/buff_controls.py",
-        "app/ui/interval_buff.py",
-        "app/ui/respawn_controls.py",
-        "app/ui/state_controls.py",
-        "app/ui/tp_controls.py",
-        "app/ui/updater_dialog.py",
-        "app/ui/window_probe.py",
-        "app/ui/widgets.py",
+        # "app/ui/__init__.py",
+        # "app/ui/account_settings.py",
+        # "app/ui/afterbuff_macros.py",
+        # "app/ui/buff_controls.py",
+        # "app/ui/interval_buff.py",
+        # "app/ui/respawn_controls.py",
+        # "app/ui/state_controls.py",
+        # "app/ui/tp_controls.py",
+        # "app/ui/updater_dialog.py",
+        # "app/ui/window_probe.py",
+        # "app/ui/widgets.py",
     ],
 
     # E) Обвязка/лаунчеры (новая структура launcher/)
     "E": [
-        "app/__init__.py",
-        "app/__main__.py",
-        "app/launcher_bootstrap.py",
+        # "app/__init__.py",
+        # "app/__main__.py",
+        # "app/launcher/__init__.py",
 
-        "app/launcher/__init__.py",
+        # "app/launcher_bootstrap.py",
+
+        "app/launcher/sections/*.py",
         "app/launcher/base.py",
         "app/launcher/main.py",
         "app/launcher/wiring.py",
         "app/launcher/sections/*.py",
 
-        "core/updater.py",
-        "core/logging_setup.py",
+#         "core/updater.py",
+#         "core/logging_setup.py",
     ],
 
     # F) Vision
@@ -154,9 +156,9 @@ SECTIONS: dict[str, list[str]] = {
     # I) WebUI (HTML/CSS/JS) — без бинарных ассетов
     "I": [
         "app/webui/index.html",
-        "app/webui/css/*.css",
+        # "app/webui/css/*.css",
         "app/webui/js/*.js",
-        "app/webui/assets/*.txt",
+        # "app/webui/assets/*.txt",
     ],
 }
 

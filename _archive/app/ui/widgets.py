@@ -1,4 +1,4 @@
-# app/ui/widgets.py
+﻿# _archive/app/ui/widgets.py
 import tkinter as tk
 import tkinter.ttk as ttk
 

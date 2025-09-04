@@ -2,6 +2,9 @@
 # единая точка, где создаются сервисы из core.* и прокидываются в секции.
 from __future__ import annotations
 from typing import Dict, Any
+
+import time
+
 from core.connection import ReviveController
 from core.runtime.state_watcher import StateWatcher
 from core.features.flow_orchestrator import FlowOrchestrator
@@ -11,6 +14,7 @@ from core.features.to_village import ToVillage
 from core.servers.registry import get_server_profile, list_servers
 
 from .sections.system import SystemSection
+from .sections.state import StateSection
 from .sections.respawn import RespawnSection
 from .sections.buff import BuffSection
 from .sections.macros import MacrosSection
@@ -109,8 +113,9 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
     # секции
     sections = [
         SystemSection(window, local_version, controller, watcher, orch, sys_state, schedule),
-        RespawnSection(window, controller, watcher, orch, sys_state, schedule),
-        BuffSection(window, controller, watcher, sys_state, schedule, checker=None),  # если нужен checker — подставишь
+        StateSection(window, watcher, sys_state),  # ← мониторинг (watcher_* API)
+        RespawnSection(window, sys_state),  # ← настройки респавна
+        BuffSection(window, controller, watcher, sys_state, schedule, checker=checker),
         MacrosSection(window, controller, sys_state),
         TPSection(window, controller, watcher, sys_state, schedule),
         AutofarmSection(window, controller, watcher, sys_state, schedule),
@@ -120,20 +125,60 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         try:
             exported = sec.expose()
             if isinstance(exported, dict):
-                # при конфликте имён берём последнее объявление (или замени на проверку, если хочешь жёстко падать)
                 exposed.update(exported)
         except Exception as e:
             print(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
+    _shutdown_done = False
+
     def shutdown():
+        global _shutdown_done
+        if _shutdown_done:
+            return
+        _shutdown_done = True
+
+        # 1) остановить автоповторы/таймеры, которые сами себя перезапускают
+        try:
+            sys_state["_autofind_stop"] = True
+        except Exception as e:
+            print(f"[shutdown] autofind stop flag: {e}")
+
+        # 2) гасим внешние сервисы (rows_ctrl, orch, checker — если есть)
+        try:
+            rc = sys_state.get("rows_ctrl")
+            if rc and hasattr(rc, "stop"):
+                rc.stop()
+        except Exception as e:
+            print(f"[shutdown] rows_ctrl.stop(): {e}")
+
+        try:
+            if orch and hasattr(orch, "shutdown"):
+                orch.shutdown()
+        except Exception as e:
+            print(f"[shutdown] orch.shutdown(): {e}")
+
+        try:
+            chk = sys_state.get("checker")
+            if chk and hasattr(chk, "stop"):
+                chk.stop()
+        except Exception as e:
+            print(f"[shutdown] checker.stop(): {e}")
+
+        # 3) останавливаем watcher и ЖДЁМ его завершения
         try:
             watcher.stop()
-        except:
-            pass
+            for _ in range(20):  # ~2 сек максимум
+                if not watcher.is_running():
+                    break
+                time.sleep(0.1)
+        except Exception as e:
+            print(f"[shutdown] watcher.stop(): {e}")
+
+        # 4) закрываем контроллер (последним)
         try:
-            controller.close()
-        except:
-            pass
-        # если где-то используешь AutobuffService — не забудь его сюда добавить и вызвать stop()
+            if controller:
+                controller.close()
+        except Exception as e:
+            print(f"[shutdown] controller.close(): {e}")
 
     return {"sections": sections, "shutdown": shutdown, "exposed": exposed}

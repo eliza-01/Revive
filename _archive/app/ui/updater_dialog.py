@@ -1,4 +1,4 @@
-# app/ui/updater_dialog.py
+﻿# _archive/app/ui/updater_dialog.py
 import threading
 import tkinter as tk
 import tkinter.ttk as ttk
