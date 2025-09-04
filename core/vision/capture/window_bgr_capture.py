@@ -11,6 +11,7 @@ from typing import Optional, Tuple, Dict
 
 import numpy as np
 from core.vision.win32.gdi_backend import get_screen
+from core.vision.zones import compute_zone_ltrb
 
 def capture_window_region_bgr(window: Dict, zone: Tuple[int, int, int, int]) -> Optional[np.ndarray]:
     """
@@ -31,23 +32,8 @@ def capture_window_region_dict(window: Dict, zone: Dict) -> Optional[np.ndarray]
       - {"centered": True, "width": W, "height": H}
       - {"left": L, "top": T, "width": W, "height": H}
     """
-    wx, wy, ww, wh = window["x"], window["y"], window["width"], window["height"]
-
-    if zone.get("fullscreen"):
-        x1, y1 = wx, wy
-        x2, y2 = wx + ww, wy + wh
-    elif zone.get("centered"):
-        w, h = int(zone["width"]), int(zone["height"])
-        cx, cy = wx + ww // 2, wy + wh // 2
-        x1, y1 = cx - w // 2, cy - h // 2
-        x2, y2 = x1 + w, y1 + h
-    else:
-        x1 = wx + int(zone["left"])
-        y1 = wy + int(zone["top"])
-        x2 = x1 + int(zone["width"])
-        y2 = y1 + int(zone["height"])
-
-    return get_screen(x1, y1, x2, y2)
+    l, t, r, b = compute_zone_ltrb(window, zone)
+    return capture_window_region_bgr(window, (l, t, r, b))
 
 # backward compatibility alias
 def gdi_capture_zone(window_info: Dict, zone: Dict) -> Optional[np.ndarray]:

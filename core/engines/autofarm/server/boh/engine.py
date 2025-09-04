@@ -69,11 +69,13 @@ def _target_sys_message_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
 
 def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,int,int]], int]:
     """
-    Из core.servers.<server>.zones.state берём:
-      - COLORS['hp_alive_monster_rgb_boh']
-      - COLORS['hp_dead_monster_rgb_boh']
-      - HP_COLOR_TOLERANCE
+    Возвращает (alive_palette_RGB, dead_palette_RGB, tolerance).
+    Палитры заданы в RGB.
     """
+    monster_alive_rgb = [(139, 98, 96), (128, 70, 68), (111, 23, 19), (136, 28, 24), (171, 48, 34)]
+    monster_dead_rgb  = [(70, 61, 62), (61, 49, 50), (48, 28, 27), (57, 32, 31), (67, 38, 36)]
+    tol = 2
+    return monster_alive_rgb, monster_dead_rgb, tol
 
 
 _debug_dump_done = False
@@ -332,22 +334,24 @@ def _move_client(win: Dict, x: int, y: int) -> None:
     except Exception as e:
         print(f"[AF boh][move] failed: {e}")
 
-def _left_click(controller) -> None:
-    try:
-        controller.send("l")  # прошивка: Mouse.click(MOUSE_LEFT) на 'l'
-        return
-    except Exception:
-        pass
-    try:
-        USER32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
-        USER32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
-    except Exception as e:
-        print(f"[AF boh][lclick] failed: {e}")
+def _movenclick_client(controller, win: Dict, x: int, y: int, delay_s: float = 0.40) -> None:
+    """
+    Переводим клиентские (x,y) в абсолютные, двигаем курсор и ждём delay_s
+    перед кликом. Клик – ТОЛЬКО через Arduino (ReviveController._click_left_arduino).
+    """
+    abs_x = int((win.get("x") or 0) + x)
+    abs_y = int((win.get("y") or 0) + y)
 
-def _movenclick_client(controller, win: Dict, x: int, y: int) -> None:
-    _move_client(win, x, y)
-    time.sleep(0.4)
-    _left_click(controller)
+    # при необходимости можно сфокусировать окно (раскомментируй строку ниже)
+    # controller.focus(win)
+
+    controller.move(abs_x, abs_y)
+    time.sleep(max(0.0, float(delay_s)))
+    try:
+        controller._click_left_arduino()  # единый допустимый клик
+    except AttributeError:
+        # на случай, если контроллер иной — запасной путь
+        controller.send("l")
 
 # ищем target dots по цветам вокруг ника
 # --- DOT by color (friend/enemy) ---

@@ -18,13 +18,16 @@ def _load_template_abs(path: str) -> Optional[np.ndarray]:
     except Exception:
         return None
 
-def _resolve_path(server: str, lang: str, parts: Sequence[str]) -> Optional[str]:
-    """
-    Единственный источник истины — resolver сервера:
-    core.servers.<server>.templates.resolver.resolve(lang, *parts) -> abs_path
-    """
-    mod = importlib.import_module(f"core.servers.{server}.templates.resolver")
-    return getattr(mod, "resolve")(lang, *parts)
+def _resolve_path(server: str, lang: str, parts: Sequence[str], engine: str) -> Optional[str]:
+    import importlib
+    try:
+        mod = importlib.import_module(f"engines.{engine}.server.{server}.templates.resolver")
+        resolve = getattr(mod, "resolve", None)
+        if callable(resolve):
+            return resolve(lang, *parts)
+    except Exception:
+        return None
+    return None
 
 def match_in_zone(
         window: Dict,
@@ -33,6 +36,7 @@ def match_in_zone(
         lang: str,
         template_parts: Sequence[str],
         threshold: float = 0.87,
+        engine: str = None,
 ) -> Optional[Point]:
     """
     Вернёт центр найденного шаблона в ЭКРАННЫХ координатах или None.
@@ -47,7 +51,9 @@ def match_in_zone(
         return None
 
     # путь к шаблону — только через серверный resolver
-    tpath = _resolve_path(server, lang, template_parts)
+    if not engine:
+        return None  # явное требование: без имени движка не резолвим
+    tpath = _resolve_path(server, lang, template_parts, engine=engine)
     if not tpath:
         return None
 
