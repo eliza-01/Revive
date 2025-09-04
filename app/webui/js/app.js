@@ -9,7 +9,8 @@
     if (text) el.textContent = text;
     return el;
   };
-  const setStatus = (sel, text, ok) => {
+  // делаем setStatus доступным модулям
+  window.setStatus = (sel, text, ok) => {
     const el = $(sel); if (!el) return;
     el.textContent = text || "";
     el.classList.remove("ok", "err", "warn", "gray");
@@ -17,8 +18,10 @@
     else if (ok === false) el.classList.add("err");
     else el.classList.add("gray");
   };
+  const setStatus = window.setStatus;
 
   // public sink для Python
+   // Общий «синк» для статусов/данных. Пусть модули дергают его по необходимости.
   window.ReviveUI = {
     onStatus: ({ scope, text, ok }) => {
       const id = {
@@ -34,67 +37,23 @@
       setStatus(id, text, ok);
     },
     onRows: (rows) => {
-      const sel = $("#rows");
+      const sel = document.querySelector("#rows");
+      if (!sel) return;
       sel.innerHTML = "";
       sel.appendChild(create("option", { value: "" }, "—"));
       rows.forEach(([rid, title]) => sel.appendChild(create("option", { value: rid }, title)));
     },
-    onRowSelected: (rid) => { $("#rows").value = rid || ""; },
+    onRowSelected: (rid) => {
+      const sel = document.querySelector("#rows");
+      if (sel) sel.value = rid || "";
+    },
     onBuffMethods: (methods, current) => {
-      const m = $("#buffMethod");
-      m.innerHTML = "";
-      if (!methods || !methods.length) {
-        m.appendChild(create("option", { value: "" }, "—"));
-        m.disabled = true;
-      } else {
-        methods.forEach(x => m.appendChild(create("option", { value: x }, x)));
-        m.value = current || methods[0];
-        m.disabled = false;
+      // просто пробрасываем в BUFF-модуль
+      if (window.UIBuff && typeof window.UIBuff.updateMethods === "function") {
+        window.UIBuff.updateMethods(methods || [], current || "");
       }
     }
   };
-
-  // --- macros rows: dropdown like AF keys (без new Option) ---
-  function buildMacrosRow(val) {
-    const KEYS = ["1","2","3","4","5","6","7","8","9","0"];
-    const sel = create("select", { class: "key", "data-scope": "macros-key" });
-    KEYS.forEach(k => sel.appendChild(create("option", { value: k }, k)));
-    sel.value = (val && KEYS.includes(String(val))) ? String(val) : "1";
-    sel.addEventListener("change", () => {
-      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
-    });
-    return sel;
-  }
-  function readMacrosSequence() {
-    return Array
-      .from($("#macrosRows").querySelectorAll('select[data-scope="macros-key"]'))
-      .map(x => x.value);
-  }
-  function ensureAtLeastOneRow() {
-    const cont = $("#macrosRows");
-    if (!cont.children.length) cont.appendChild(buildMacrosRow("1"));
-    try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
-  }
-
-  // periodic state poll
-  async function tickState() {
-    try {
-      const st = await pywebview.api.get_state_snapshot();
-      const hp = $("#hp"), cp = $("#cp");
-      if (st.hp == null) { hp.textContent = "-- %"; cp.textContent = "-- %"; }
-      else {
-        hp.textContent = `${st.hp} %`;
-        cp.textContent = `100 %`;
-        hp.style.color = st.hp > 50 ? "#28a745" : (st.hp > 15 ? "#d39e00" : "#e55353");
-      }
-      if (pywebview.api.watcher_is_running) {
-        const running = await pywebview.api.watcher_is_running();
-        setStatus("#status-watcher", running ? "Мониторинг: вкл" : "Мониторинг: выкл", running ? true : null);
-        $("#chkMonitor").checked = !!running;
-      }
-    } catch (_) {}
-    setTimeout(tickState, 2000);
-  }
 
   async function init() {
     const init = await pywebview.api.get_init_state();
@@ -112,7 +71,6 @@
     (init.tp_methods || []).forEach(m => tpMethodSel.appendChild(create("option", { value: m }, m)));
     tpMethodSel.value = (init.tp_methods && init.tp_methods[0]) || "dashboard";
 
-    window.ReviveUI.onBuffMethods(init.buff_methods || [], init.buff_current || "");
 
     if (init.driver_status) setStatus("#status-driver", init.driver_status.text, init.driver_status.ok);
     setStatus("#status-watcher", init.monitoring ? "Мониторинг: вкл" : "Мониторинг: выкл", init.monitoring ? true : null);
@@ -135,20 +93,28 @@
       $("#acc-pin").value = acc.pin || "";
     } catch (_) {}
 
-    await refreshTPCats();
+    // Инициализация вынесенных модулей (порядок важен минимально)
+    if (window.UIBuff)    window.UIBuff.init();
+    if (window.UIMacros)  window.UIMacros.init();
+    if (window.UIRespawn) window.UIRespawn.init();
+    if (window.UITP)      {
+      window.UITP.init();
+      await window.UITP.refreshTPCats();
+    }
+    if (window.UIStatePoller) window.UIStatePoller.start(); // hp/cp + watcher статус
 
-    // ensure one macros row
-    ensureAtLeastOneRow();
+    // теперь безопасно пробросить методы бафа — модуль уже инициализирован
+    window.ReviveUI.onBuffMethods(init.buff_methods || [], init.buff_current || "");
 
     // handlers
     $("#lang").addEventListener("change", async e => {
       await pywebview.api.set_language(e.target.value);
-      await refreshTPCats();
+      if (window.UITP) await window.UITP.refreshTPCats();
     });
 
     serverSel.addEventListener("change", async e => {
       await pywebview.api.set_server(e.target.value);
-      await refreshTPCats();
+      if (window.UITP) await window.UITP.refreshTPCats();
     });
 
     $("#btnFind").addEventListener("click", async () => {
@@ -176,56 +142,6 @@
         pin: $("#acc-pin").value
       });
     });
-
-    // respawn
-    $("#chkMonitor").addEventListener("change", e => {
-      pywebview.api.respawn_set_monitoring(e.target.checked);
-      setStatus("#status-watcher", e.target.checked ? "Мониторинг: вкл" : "Мониторинг: выкл", e.target.checked ? true : null);
-      setTimeout(async () => {
-        try {
-          if (pywebview.api.watcher_is_running) {
-            const running = await pywebview.api.watcher_is_running();
-            setStatus("#status-watcher", running ? "Мониторинг: вкл" : "Мониторинг: выкл", running ? true : null);
-            $("#chkMonitor").checked = !!running;
-          }
-        } catch (_) {}
-      }, 200);
-    });
-    $("#chkRespawn").addEventListener("change", e => pywebview.api.respawn_set_enabled(e.target.checked));
-
-    // buff
-    $("#chkBuff").addEventListener("change", e => pywebview.api.buff_set_enabled(e.target.checked));
-    $("#buffMode").addEventListener("change", e => pywebview.api.buff_set_mode(e.target.value));
-    $("#buffMethod").addEventListener("change", e => pywebview.api.buff_set_method(e.target.value));
-    $("#btnBuffOnce").addEventListener("click", async () => { await pywebview.api.buff_run_once(); });
-
-    // macros
-    $("#btnAddRow").addEventListener("click", () => {
-      $("#macrosRows").appendChild(buildMacrosRow("1"));
-      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
-    });
-    $("#btnDelRow").addEventListener("click", () => {
-      const cont = $("#macrosRows");
-      if (cont.children.length > 1) cont.removeChild(cont.lastElementChild);
-      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
-    });
-    $("#chkMacros").addEventListener("change", e => pywebview.api.macros_set_enabled(e.target.checked));
-    $("#chkMacrosAlways").addEventListener("change", e => pywebview.api.macros_set_run_always(e.target.checked));
-    $("#macrosDelay").addEventListener("change", e => pywebview.api.macros_set_delay(parseFloat(e.target.value || "0")));
-    $("#macrosDur").addEventListener("change", e => pywebview.api.macros_set_duration(parseFloat(e.target.value || "0")));
-    $("#btnMacrosOnce").addEventListener("click", () => pywebview.api.macros_run_once());
-
-    // TP
-    $("#chkTP").addEventListener("change", e => pywebview.api.tp_set_enabled(e.target.checked));
-    $("#tpMethod").addEventListener("change", e => pywebview.api.tp_set_method(e.target.value));
-    $("#tpCat").addEventListener("change", async e => { await pywebview.api.tp_set_category(e.target.value); await refreshTPLocs(); });
-    $("#tpLoc").addEventListener("change", e => pywebview.api.tp_set_location(e.target.value));
-    $("#btnTPNow").addEventListener("click", () => pywebview.api.tp_teleport_now());
-
-    $("#rows").addEventListener("change", e => pywebview.api.tp_set_selected_row_id(e.target.value || ""));
-    $("#btnRowClear").addEventListener("click", () => { $("#rows").value = ""; pywebview.api.tp_set_selected_row_id(""); });
-
-    tickState();
   }
 
   // --- ждать готовности pywebview ---
@@ -239,25 +155,5 @@
       else if (++tries > 100) { clearInterval(poll); }
     }, 50);
   }
-
-  async function refreshTPCats() {
-    const cats = await pywebview.api.tp_get_categories();
-    const sel = $("#tpCat");
-    sel.innerHTML = "";
-    sel.appendChild(create("option", { value: "" }, "— не выбрано —"));
-    cats.forEach(c => sel.appendChild(create("option", { value: c.id }, c.title)));
-    sel.value = "";
-    await refreshTPLocs();
-  }
-  async function refreshTPLocs() {
-    const cid = $("#tpCat").value || "";
-    const locs = await pywebview.api.tp_get_locations(cid);
-    const sel = $("#tpLoc");
-    sel.innerHTML = "";
-    sel.appendChild(create("option", { value: "" }, "— не выбрано —"));
-    locs.forEach(l => sel.appendChild(create("option", { value: l.id }, l.title)));
-    sel.value = "";
-  }
-
   document.addEventListener("DOMContentLoaded", boot);
 })();
