@@ -2,7 +2,7 @@
 # единая точка, где создаются сервисы из core.* и прокидываются в секции.
 from __future__ import annotations
 from typing import Dict, Any
-
+import json
 import time
 
 from core.connection import ReviveController
@@ -21,7 +21,11 @@ from .sections.macros import MacrosSection
 from .sections.tp import TPSection
 from .sections.autofarm import AutofarmSection
 
-def build_container(window, local_version: str) -> Dict[str, Any]:
+from core.orchestrators.runtime import orchestrator_tick
+from core.engines.respawn.server.boh.orchestrator_rules import make_respawn_rule
+
+
+def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     # базовые зависимости
     controller = ReviveController()
     server = (list_servers() or ["l2mad"])[0]
@@ -36,15 +40,53 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         t.start()
 
     # shared state (минимум, остальное докинут секции по месту)
-    sys_state = {
+    sys_state: Dict[str, Any] = {
         "server": server,
         "language": language,
         "profile": profile,
         "window": None,
         "account": {"login": "", "password": "", "pin": ""},
         "buff_enabled": False,
-        "_charged": None,   # актуальное знание о «заряженности» (обновляет секция бафа)
+        "_charged": None,
+
+        # дефолты респавна (UI → SystemSection.get_init_state())
+        "respawn_enabled": True,
+        "respawn_wait_enabled": False,
+        "respawn_wait_seconds": 120,
+        "respawn_click_threshold": 0.70,
+        "respawn_confirm_timeout_s": 6.0,
     }
+
+    # --- HUD / лог в UI (должно быть ДО создания orch/rules) ---
+    def hud_push(text: str):
+        if not hud_window:
+            return
+        try:
+            js = f"window.ReviveHUD && window.ReviveHUD.push({json.dumps(str(text))})"
+            hud_window.evaluate_js(js)
+        except Exception as e:
+            print(f"[HUD] eval error: {e}")
+
+    def log_ui(msg: str):
+        try:
+            print(msg)
+        finally:
+            hud_push(msg)
+
+    # универсальный эмит в UI (аналог BaseSection.emit)
+    def ui_emit(scope: str, text: str, ok):
+        payload = {
+            "scope": scope,
+            "text": text,
+            "ok": (True if ok is True else False if ok is False else None)
+        }
+        sys_state.setdefault("_last_status", {})[scope] = payload
+        try:
+            window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})")
+        except Exception:
+            pass
+
+    sys_state["ui_emit"] = ui_emit
 
     # watcher + сервисы ядра
     watcher = StateWatcher(
@@ -54,7 +96,7 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         poll_interval=0.2,
         zero_hp_threshold=0.01,
         on_state=lambda st: None,            # секции подпишутся сами, если нужно
-        on_dead=lambda st: orch.on_dead(st),
+        on_dead=lambda st: orch.on_dead(st), # ссылка валидна во время вызова
         on_alive=lambda st: orch.on_alive(st),
         debug=True,
     )
@@ -82,10 +124,11 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         confirm_timeout_s=3.0,
     )
 
+    # оркестратор флоу (его лог уводим в HUD)
     orch = FlowOrchestrator(
         schedule=schedule,
-        log=print,
-        checker=None,                # при необходимости секция system прикрутит ChargeChecker/пробы
+        log=log_ui,
+        checker=None,                # ChargeChecker ниже прицепим в sys_state (для секций)
         watcher=watcher,
         to_village=to_village,
         postrow_runner=None,         # секции добавят
@@ -94,6 +137,7 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         get_language=lambda: sys_state["language"],
     )
 
+    # ChargeChecker + проба «зарядки»
     checker = ChargeChecker(interval_minutes=10, mode="ANY")
     checker.register_probe(
         "autobuff_icons",
@@ -109,18 +153,20 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         ),
         enabled=True,
     )
+    sys_state["checker"] = checker
 
     # секции
     sections = [
         SystemSection(window, local_version, controller, watcher, orch, sys_state, schedule),
-        StateSection(window, watcher, sys_state),  # ← мониторинг (watcher_* API)
-        RespawnSection(window, sys_state),  # ← настройки респавна
+        StateSection(window, watcher, sys_state),         # мониторинг (watcher_* API)
+        RespawnSection(window, sys_state),                # настройки респавна
         BuffSection(window, controller, watcher, sys_state, schedule, checker=checker),
         MacrosSection(window, controller, sys_state),
         TPSection(window, controller, watcher, sys_state, schedule),
         AutofarmSection(window, controller, watcher, sys_state, schedule),
     ]
-    exposed = {}
+
+    exposed: Dict[str, Any] = {}
     for sec in sections:
         try:
             exported = sec.expose()
@@ -129,10 +175,37 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         except Exception as e:
             print(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
+    # === «Новый» оркестратор с правилом респавна ===
+    rules = [make_respawn_rule(sys_state, watcher, controller)]
+
+    _orch_stop = {"stop": False}
+    sys_state["_orch_stop"] = _orch_stop
+
+    def _orch_tick():
+        if _orch_stop["stop"]:
+            return
+        try:
+            orchestrator_tick(sys_state, watcher, rules)
+        except Exception as e:
+            print("[orch] tick error:", e)
+        # ~5 тиков/сек
+        schedule(_orch_tick, 200)
+
+    # стартуем первый тик через 200 мс
+    schedule(_orch_tick, 200)
+
+    # exposed-хелпер для HUD (по необходимости)
+    def hud_dump():
+        try:
+            return {"ok": True}
+        except Exception as e:
+            return {"error": str(e)}
+    exposed["hud_dump"] = hud_dump
+
     _shutdown_done = False
 
     def shutdown():
-        global _shutdown_done
+        nonlocal _shutdown_done
         if _shutdown_done:
             return
         _shutdown_done = True
@@ -140,8 +213,9 @@ def build_container(window, local_version: str) -> Dict[str, Any]:
         # 1) остановить автоповторы/таймеры, которые сами себя перезапускают
         try:
             sys_state["_autofind_stop"] = True
+            _orch_stop["stop"] = True
         except Exception as e:
-            print(f"[shutdown] autofind stop flag: {e}")
+            print(f"[shutdown] flags: {e}")
 
         # 2) гасим внешние сервисы (rows_ctrl, orch, checker — если есть)
         try:

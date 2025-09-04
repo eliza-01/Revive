@@ -1,18 +1,18 @@
-﻿# core/engines/respawn/runner.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Callable, Optional, Dict
 
 class RespawnRunner:
     """
-    Обёртка над конкретным server-движком respawn.
-    Движок должен реализовать:
+    Обёртка над server-движком respawn.
+    Требуемые методы движка:
       - set_server(server: str) -> None
       - run_stand_up_once(window: Dict, lang: str, timeout_ms: int) -> bool
+      - run_procedure(window: Dict, lang: str, mode: str, wait_seconds: int, total_timeout_ms: int) -> bool
     """
 
     def __init__(
         self,
-        engine,  # engines.respawn.server.<server>.engine.create_engine(...)
+        engine,
         get_window: Callable[[], Optional[Dict]],
         get_language: Callable[[], str],
     ):
@@ -23,11 +23,21 @@ class RespawnRunner:
     def set_server(self, server: str) -> None:
         self.engine.set_server(server)
 
-    def run(self, timeout_ms: int = 14_000) -> bool:
-        """Запускает сценарий подъёма (stand_up)."""
+    def run(self, mode: str = "auto", wait_seconds: int = 0, total_timeout_ms: int = 14_000) -> bool:
+        """Запуск процедуры респавна согласно режиму."""
         win = self._get_window() or {}
         if not win:
             print("[respawn] no window")
             return False
         lang = (self._get_language() or "rus").lower()
-        return self.engine.run_stand_up_once(win, lang, timeout_ms=timeout_ms)
+        try:
+            return bool(self.engine.run_procedure(
+                window=win,
+                lang=lang,
+                mode=mode,
+                wait_seconds=wait_seconds,
+                total_timeout_ms=total_timeout_ms,
+            ))
+        except AttributeError:
+            # fallback на старый API
+            return bool(self.engine.run_stand_up_once(win, lang, timeout_ms=total_timeout_ms))

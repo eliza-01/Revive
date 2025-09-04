@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Revive HUD</title>
+  <style>
+    :root{ --bg:#111; --text:#e7e9ee; --muted:#9aa1ac; --accent:#ff9a00; --on:#34c759; }
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:600 12px/1.35 "Segoe UI",system-ui}
+    body{ -webkit-app-region: drag; user-select:none; }
+    .nodrag{ -webkit-app-region: no-drag; cursor:pointer; }
+
+    .wrap{display:flex;align-items:center;gap:6px;height:100%;padding:6px 8px;box-sizing:border-box}
+    .pin{width:14px;height:14px;display:inline-block;background:#222;border-radius:4px;position:relative}
+    .pin::before{content:"";position:absolute;inset:3px;background:var(--muted);border-radius:2px;transition:all .15s ease}
+    .pin.active::before{ background:var(--on); box-shadow:0 0 6px rgba(52,199,89,.6); }
+    .log{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+    .strong{color:var(--text)}
+    .sep{width:1px;height:14px;background:#222;opacity:.8;margin:0 4px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="pin" class="pin nodrag" title="Всегда поверх окон: вкл/выкл"></div>
+    <div class="sep"></div>
+    <div id="hudline" class="log">Готово. Здесь будут логи оркестратора (респавн/TP/баф/АФ)…</div>
+  </div>
+
+  <script>
+    (function () {
+      const line = document.getElementById('hudline');
+      const pin  = document.getElementById('pin');
+
+      function set(txt){ line.textContent = String(txt || "—"); }
+      function visualOnTop(on){
+        pin.classList.toggle('active', !!on);
+        pin.title = `Всегда поверх окон: ${on ? 'включено' : 'выключено'} (клик — переключить)`;
+      }
+
+      // публичный API — Python пушит последнее сообщение
+      window.ReviveHUD = {
+        push(txt){
+          const s = String(txt || "");
+          if (/(SUCCESS|FAIL|ERROR|Окно найдено|Мониторинг|Респавн|ТП|Баф|Автофарм)/i.test(s)) {
+            line.classList.add('strong');
+          } else {
+            line.classList.remove('strong');
+          }
+          set(s);
+        }
+      };
+
+      // клик по пину → асинхронный тоггл on_top через pywebview.api
+      pin.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try{
+          const r = await (window.pywebview?.api?.hud_toggle_pin?.());
+          if (r && typeof r.on_top !== 'undefined') visualOnTop(r.on_top);
+        } catch(_) {}
+      });
+
+      // стартовое состояние пина
+      (async function initPin(){
+        try{
+          const r = await (window.pywebview?.api?.hud_get_state?.());
+          if (r && typeof r.on_top !== 'undefined') { visualOnTop(r.on_top); return; }
+        } catch(_) {}
+        // фолбэк: по умолчанию HUD создаётся on_top=True
+        visualOnTop(true);
+      })();
+
+      // дефолтная строка уже выставлена в разметке
+    })();
+  </script>
+</body>
+</html>

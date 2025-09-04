@@ -1,14 +1,33 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-04 20:31:35
+Generated: 2025-09-04 23:11:17
 
 Revive
+├── _archive
+│   ├── app
+│   │   ├── ui
+│   │   │   ├── __init__.py
+│   │   │   ├── account_settings.py
+│   │   │   ├── afterbuff_macros.py
+│   │   │   ├── buff_controls.py
+│   │   │   ├── interval_buff.py
+│   │   │   ├── respawn_controls.py
+│   │   │   ├── state_controls.py
+│   │   │   ├── tp_controls.py
+│   │   │   ├── updater_dialog.py
+│   │   │   ├── widgets.py
+│   │   │   └── window_probe.py
+│   │   └── __init__.py
+│   └── __init__.py
 ├── app
+│   ├── dep
+│   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 │   ├── launcher
 │   │   ├── sections
 │   │   │   ├── autofarm.py
 │   │   │   ├── buff.py
 │   │   │   ├── macros.py
 │   │   │   ├── respawn.py
+│   │   │   ├── state.py
 │   │   │   ├── system.py
 │   │   │   └── tp.py
 │   │   ├── __init__.py
@@ -16,6 +35,9 @@ Revive
 │   │   ├── main.py
 │   │   └── wiring.py
 │   ├── webui
+│   │   ├── assets
+│   │   │   ├── icon.png
+│   │   │   └── preloader1.gif
 │   │   ├── css
 │   │   │   └── style.css
 │   │   ├── js
@@ -25,6 +47,7 @@ Revive
 │   │   │   ├── macros.ui.js
 │   │   │   ├── respawn.ui.js
 │   │   │   ├── state.poller.js
+│   │   │   ├── state.ui.js
 │   │   │   └── tp.ui.js
 │   │   └── index.html
 │   ├── __init__.py
@@ -156,6 +179,14 @@ Revive
 │   │   │   └── zone_repo.py
 │   │   ├── buff
 │   │   │   └── __init__.py
+│   │   ├── is_charged
+│   │   │   ├── server
+│   │   │   │   └── boh
+│   │   │   │       ├── templates
+│   │   │   │       │   └── resolver.py
+│   │   │   │       └── engine.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
 │   │   ├── macros
 │   │   │   └── __init__.py
 │   │   ├── player_state
@@ -490,7 +521,7 @@ Revive
 │   └── micro.ino
 ├── tools
 │   ├── add_headers.py
-│   ├── collect.py
+│   ├── dump.py
 │   └── tree.py
 ├── .gitignore
 ├── PROJECT_STRUCTURE.txt

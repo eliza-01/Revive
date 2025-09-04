@@ -82,30 +82,82 @@ def _res_path(*parts: str) -> str:
     base = os.path.join(getattr(sys, "_MEIPASS", ""), "app") if hasattr(sys, "_MEIPASS") else os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return os.path.normpath(os.path.join(base, *parts))
 
+
 def launch_gui(local_version: str):
-    # +++ СПЛЭШ: запускаем отдельным процессом до загрузки WebView +++
+    # +++ СПЛЭШ +++
     gif_path = _res_path("webui", "assets", "preloader1.gif")
     splash_proc, splash_ps1 = _spawn_splash(gif_path)
 
     try:
         index_path = _res_path("webui", "index.html")
+        hud_path   = _res_path("webui", "hud.html")
         if not os.path.exists(index_path):
             raise RuntimeError(f"Не найден UI: {index_path}")
+        if not os.path.exists(hud_path):
+            raise RuntimeError(f"Не найден HUD UI: {hud_path}")
 
+        # --- HUD окно (создаем первым, чтобы было поверх главного) ---
+        # ВАЖНО: без альфа-цветов. Только #RRGGBB, иначе ValueError.
+        hud_window = webview.create_window(
+            title="Revive HUD",
+            url=hud_path,
+            width=200,
+            height=50,
+            resizable=False,
+            frameless=True,  # компактная плашка без рамки
+            easy_drag=True,  # ← разрешить перетаскивать за любую область
+            on_top=True,  # по умолчанию поверх всех
+            background_color="#000000",  # непрозрачный цвет, иначе будет ValueError
+        )
+
+        # Экспорт небольшого API в HUD-окно (для пина)
+        def hud_get_state():
+            try:
+                return {"on_top": bool(getattr(hud_window, "on_top", False))}
+            except Exception as e:
+                return {"error": str(e)}
+
+        def hud_toggle_pin():
+            """
+            Тоггл always-on-top делаем асинхронно, чтобы не клинить GUI-тред.
+            Возвращаем новое состояние сразу.
+            """
+            try:
+                cur = bool(getattr(hud_window, "on_top", False))
+                new_state = (not cur)
+
+                import threading
+                def apply():
+                    try:
+                        hud_window.on_top = new_state
+                    except Exception as ex:
+                        print("[HUD] toggle error:", ex)
+
+                threading.Timer(0.01, apply).start()
+
+                return {"on_top": new_state}
+            except Exception as e:
+                return {"error": str(e)}
+
+        hud_window.expose(hud_get_state, hud_toggle_pin)
+
+        # --- Главное окно ---
         window = webview.create_window(
             title="Revive Launcher",
             url=index_path,
             width=820,
             height=900,
             resizable=False,
+            background_color="#000000",
         )
 
         # соберём зависимости/секции и отэкспортируем методы
-        c = build_container(window, local_version)
+        # ПЕРЕДАЁМ hud_window в build_container
+        c = build_container(window, local_version, hud_window=hud_window)
         for name, fn in c["exposed"].items():
             window.expose(fn)
 
-        # — закроем сплэш, когда окно показано/загружено
+        # закрыть сплэш при загрузке любого из окон (main достаточно)
         def _close_splash(*_):
             _kill_splash(splash_proc, splash_ps1)
 
@@ -113,13 +165,27 @@ def launch_gui(local_version: str):
         window.events.shown   += _close_splash
         window.events.closing += _close_splash
 
-        # чтобы в случае исключения сплэш не остался висеть
+        # аккуратное завершение сервисов
+        def _on_main_closing():
+            try:
+                c["shutdown"]()
+            except Exception:
+                pass
+            try:
+                if hud_window:
+                    hud_window.destroy()    # закроем HUD вместе с главным
+            except Exception:
+                pass
+
+        window.events.closing += _on_main_closing
+
+        # стартуем оба окна
         try:
+            # multiple windows supported; HUD будет сверху из-за on_top=True
             webview.start(debug=False, gui="edgechromium", http_server=True)
         finally:
             _kill_splash(splash_proc, splash_ps1)
 
     except Exception:
-        # на всякий пожарный — тоже прибьём сплэш
         _kill_splash(splash_proc, splash_ps1)
         raise

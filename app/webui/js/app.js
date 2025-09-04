@@ -25,14 +25,15 @@
   window.ReviveUI = {
     onStatus: ({ scope, text, ok }) => {
       const id = {
-        driver: "#status-driver",
-        window: "#status-window",
+        driver:  "#status-driver",
+        window:  "#status-window",
         watcher: "#status-watcher",
-        update: "#status-update",
-        buff: "#status-buff",
-        macros: "#status-macros",
-        tp: "#status-tp",
-        postrow: "#status-postrow"
+        update:  "#status-update",
+        buff:    "#status-buff",
+        macros:  "#status-macros",
+        tp:      "#status-tp",
+        postrow: "#status-postrow",
+        respawn: "#status-respawn"
       }[scope] || "#status-driver";
       setStatus(id, text, ok);
     },

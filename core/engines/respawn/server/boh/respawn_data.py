@@ -9,8 +9,8 @@ ZoneDecl = Union[ZoneLTRB, dict]
 
 ZONES: Dict[str, ZoneDecl] = {
     # Кнопка/баннер «встать/возродиться».
-    # Центр окна 200x200 — поправишь при необходимости.
-    "stand_up": {"centered": True, "width": 200, "height": 200},
+    # Центр окна 280x200 — поправишь при необходимости.
+    "death_banners": {"centered": True, "width": 280, "height": 200},
 }
 
 # Пути до шаблонов через серверный resolver
@@ -18,7 +18,7 @@ ZONES: Dict[str, ZoneDecl] = {
 # Используем маркер "<lang>", который движок заменит на фактический язык.
 TEMPLATES: Dict[str, List[str]] = {
     # приоритет: сначала то, чем реально пользуетесь
-    "reborn_banner": ["<lang>", "reborn_window_.png"],
+    "reborn_banner": ["<lang>", "reborn_window.png"],
     "death_banner":  ["<lang>", "to_village_button.png"],
     "accept_button":  ["<lang>", "accept_button.png"],
     "decline_button":  ["<lang>", "decline_button.png"],

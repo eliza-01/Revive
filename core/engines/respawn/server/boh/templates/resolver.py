@@ -1,5 +1,4 @@
 ﻿# core/engines/respawn/server/boh/templates/resolver.py
-# engines/respawn/server/<server>/templates/resolver.py
 # Жёсткий, предсказуемый резолвер для шаблонов respawn-движка.
 # Поддерживает только известные файлы. Никаких плейсхолдеров.
 
@@ -10,8 +9,10 @@ _LANG_FALLBACK = "rus"
 
 # Разрешённые имена файлов в каталоге языка
 _ALLOWED_FILES = {
-    "reborn_button.png",
     "to_village_button.png",
+    "reborn_window.png",
+    "accept_button.png",
+    "decline_button.png",
     # добавишь сюда новые имена — они сразу начнут резолвиться
 }
 

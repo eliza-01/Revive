@@ -1,6 +1,4 @@
-﻿# core/engines/respawn/server/boh/engine.py
-# engines/respawn/server/<server>/engine.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import time
 from typing import Optional, Dict, Tuple, Callable, List
 
@@ -12,17 +10,33 @@ from .respawn_data import ZONES, TEMPLATES
 Point = Tuple[int, int]
 Zone = Tuple[int, int, int, int]
 
-DEFAULT_CLICK_THRESHOLD = 0.87
+DEFAULT_CLICK_THRESHOLD = 0.70
 DEFAULT_CONFIRM_TIMEOUT_S = 6.0
 
-# какие шаблоны пробовать для stand_up и в каком порядке
-PREFERRED_TEMPLATE_KEYS: List[str] = ["reborn_banner", "death_banner"]
+# порядок проверки шаблонов
+PREFERRED_TEMPLATE_KEYS: List[str] = ["reborn_banner", "death_banner", "accept_button", "decline_button"]
 
+
+# сигналы (как договорились)
+# SIG_SCAN_START         = "BANNERS_SCAN_START"
+# SIG_FOUND_DEATH        = "BANNER_FOUND:DEATH"
+# SIG_FOUND_REBORN       = "BANNER_FOUND:REBORN"
+# SIG_CLICK_DEATH        = "CLICK:DEATH"
+# SIG_CLICK_REBORN       = "CLICK:REBORN_ACCEPT"
+# SIG_GONE_DEATH         = "BANNER_GONE:DEATH"
+# SIG_GONE_REBORN        = "BANNER_GONE:REBORN"
+# SIG_WAITING_HP         = "WAITING_HP"
+# SIG_ALIVE_OK           = "ALIVE_OK"
+# SIG_WAIT_TICK          = "WAIT_TICK"
+# SIG_TIMEOUT_CONFIRM    = "TIMEOUT:CONFIRM"
+# SIG_TIMEOUT_WAIT       = "TIMEOUT:WAIT_REBORN"
+# SIG_NO_BANNERS         = "NO_BANNERS"
+# SIG_FAIL               = "FAIL"
+# SIG_SUCCESS            = "SUCCESS"
 
 class RespawnEngine:
     """
-    Изолированный движок подъёма после смерти (respawn).
-    Работает через общий template_matcher.match_in_zone и серверный resolver.
+    Движок подъёма после смерти (respawn) со сканером баннеров и режимами процедуры.
     """
 
     def __init__(
@@ -33,6 +47,7 @@ class RespawnEngine:
         click_threshold: float = DEFAULT_CLICK_THRESHOLD,
         confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
         debug: bool = False,
+        on_report: Optional[Callable[[str, str], None]] = None,
     ):
         self.server = server
         self.controller = controller
@@ -40,19 +55,158 @@ class RespawnEngine:
         self.click_threshold = float(click_threshold)
         self.confirm_timeout_s = float(confirm_timeout_s)
         self.debug = bool(debug)
+        self.on_report = on_report
 
     # --- API ---
     def set_server(self, server: str) -> None:
         self.server = server
 
+    def scan_banner_key(self, window: Dict, lang: str) -> Optional[Tuple[Point, str]]:
+        """
+        Публичный сканер: вернуть ((x,y), key) либо None без побочных эффектов.
+        key ∈ {'reborn_banner','death_banner','accept_button','decline_button'}
+        """
+        zone_decl = ZONES.get("death_banners")
+        if not zone_decl or not window:
+            return None
+        ltrb = compute_zone_ltrb(window, zone_decl)
+
+        for key in PREFERRED_TEMPLATE_KEYS:
+            parts = TEMPLATES.get(key)
+            if not parts:
+                continue
+            pt = match_in_zone(
+                window=window,
+                zone_ltrb=ltrb,
+                server=self.server,
+                lang=(lang or "rus").lower(),
+                template_parts=parts,
+                threshold=self.click_threshold,
+                engine="respawn",
+            )
+            if pt is not None:
+                return (pt, key)
+        return None
+
+    def run_procedure(
+        self,
+        window: Dict,
+        lang: str,
+        mode: str = "auto",            # "wait_reborn" | "to_village" | "auto"
+        wait_seconds: int = 0,         # используется для "wait_reborn"
+        total_timeout_ms: int = 14_000 # защита от зацикливания
+    ) -> bool:
+        """
+        Высокоуровневая процедура согласно ТЗ. Шлёт репорты on_report(...).
+        """
+        mode = (mode or "auto").lower()
+        lang = (lang or "rus").lower()
+        self._report("BANNERS_SCAN_START", "Ищу баннеры (death/reborn)…")
+
+        # мгновенная победа, если уже живы
+        if self._is_alive():
+            self._report("ALIVE_OK", "Поднялись (hp > 0)")
+            self._report("SUCCESS", "Успешно восстановились")
+            return True
+
+        start_ts = time.time()
+        deadline = start_ts + max(1, int(total_timeout_ms)) / 1000.0
+
+        # Лямбда для одношагового активного подъёма
+        def _active_standup() -> bool:
+            ok = self.run_stand_up_once(window, lang, timeout_ms=int(max(1000, (deadline - time.time()) * 1000)))
+            return bool(ok)
+
+        # --- режим: to_village — ждём именно death_banner, иначе FAIL
+        if mode == "to_village":
+            found = self.scan_banner_key(window, lang)
+            if not found or found[1] != "death_banner":
+                self._report("NO_BANNERS", "Баннеры не найдены")
+                self._report("FAIL", "Не удалось подняться")
+                return False
+            return _active_standup()
+
+        # --- режим: wait_reborn — до wait_seconds тикаем и сканируем
+        if mode == "wait_reborn":
+            wait_seconds = max(0, int(wait_seconds or 0))
+            tick = 0
+            while time.time() < deadline:
+                if self._is_alive():
+                    self._report("ALIVE_OK", "Поднялись (hp > 0)")
+                    self._report("SUCCESS", "Успешно восстановились")
+                    return True
+
+                # тикер для UI (раз в сек)
+                now = time.time()
+                elapsed = int(now - start_ts)
+                if elapsed > tick and elapsed <= wait_seconds:
+                    tick = elapsed
+                    self._report("WAIT_TICK", f"Ожидание возрождения… {tick}/{wait_seconds} сек")
+
+                # попробуем найти баннер и сразу активироваться
+                fb = self.scan_banner_key(window, lang)
+                if fb is not None:
+                    key = fb[1]
+                    if key == "death_banner":
+                        self._report("BANNER_FOUND:DEATH", "Нашёл death_banner")
+                    elif key == "reborn_banner":
+                        self._report("BANNER_FOUND:REBORN", "Нашёл reborn_banner")
+                    ok = _active_standup()
+                    if ok:
+                        self._report("SUCCESS", "Успешно восстановились")
+                        return True
+                    else:
+                        self._report("FAIL", "Не удалось подняться")
+                        return False
+
+                if elapsed >= wait_seconds:
+                    self._report("TIMEOUT:WAIT_REBORN", "Истёк лимит ожидания возрождения")
+                    self._report("NO_BANNERS", "Баннеры не найдены")
+                    self._report("FAIL", "Не удалось подняться")
+                    return False
+
+                time.sleep(0.2)
+
+            # общий дедлайн
+            self._report("FAIL", "Не удалось подняться")
+            return False
+
+        # --- режим: auto — короткое ожидание (3–5 c), иначе FAIL
+        if mode == "auto":
+            soft_deadline = time.time() + 4.0
+            while time.time() < min(soft_deadline, deadline):
+                if self._is_alive():
+                    self._report("ALIVE_OK", "Поднялись (hp > 0)")
+                    self._report("SUCCESS", "Успешно восстановились")
+                    return True
+                fb = self.scan_banner_key(window, lang)
+                if fb is not None:
+                    key = fb[1]
+                    if key == "death_banner":
+                        self._report("BANNER_FOUND:DEATH", "Нашёл death_banner")
+                    elif key == "reborn_banner":
+                        self._report("BANNER_FOUND:REBORN", "Нашёл reborn_banner")
+                    ok = _active_standup()
+                    if ok:
+                        self._report("SUCCESS", "Успешно восстановились")
+                        return True
+                    else:
+                        self._report("FAIL", "Не удалось подняться")
+                        return False
+                time.sleep(0.2)
+
+            self._report("NO_BANNERS", "Баннеры не найдены")
+            self._report("FAIL", "Не удалось подняться")
+            return False
+
+        # неизвестный режим → ведём себя как auto
+        return self.run_procedure(window, lang, mode="auto", wait_seconds=0, total_timeout_ms=int((deadline - time.time()) * 1000))
+
     def run_stand_up_once(self, window: Dict, lang: str, timeout_ms: int = 14_000) -> bool:
-        """
-        Сценарий:
-          A) Активно кликаем по баннеру/кнопке, пока он виден.
-          B) Если баннер пропал — ждём загрузку до 10 сек.
-          C) Если не ожили — False.
-        """
-        # гарантируем фокус окна (если контроллер умеет)
+        """Активный подъём: кликаем по найденному баннеру до исчезновения/оживления."""
+        self._report("BANNERS_SCAN_START", "Ищу баннеры (death/reborn)…")
+
+        # фокус окна
         try:
             if hasattr(self.controller, "focus") and window:
                 self.controller.focus(window)
@@ -62,58 +216,58 @@ class RespawnEngine:
         total_deadline = time.time() + max(1, int(timeout_ms)) / 1000.0
 
         ok = self._click_until_alive_or_banner_gone(window, lang, total_deadline)
-        if ok is not None:
-            return ok
+        if ok is True:
+            self._report("SUCCESS", "Успешно восстановились")
+            return True
+        if ok is False:
+            self._report("FAIL", "Не удалось подняться")
+            return False
 
+        # баннер исчез — ждём загрузку
         load_deadline = time.time() + 10.0
         while time.time() < load_deadline:
             if self._is_alive():
                 self._log("[respawn] alive during loading wait")
+                self._report("ALIVE_OK", "Поднялись (hp > 0)")
+                self._report("SUCCESS", "Успешно восстановились")
                 return True
-            if self._banner_pt(window, lang) is not None:
+            res = self._find_banner(window, lang)  # без репорта
+            if res is not None:
                 ok2 = self._click_until_alive_or_banner_gone(window, lang, load_deadline)
-                if ok2 is not None:
-                    return ok2
+                if ok2 is True:
+                    self._report("SUCCESS", "Успешно восстановились")
+                    return True
+                if ok2 is False:
+                    self._report("FAIL", "Не удалось подняться")
+                    return False
             time.sleep(0.1)
 
         self._log("[respawn] fallback: still not alive and no banner")
+        self._report("NO_BANNERS", "Баннеры не найдены")
+        self._report("FAIL", "Не удалось подняться")
         return False
 
-    # Совместимость со старым именем
+    # совместимость
     def run_to_village_once(self, window: Dict, lang: str, timeout_ms: int = 14_000) -> bool:
         return self.run_stand_up_once(window, lang, timeout_ms)
 
     # --- internals ---
-    def _banner_pt(self, win: Dict, lang: str) -> Optional[Point]:
-        zone_decl = ZONES.get("stand_up")
-        if not zone_decl:
-            return None
-        ltrb = compute_zone_ltrb(win, zone_decl)
+    def _find_banner(self, win: Dict, lang: str) -> Optional[Tuple[Point, str]]:
+        """Внутренний вариант: без репортов."""
+        return self.scan_banner_key(win, lang)
 
-        # перебираем шаблоны по приоритету
-        for key in PREFERRED_TEMPLATE_KEYS:
-            parts = TEMPLATES.get(key)
-            if not parts:
-                continue
-            pt = match_in_zone(
-                window=win,
-                zone_ltrb=ltrb,
-                server=self.server,
-                lang=(lang or "rus").lower(),
-                template_parts=parts,
-                threshold=self.click_threshold,
-                engine="respawn",
-            )
-            if pt is not None:
-                return pt
-        return None
+    def _banner_with_report(self, win: Dict, lang: str) -> Optional[Tuple[Point, str]]:
+        """Скан с репортами BANNER_FOUND:* при успехе."""
+        res = self._find_banner(win, lang)
+        if res is not None:
+            _, key = res
+            if key == "death_banner":
+                self._report("BANNER_FOUND:DEATH", "Нашёл death_banner")
+            elif key == "reborn_banner":
+                self._report("BANNER_FOUND:REBORN", "Нашёл reborn_banner")
+        return res
 
     def _click(self, x: int, y: int, delay_s: float = 0.40) -> None:
-        """
-        ЕДИНСТВЕННЫЙ способ клика: через Arduino.
-        Движение курсора → пауза → клик (_click_left_arduino).
-        Координаты x,y ожидаются в абсолютных экранных координатах.
-        """
         try:
             if hasattr(self.controller, "move"):
                 self.controller.move(int(x), int(y))
@@ -121,7 +275,6 @@ class RespawnEngine:
             if hasattr(self.controller, "_click_left_arduino"):
                 self.controller._click_left_arduino()
             else:
-                # заплатка на случай альтернативного контроллера
                 self.controller.send("l")
         except Exception:
             pass
@@ -130,51 +283,71 @@ class RespawnEngine:
         try:
             return bool(self._is_alive_cb())
         except Exception:
-            return True  # не блокируемся на ошибке обратного вызова
+            return True
 
     def _click_until_alive_or_banner_gone(self, win: Dict, lang: str, phase_deadline: float) -> Optional[bool]:
-        """
-        Возвращает:
-          True  — ожили;
-          False — явный фейл (таймаут подтверждения с видимым баннером и исчерпан общий дедлайн);
-          None  — баннер исчез (переход к ожиданию загрузки).
-        """
         last_click_ts = 0.0
+        last_seen_key: Optional[str] = None
+
         while time.time() < phase_deadline:
             if self._is_alive():
                 self._log("[respawn] alive detected")
+                self._report("ALIVE_OK", "Поднялись (hp > 0)")
                 return True
 
-            pt = self._banner_pt(win, lang)
-            if pt is None:
-                return None  # баннера нет — ждём загрузку
+            res = self._banner_with_report(win, lang)
+            if res is None:
+                # баннер исчез
+                if last_seen_key == "death_banner":
+                    self._report("BANNER_GONE:DEATH", "Death_banner исчез — ждём загрузку")
+                elif last_seen_key == "reborn_banner":
+                    self._report("BANNER_GONE:REBORN", "Reborn баннер исчез — ждём подъёма")
+                return None
+
+            (pt, key) = res
+            last_seen_key = key
 
             now = time.time()
-            if now - last_click_ts >= 0.6:  # антидребезг
+            if now - last_click_ts >= 0.6:
                 self._log(f"[respawn] click @ {pt[0]},{pt[1]}")
-                self._click(pt[0], pt[1])  # движение + delay + Arduino click
+                if key == "death_banner":
+                    self._report("CLICK:DEATH", "Клик по death_banner")
+                elif key == "reborn_banner":
+                    self._report("CLICK:REBORN_ACCEPT", "Клик по кнопке согласия (reborn)")
+                self._click(pt[0], pt[1])
                 last_click_ts = now
 
                 confirm_deadline = now + self.confirm_timeout_s
                 while time.time() < confirm_deadline:
                     if self._is_alive():
                         self._log("[respawn] alive after click")
+                        self._report("ALIVE_OK", "Поднялись (hp > 0)")
                         return True
-                    if self._banner_pt(win, lang) is None:
-                        return None  # баннер пропал — пошла загрузка
+                    if self._find_banner(win, lang) is None:
+                        if key == "death_banner":
+                            self._report("BANNER_GONE:DEATH", "Death_banner исчез — ждём загрузку")
+                        elif key == "reborn_banner":
+                            self._report("BANNER_GONE:REBORN", "Reborn баннер исчез — ждём подъёма")
+                        return None
                     time.sleep(0.05)
+
+                self._report("TIMEOUT:CONFIRM", "Таймаут подтверждения после клика")
 
             time.sleep(0.05)
 
         self._log("[respawn] phase deadline reached with banner visible")
+        self._report("FAIL", "Не удалось подняться")
         return False
 
     def _log(self, msg: str):
         if self.debug:
-            try:
-                print(msg)
-            except Exception:
-                pass
+            try: print(msg)
+            except Exception: pass
+
+    def _report(self, code: str, text: str):
+        if callable(self.on_report):
+            try: self.on_report(code, text)
+            except Exception: pass
 
 
 def create_engine(
@@ -184,6 +357,7 @@ def create_engine(
     click_threshold: float = DEFAULT_CLICK_THRESHOLD,
     confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
     debug: bool = False,
+    on_report: Optional[Callable[[str, str], None]] = None,
 ) -> RespawnEngine:
     return RespawnEngine(
         server=server,
@@ -192,4 +366,5 @@ def create_engine(
         click_threshold=click_threshold,
         confirm_timeout_s=confirm_timeout_s,
         debug=debug,
+        on_report=on_report,
     )
