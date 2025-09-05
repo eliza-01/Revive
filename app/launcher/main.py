@@ -167,13 +167,17 @@ def launch_gui(local_version: str):
 
         # аккуратное завершение сервисов
         def _on_main_closing():
+            # 1) не блокируем UI — завершаем сервисы в отдельном потоке
             try:
-                c["shutdown"]()
+                import threading
+                threading.Thread(target=c["shutdown"], daemon=True).start()
             except Exception:
                 pass
+            # 2) уничтожаем HUD чуть позже, вне обработчика закрытия главного окна
             try:
                 if hud_window:
-                    hud_window.destroy()
+                    import threading as _th
+                    _th.Timer(0.05, lambda: hud_window.destroy()).start()
             except Exception:
                 pass
 

@@ -137,7 +137,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                         run_player_state(
                             server=sys_state.get("server") or "boh",
                             get_window=lambda: sys_state.get("window"),
-                            on_status=lambda *_: None,
+                            on_status=log_ui,
                             on_update=_on_ps_update,
                             cfg={"poll_interval": poll_interval},
                             # прерываем также если включилась пауза фокуса

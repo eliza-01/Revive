@@ -39,6 +39,14 @@ def _compute_hp_ratio(
     tol_dead: int,
     prev_ratio: float,
 ) -> float:
+    """
+    %HP = alive_px / (alive_px + dead_px_adj),
+    где dead_px_adj = max(0, dead_px - DEAD_BASELINE_PX).
+    Перекрытия (alive & dead) из числителя исключаем.
+    """
+    # базовая «наводка» мёртвых пикселей при полном HP
+    DEAD_BASELINE_PX = 4
+
     img = capture_window_region_bgr(win, zone_ltrb)
     if img is None or img.size == 0:
         return prev_ratio
@@ -46,30 +54,34 @@ def _compute_hp_ratio(
     alive_mask = mask_for_colors_bgr(img, colors_alive, tol=tol_alive) if colors_alive else None
     dead_mask  = mask_for_colors_bgr(img, colors_dead,  tol=tol_dead)  if colors_dead  else None
 
+    h, w = img.shape[:2]
+    total_pixels = int(h * w) if h and w else 0
+
     if alive_mask is not None and dead_mask is not None:
-        a_rect = biggest_horizontal_band(alive_mask)
-        d_rect = biggest_horizontal_band(dead_mask)
-        a_w = a_rect[2] if a_rect else 0
-        d_w = d_rect[2] if d_rect else 0
-        total = a_w + d_w
-        if total <= 0:
-            a_area = int(np.count_nonzero(alive_mask))
-            d_area = int(np.count_nonzero(dead_mask))
-            total = a_area + d_area
-            return (a_area / total) if total > 0 else prev_ratio
-        return a_w / total
+        alive_bin = (alive_mask > 0)
+        dead_bin  = (dead_mask  > 0)
 
-    if alive_mask is not None:
-        a_area = int(np.count_nonzero(alive_mask))
-        total = img.shape[0] * img.shape[1]
-        return (a_area / total) if total > 0 else prev_ratio
+        alive_only = int(np.count_nonzero(alive_bin & ~dead_bin))
+        dead_only  = int(np.count_nonzero(dead_bin  & ~alive_bin))
 
-    if dead_mask is not None:
-        d_area = int(np.count_nonzero(dead_mask))
-        total = img.shape[0] * img.shape[1]
-        return 1.0 - ((d_area / total) if total > 0 else 0.0)
+        dead_only_adj = max(0, dead_only - DEAD_BASELINE_PX)
+        denom = alive_only + dead_only_adj
+        if denom > 0:
+            return float(alive_only) / float(denom)
+        return prev_ratio
+
+    if alive_mask is not None and total_pixels > 0:
+        alive_px = int(np.count_nonzero(alive_mask))
+        return float(alive_px) / float(total_pixels)
+
+    if dead_mask is not None and total_pixels > 0:
+        dead_px = int(np.count_nonzero(dead_mask))
+        dead_adj = max(0, dead_px - DEAD_BASELINE_PX)
+        return 1.0 - (float(dead_adj) / float(total_pixels))
 
     return prev_ratio
+
+
 
 def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     get_window = ctx_base["get_window"]
@@ -109,6 +121,21 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
             hp_ratio = _compute_hp_ratio(win, zone, colors_alive, colors_dead, tol_alive, tol_dead, prev_ratio)
             prev_ratio = hp_ratio
+
+            # DEBUG: считаем количество пикселей dead|alive_colors и логируем
+            # try:
+            #     dbg_img = capture_window_region_bgr(win, zone)
+            #     if dbg_img is not None and dbg_img.size:
+            #         dead_mask_dbg = mask_for_colors_bgr(dbg_img, colors_dead, tol=tol_dead) if colors_dead else None
+            #         alive_mask_dbg = mask_for_colors_bgr(dbg_img, colors_alive, tol=tol_alive) if colors_alive else None
+            #         if dead_mask_dbg is not None:
+            #             dead_px = int(np.count_nonzero(dead_mask_dbg))
+            #             _emit(on_status, f"[HP] dead_pixels={dead_px}", None)
+            #         if alive_mask_dbg is not None:
+            #             alive_px = int(np.count_nonzero(alive_mask_dbg))
+            #             _emit(on_status, f"[HP] alive_pixels={alive_px}", None)
+            # except Exception:
+            #     pass
 
             if on_update:
                 try:

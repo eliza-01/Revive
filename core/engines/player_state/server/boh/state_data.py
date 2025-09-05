@@ -6,7 +6,7 @@ RGB = Tuple[int, int, int]
 
 # Координаты зоны STATE (HP/CP/MP) в client-координатах окна.
 ZONES: Dict[str, Zone] = {
-    "state": (0, 0, 185, 63),
+    "state": (0, 0, 170, 63),
 }
 
 # Цвета для HP: «живые» и «мёртвые» сегменты полосы. Списки RGB-точек.
