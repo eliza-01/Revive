@@ -97,23 +97,19 @@ def launch_gui(local_version: str):
             raise RuntimeError(f"Не найден HUD UI: {hud_path}")
 
         # --- HUD окно (создаём первым, чтобы было поверх главного) ---
-        # только #RRGGBB, без альфа-цветов
         hud_window = webview.create_window(
             title="Revive HUD",
             url=hud_path,
-            width=250,
-            height=40,
+            width=520,                 # шире
+            height=52,                 # компактнее по высоте
             resizable=False,
-            frameless=True,             # компактная плашка без рамки
-            # РЕШЕНИЕ ПРОБЛЕМЫ ПЕРЕТАСКИВАНИЯ:
-            # включаем easy_drag, чтобы окно можно было таскать за любую область.
-            # (CSS -webkit-app-region может не работать в EdgeChromium стабильно)
-            easy_drag=True,
-            on_top=True,                # по умолчанию поверх всех
-            background_color="#000000", # непрозрачный цвет, иначе ValueError
+            frameless=True,
+            easy_drag=True,            # перетаскивание за любую область без рамки
+            on_top=True,               # по умолчанию поверх всех
+            background_color="#000000",
         )
 
-        # API для HUD (совместимо с window.ReviveHUD.toggleOnTop() в hud.html)
+        # API для HUD
         def hud_state():
             try:
                 return {"on_top": bool(getattr(hud_window, "on_top", False))}
@@ -121,11 +117,9 @@ def launch_gui(local_version: str):
                 return {"error": str(e)}
 
         def hud_toggle_on_top():
-            """Тоггл on_top без блокировки GUI-потока."""
             try:
                 cur = bool(getattr(hud_window, "on_top", False))
                 new_state = not cur
-
                 import threading
                 def apply():
                     try:
@@ -133,12 +127,20 @@ def launch_gui(local_version: str):
                     except Exception as ex:
                         print("[HUD] toggle error:", ex)
                 threading.Timer(0.01, apply).start()
-
                 return {"on_top": new_state}
             except Exception as e:
                 return {"error": str(e)}
 
-        hud_window.expose(hud_state, hud_toggle_on_top)
+        def hud_set_hp(hp: int|None, cp: int|None):
+            try:
+                h = "" if hp is None else f"{int(hp)}"
+                c = "" if cp is None else f"{int(cp)}"
+                js = f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
+                hud_window.evaluate_js(js)
+            except Exception as e:
+                print(f"[HUD] hp eval error: {e}")
+
+        hud_window.expose(hud_state, hud_toggle_on_top, hud_set_hp)
 
         # --- Главное окно ---
         window = webview.create_window(

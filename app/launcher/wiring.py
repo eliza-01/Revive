@@ -1,12 +1,11 @@
 # app/launcher/wiring.py
 from __future__ import annotations
 from typing import Dict, Any
-import json, time
+import json, time, threading
 
 from core.arduino.connection import ReviveController
 from core.servers.registry import get_server_profile, list_servers
 
-# секции (StateSection можно оставить — он будет читать hp/cp из player_state через API секции)
 from .sections.system import SystemSection
 from .sections.state import StateSection
 from .sections.respawn import RespawnSection
@@ -15,11 +14,9 @@ from .sections.macros import MacrosSection
 from .sections.tp import TPSection
 from .sections.autofarm import AutofarmSection
 
-# новый оркестратор
 from core.orchestrators.runtime import orchestrator_tick
 from core.engines.respawn.server.boh.orchestrator_rules import make_respawn_rule
 
-# Наш новый player_state (без архива): фон-сервис на базе runner.run_player_state
 from core.engines.player_state.runner import run_player_state
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
@@ -28,7 +25,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     language = "rus"
     profile = get_server_profile(server)
 
-    import threading
     def schedule(fn, ms):
         t = threading.Timer(max(0.0, ms) / 1000.0, fn)
         t.daemon = True
@@ -50,7 +46,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         "respawn_confirm_timeout_s": 6.0,
     }
 
-    # --- HUD ---
+    # --- HUD helpers ---
     def hud_push(text: str):
         if not hud_window:
             return
@@ -59,6 +55,15 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             hud_window.evaluate_js(js)
         except Exception as e:
             print(f"[HUD] eval error: {e}")
+
+    def hud_set_hp(hp_percent: int, cp_percent: int = 100):
+        if not hud_window:
+            return
+        try:
+            js = f"window.ReviveHUD && window.ReviveHUD.setHP({int(hp_percent)}, {int(cp_percent)})"
+            hud_window.evaluate_js(js)
+        except Exception as e:
+            print(f"[HUD] setHP error: {e}")
 
     def log_ui(msg: str):
         try:
@@ -77,12 +82,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     sys_state["ui_emit"] = ui_emit
 
     # === Player State (наш движок) ===
-    sys_state["_ps_last"] = {}  # {'alive': bool|None, 'hp_ratio': float|None, 'cp_ratio': float|None, ...}
+    sys_state["_ps_last"] = {}
     sys_state["_ps_running"] = False
 
     def _on_ps_update(data: Dict[str, Any]):
         hp = data.get("hp_ratio")
-        # alive по HP (0 → мёртв)
         alive = None if hp is None else bool(hp > 0.001)
         sys_state["_ps_last"] = {
             "alive": alive,
@@ -90,16 +94,15 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             "cp_ratio": data.get("cp_ratio"),
             "ts": data.get("ts"),
         }
-        # лёгкий апдейт в UI
+        # лёгкий апдейт в UI + HUD
         try:
             if hp is not None:
-                window.evaluate_js(
-                    f"document.getElementById('hp').textContent = '{int(max(0, min(1.0, float(hp))) * 100)} %'")
+                pct = int(max(0, min(1.0, float(hp))) * 100)
+                window.evaluate_js(f"const e=document.getElementById('hp'); if(e) e.textContent='{pct} %'")
+                hud_set_hp(pct, 100)
         except Exception:
             pass
 
-    # фоновый сервис на базе runner.run_player_state
-    import threading, time
     class _PlayerStateService:
         def __init__(self):
             self._run = False
@@ -127,7 +130,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                         )
                     except Exception:
                         pass
-                    time.sleep(0.05)  # короткая пауза между перезапусками
+                    time.sleep(0.05)
                 sys_state["_ps_running"] = False
 
             self._thr = threading.Thread(target=loop, daemon=True)
@@ -138,7 +141,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     ps_service = _PlayerStateService()
 
-    # адаптер для оркестратора
     class _PSAdapter:
         def last(self) -> Dict[str, Any]:
             return sys_state.get("_ps_last") or {}
@@ -151,9 +153,13 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         def is_running(self) -> bool:
             return bool(sys_state.get("_ps_running", False))
 
+        # совместимость с SystemSection.set_server / set_language
+        def set_server(self, *_): pass
+        def set_language(self, *_): pass
+        def stop(self): ps_service.stop()
+
     ps_adapter = _PSAdapter()
 
-    # Секции (передаём ps_adapter туда, где у тебя раньше ждали watcher)
     sections = [
         SystemSection(window, local_version, controller, ps_adapter, sys_state, schedule),
         StateSection(window, ps_service, sys_state),
@@ -173,7 +179,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             print(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
-    # === Правило респавна на новом оркестраторе ===
     rules = [make_respawn_rule(sys_state, ps_adapter, controller, report=log_ui)]
 
     _orch_stop = {"stop": False}
@@ -188,7 +193,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             print("[orch] tick error:", e)
         schedule(_orch_tick, 200)
 
-    # стартуем сервисы
     ps_service.start(poll_interval=0.25)
     schedule(_orch_tick, 200)
 
@@ -204,7 +208,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         try: controller.close()
         except Exception as e: print(f"[shutdown] controller.close(): {e}")
 
-    # HUD прочее
     def hud_dump():
         try: return {"ok": True}
         except Exception as e: return {"error": str(e)}

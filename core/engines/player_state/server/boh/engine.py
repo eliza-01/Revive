@@ -15,13 +15,11 @@ from .state_data import (
     DEFAULT_POLL_INTERVAL,
 )
 
-
 class PlayerState:
     __slots__ = ("hp_ratio", "ts")
     def __init__(self, hp_ratio: float = 1.0, ts: float = 0.0):
         self.hp_ratio = float(hp_ratio)
         self.ts = float(ts)
-
 
 def _emit(status_cb: Optional[Callable[[str, Optional[bool]], None]], msg: str, ok: Optional[bool] = None):
     try:
@@ -31,7 +29,6 @@ def _emit(status_cb: Optional[Callable[[str, Optional[bool]], None]], msg: str, 
             print(f"[player_state/boh] {msg}")
     except Exception:
         print(f"[player_state/boh] {msg}")
-
 
 def _compute_hp_ratio(
     win: Dict,
@@ -44,7 +41,7 @@ def _compute_hp_ratio(
 ) -> float:
     img = capture_window_region_bgr(win, zone_ltrb)
     if img is None or img.size == 0:
-        return prev_ratio  # нет кадра — держим прошлую оценку
+        return prev_ratio
 
     alive_mask = mask_for_colors_bgr(img, colors_alive, tol=tol_alive) if colors_alive else None
     dead_mask  = mask_for_colors_bgr(img, colors_dead,  tol=tol_dead)  if colors_dead  else None
@@ -74,13 +71,7 @@ def _compute_hp_ratio(
 
     return prev_ratio
 
-
 def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
-    """
-    Главный цикл player_state для сервера BOH.
-    Читает HP по цветам в зоне STATE и публикует через ctx_base['on_update'] (если задан),
-    пока не будет should_abort().
-    """
     get_window = ctx_base["get_window"]
     on_status: Callable[[str, Optional[bool]], None] = ctx_base.get("on_status") or (lambda *_: None)
     on_update: Optional[Callable[[Dict[str, Any]], None]] = ctx_base.get("on_update")
@@ -94,10 +85,8 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     colors_alive = COLORS.get("hp_alive_rgb", []) or []
     colors_dead = COLORS.get("hp_dead_rgb", []) or []
 
-    # Допуски: отдельные для alive/dead, с возможностью переопределения через cfg
     tol_alive = int(cfg.get("hp_tol_alive", HP_TOLERANCE_ALIVE))
     tol_dead  = int(cfg.get("hp_tol_dead",  HP_TOLERANCE_DEAD))
-
     poll_interval = float(cfg.get("poll_interval", DEFAULT_POLL_INTERVAL))
 
     prev_ratio = 1.0
