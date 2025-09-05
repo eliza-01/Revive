@@ -2,6 +2,7 @@ _archive/
 app/dep/
 collected/
 documents/
+debug_af_boh/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

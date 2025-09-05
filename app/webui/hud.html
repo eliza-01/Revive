@@ -1,3 +1,4 @@
+<!-- app/webui/hud.html -->
 <!doctype html>
 <html lang="ru">
 <head>
@@ -8,6 +9,7 @@
   <style>
     :root{ --bg:#111; --text:#e7e9ee; --muted:#9aa1ac; --accent:#ff9a00; --on:#34c759; }
     html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:600 12px/1.35 "Segoe UI",system-ui}
+    /* ВАЖНО: вся область перетаскивается, кроме .nodrag */
     body{ -webkit-app-region: drag; user-select:none; }
     .nodrag{ -webkit-app-region: no-drag; cursor:pointer; }
 
@@ -24,33 +26,83 @@
   <div class="wrap">
     <div id="pin" class="pin nodrag" title="Всегда поверх окон: вкл/выкл"></div>
     <div class="sep"></div>
-    <div id="hudline" class="log">Готово. Здесь будут логи оркестратора (респавн/TP/баф/АФ)…</div>
+    <div id="hudline" class="log">HUD готов. Жду события оркестратора…</div>
   </div>
 
   <script>
     (function(){
       const line = document.getElementById('hudline');
-      const set = (txt) => { line.textContent = String(txt||""); };
-      // дефолтная строка
-      set("HUD готов. Жду события оркестратора…");
+      const pin  = document.getElementById('pin');
 
-      // API для Python
+      function setLine(txt){
+        line.textContent = String(txt||"");
+      }
+      function setStrong(on){
+        line.classList.toggle('strong', !!on);
+      }
+      function setPin(on){
+        pin.classList.toggle('active', !!on);
+        pin.title = "Всегда поверх окон: " + (on ? "вкл" : "выкл");
+      }
+
+      // ИНИЦИАЛИЗАЦИЯ: синхронизируем индикатор с фактическим состоянием окна
+      async function syncPinFromBackend(){
+        try{
+          if (window.pywebview && window.pywebview.api && window.pywebview.api.hud_state){
+            const s = await window.pywebview.api.hud_state();
+            if (s && typeof s.on_top === "boolean"){
+              setPin(s.on_top);
+            }
+          }
+        }catch(_){}
+      }
+
+      // КЛИК ПО ПИНУ: переключаем on_top и сразу обновляем индикатор
+      async function toggleOnTop(){
+        try{
+          if (window.pywebview && window.pywebview.api && window.pywebview.api.hud_toggle_on_top){
+            const r = await window.pywebview.api.hud_toggle_on_top();
+            if (r && typeof r.on_top === "boolean"){
+              setPin(r.on_top); // ← моментально отобразить состояние
+            }else{
+              // если не пришёл ответ — резеревно перечитать состояние
+              await syncPinFromBackend();
+            }
+          }
+        }catch(_){
+          // при ошибке тоже попробуем перечитать
+          await syncPinFromBackend();
+        }
+      }
+
+      // Взаимодействие пользователя
+      pin.addEventListener('click', (e)=>{ e.stopPropagation(); toggleOnTop(); });
+
+      // Публичный API для Python
       window.ReviveHUD = {
         push(txt){
           const s = String(txt||"");
-          if (/(SUCCESS|FAIL|ERROR|Респавн|Поднялись)/i.test(s)) {
-            line.classList.add('strong');
-          } else {
-            line.classList.remove('strong');
-          }
-          set(s);
+          setLine(s);
+          // усиление важных сообщений
+          setStrong(/(SUCCESS|FAIL|ERROR|Респавн|Поднялись|ALIVE_OK)/i.test(s));
         },
-        // переключение поверх окон (вызовет Python через evaluate_js)
-        async toggleOnTop(){
-          try { await pywebview.api.hud_toggle_on_top(); } catch(e){}
-        }
+        // оставляем совместимость, если где-то дергается из Python
+        async toggleOnTop(){ await toggleOnTop(); }
       };
+
+      // Когда pywebview готов — синхронизировать индикатор
+      function boot(){
+        if (window.pywebview && window.pywebview.api){ syncPinFromBackend(); return; }
+        document.addEventListener('pywebviewready', syncPinFromBackend, { once:true });
+        // резервный поллер на случай отсутствия события
+        let tries = 0;
+        const iv = setInterval(()=>{
+          if (window.pywebview && window.pywebview.api){ clearInterval(iv); syncPinFromBackend(); }
+          else if (++tries > 100){ clearInterval(iv); }
+        }, 50);
+      }
+      boot();
     })();
-</script>
+  </script>
 </body>
 </html>

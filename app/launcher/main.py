@@ -1,3 +1,4 @@
+# app/launcher/main.py
 # минимум обязанностей: создать окно, собрать секции, экспортировать их методы.
 from __future__ import annotations
 import os, sys, json
@@ -39,9 +40,9 @@ $form.FormBorderStyle=[System.Windows.Forms.FormBorderStyle]::None
 $form.StartPosition=[System.Windows.Forms.FormStartPosition]::Manual
 $form.BackColor=[System.Drawing.Color]::FromArgb(17,17,17)
 $form.TopMost=$true
+$form.ShowInTaskbar=$true
 $form.Location=New-Object System.Drawing.Point($left,$top)
 $form.Size=New-Object System.Drawing.Size($w,$h)
-$form.ShowInTaskbar=$true
 
 $wb = New-Object System.Windows.Forms.WebBrowser
 $wb.ScrollBarsEnabled = $false
@@ -100,11 +101,14 @@ def launch_gui(local_version: str):
         hud_window = webview.create_window(
             title="Revive HUD",
             url=hud_path,
-            width=200,
-            height=50,
+            width=250,
+            height=40,
             resizable=False,
             frameless=True,             # компактная плашка без рамки
-            easy_drag=False,            # перетаскивание через CSS: -webkit-app-region: drag
+            # РЕШЕНИЕ ПРОБЛЕМЫ ПЕРЕТАСКИВАНИЯ:
+            # включаем easy_drag, чтобы окно можно было таскать за любую область.
+            # (CSS -webkit-app-region может не работать в EdgeChromium стабильно)
+            easy_drag=True,
             on_top=True,                # по умолчанию поверх всех
             background_color="#000000", # непрозрачный цвет, иначе ValueError
         )

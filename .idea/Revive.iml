@@ -6,6 +6,10 @@
       <excludeFolder url="file://$MODULE_DIR$/build" />
       <excludeFolder url="file://$MODULE_DIR$/dist" />
       <excludeFolder url="file://$MODULE_DIR$/venv" />
+      <excludeFolder url="file://$MODULE_DIR$/_archive" />
+      <excludeFolder url="file://$MODULE_DIR$/_tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/debug_af_boh" />
+      <excludeFolder url="file://$MODULE_DIR$/documents" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
