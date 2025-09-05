@@ -127,7 +127,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                             get_window=lambda: sys_state.get("window"),
                             on_status=lambda *_: None,
                             on_update=_on_ps_update,
-                            cfg={"poll_interval": poll_interval, "debug_focus": True},
+                            cfg={"poll_interval": poll_interval},
                             # прерываем также если включилась пауза фокуса
                             should_abort=lambda: ((not self._run) or bool((sys_state.get("_focus_pause") or {}).get("active"))),
                         )
@@ -166,12 +166,28 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     sys_state["_wf_running"] = False
 
     def _on_ui_update(data: Dict[str, Any]):
+        # сохраняем предыдущее значение, чтобы логировать только на изменения
+        prev = sys_state.get("_wf_last") or {}
+        prev_focus = prev.get("has_focus")
+
         try:
             has_focus = bool(data.get("has_focus"))
         except Exception:
             has_focus = False
         ts = float(data.get("ts") or 0.0)
+
         sys_state["_wf_last"] = {"has_focus": has_focus, "ts": ts}
+
+        # в HUD и UI — только при смене состояния
+        if prev_focus is None or prev_focus != has_focus:
+            txt = f"Фокус окна: {'да' if has_focus else 'нет'}"
+            # HUD (скролл-лента)
+            log_ui(f"[FOCUS] {'ON' if has_focus else 'OFF'}")
+            # основной UI (status row)
+            try:
+                ui_emit("focus", txt, True if has_focus else None)
+            except Exception:
+                pass
 
     class _WindowFocusService:
         def __init__(self):
@@ -193,9 +209,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                         run_window_focus(
                             server="common",
                             get_window=lambda: sys_state.get("window"),
-                            on_status=log_ui,
+                            on_status=lambda *_: None,
                             on_update=_on_ui_update,
-                            cfg={"poll_interval": poll_interval},
+                            cfg={"poll_interval": poll_interval, "debug_focus": True},
                             should_abort=lambda: (not self._run),
                         )
                     except Exception:
