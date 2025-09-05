@@ -98,6 +98,18 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception:
             pass
 
+            # → HUD vitals
+        try:
+            if hud_window:
+                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
+                cp = data.get("cp_ratio")
+                c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
+                hud_window.evaluate_js(
+                    f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
+                )
+        except Exception as e:
+            print(f"[HUD] hp set error: {e}")
+
     import threading as _th, time as _time
 
     class _PlayerStateService:
@@ -141,6 +153,17 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
         def stop(self):
             self._run = False
+            # сбросить показатели в основном UI
+            try:
+                window.evaluate_js("document.getElementById('hp').textContent = '--'")
+            except Exception:
+                pass
+            # сбросить показатели в HUD
+            try:
+                if hud_window:
+                    hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','--')")
+            except Exception as e:
+                print(f"[HUD] hp reset error: {e}")
 
     ps_service = _PlayerStateService()
     # зарегистрируем сервисы для оркестратора (может быть использовано другими правилами)
@@ -247,7 +270,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     # Правила оркестратора: СНАЧАЛА фокус/пауза, затем респавн
     rules = [
-        make_focus_pause_rule(sys_state, {"grace_seconds": 1.0}),
+        make_focus_pause_rule(sys_state, {"grace_seconds": 0.0}),
         make_respawn_rule(sys_state, ps_adapter, controller, report=log_ui),
     ]
 
