@@ -5,10 +5,10 @@ import json
 from typing import Any, Dict
 from ..base import BaseSection
 
-from core.connection import ReviveController
+from core.arduino.connection import ReviveController
 from core.servers.registry import get_server_profile, list_servers
 from core.vision.capture.gdi import find_window, get_window_info
-from core.connection_test import run_test_command
+from core.arduino.connection_test import run_test_command
 from core.updater import get_remote_version, is_newer_version
 
 # отключили архивные зависимости

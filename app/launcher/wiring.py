@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Dict, Any
 import json, time
 
-from core.connection import ReviveController
+from core.arduino.connection import ReviveController
 from core.servers.registry import get_server_profile, list_servers
 
 # секции (StateSection можно оставить — он будет читать hp/cp из player_state через API секции)
