@@ -28,50 +28,29 @@
   </div>
 
   <script>
-    (function () {
+    (function(){
       const line = document.getElementById('hudline');
-      const pin  = document.getElementById('pin');
+      const set = (txt) => { line.textContent = String(txt||""); };
+      // дефолтная строка
+      set("HUD готов. Жду события оркестратора…");
 
-      function set(txt){ line.textContent = String(txt || "—"); }
-      function visualOnTop(on){
-        pin.classList.toggle('active', !!on);
-        pin.title = `Всегда поверх окон: ${on ? 'включено' : 'выключено'} (клик — переключить)`;
-      }
-
-      // публичный API — Python пушит последнее сообщение
+      // API для Python
       window.ReviveHUD = {
         push(txt){
-          const s = String(txt || "");
-          if (/(SUCCESS|FAIL|ERROR|Окно найдено|Мониторинг|Респавн|ТП|Баф|Автофарм)/i.test(s)) {
+          const s = String(txt||"");
+          if (/(SUCCESS|FAIL|ERROR|Респавн|Поднялись)/i.test(s)) {
             line.classList.add('strong');
           } else {
             line.classList.remove('strong');
           }
           set(s);
+        },
+        // переключение поверх окон (вызовет Python через evaluate_js)
+        async toggleOnTop(){
+          try { await pywebview.api.hud_toggle_on_top(); } catch(e){}
         }
       };
-
-      // клик по пину → асинхронный тоггл on_top через pywebview.api
-      pin.addEventListener('click', async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        try{
-          const r = await (window.pywebview?.api?.hud_toggle_pin?.());
-          if (r && typeof r.on_top !== 'undefined') visualOnTop(r.on_top);
-        } catch(_) {}
-      });
-
-      // стартовое состояние пина
-      (async function initPin(){
-        try{
-          const r = await (window.pywebview?.api?.hud_get_state?.());
-          if (r && typeof r.on_top !== 'undefined') { visualOnTop(r.on_top); return; }
-        } catch(_) {}
-        // фолбэк: по умолчанию HUD создаётся on_top=True
-        visualOnTop(true);
-      })();
-
-      // дефолтная строка уже выставлена в разметке
     })();
-  </script>
+</script>
 </body>
 </html>

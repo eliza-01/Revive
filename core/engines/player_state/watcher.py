@@ -3,7 +3,8 @@ from __future__ import annotations
 import threading, time
 from typing import Callable, Optional, Dict, Any
 
-from core.engines.player_state.server.boh import engine as ps_boh  # сервер подставь как надо
+from core.engines.player_state.server.l2mad import engine as ps_boh
+
 
 class PlayerStateWatcher:
     def __init__(self, server: str, get_window: Callable[[], dict],

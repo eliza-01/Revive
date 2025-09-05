@@ -39,7 +39,7 @@ def build_tree(root: str, prefix: str = ""):
 
 def main():
     root = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.getcwd()
-    out_path = os.path.join(root, "PROJECT_STRUCTURE.txt")
+    out_path = os.path.join(root, "tools", "PROJECT_STRUCTURE.txt")
 
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [

@@ -1,9 +1,9 @@
 ﻿# tools/dump.py
-# usage: python tools/dump.py --root . --out collected --sections A,B,C,D,E,F,G,H,I
+# usage: python tools/dump.py --root . --out collected --sections A,B,C,D,E,F,G,H,J,K,L
 from __future__ import annotations
 import argparse, sys, os, io
 from pathlib import Path
-from typing import Iterable, Tuple, List
+from typing import Iterable, Tuple, List, Dict
 
 # ------------ НАСТРОЙКИ ФИЛЬТРА ФАЙЛОВ ------------
 TEXT_EXTS = {
@@ -27,102 +27,27 @@ BINARY_EXTS = {
 
 def _is_text_file(p: Path) -> bool:
     suf = p.suffix.lower()
-    if suf in BINARY_EXTS: return False
-    if suf in TEXT_EXTS: return True
+    if suf in BINARY_EXTS:
+        return False
+    if suf in TEXT_EXTS:
+        return True
     return False
 
 # ------------ РАЗДЕЛЫ (ТОЛЬКО САМОЕ ВАЖНОЕ) ------------
-SECTIONS: dict[str, list[str]] = {
-    # A) Ядро и I/O
+# ВАЖНО: из core/servers исключаем папки boh и l2mad; из _archive берём только checks и core/{features,runtime}
+SECTIONS: Dict[str, List[str]] = {
+    # A) Core I/O и Windows-обвязка
     "A": [
         "core/connection.py",
         "core/connection_test.py",
-        "core/checks/charged.py",
-        "core/runtime/state_watcher.py",
-        "core/runtime/poller.py",
-        "core/runtime/flow_engine.py",
-        "core/runtime/flow_ops.py",
-        "core/runtime/flow_runner.py",
-        "core/runtime/flow_config.py",
-        "core/runtime/dashboard_guard.py",
         "core/os/win/window.py",
         "core/os/win/mouse.py",
+        "core/logging_setup.py",
+        "core/updater.py",
     ],
 
-    # B) Фичи
+    # B) Vision
     "B": [
-        "core/features/__init__.py",
-        "core/features/afterbuff_macros.py",
-        "core/features/buff_after_respawn.py",
-        "core/features/dashboard_reset.py",
-        "core/features/flow_actions.py",
-        "core/features/player_state.py",
-        "core/features/post_tp_row.py",
-        "core/features/restart_manager.py",
-        "core/features/to_village.py",
-        "core/features/tp_after_respawn.py",
-    ],
-
-    # C) Серверы
-    "C": [
-        "core/servers/__init__.py",
-        "core/servers/base_config.py",
-        "core/servers/registry.py",
-
-        # l2mad
-        "core/servers/l2mad/profile.py",
-        "core/servers/l2mad/locations_map.py",
-        "core/servers/l2mad/zones/*.py",
-        "core/servers/l2mad/flows/*.py",
-        "core/servers/l2mad/flows/rows/registry.py",
-        "core/servers/l2mad/flows/rows/**/*.py",
-        "core/servers/l2mad/templates/resolver.py",
-
-        # boh
-        "core/servers/boh/profile.py",
-        "core/servers/boh/locations_map.py",
-        "core/servers/boh/zones/*.py",
-        "core/servers/boh/flows/*.py",
-        "core/servers/boh/flows/rows/registry.py",
-        "core/servers/boh/flows/rows/**/*.py",
-        "core/servers/boh/templates/resolver.py",
-    ],
-
-    # D) Tk-UI
-    "D": [
-        # "app/ui/__init__.py",
-        # "app/ui/account_settings.py",
-        # "app/ui/afterbuff_macros.py",
-        # "app/ui/buff_controls.py",
-        # "app/ui/interval_buff.py",
-        # "app/ui/respawn_controls.py",
-        # "app/ui/state_controls.py",
-        # "app/ui/tp_controls.py",
-        # "app/ui/updater_dialog.py",
-        # "app/ui/window_probe.py",
-        # "app/ui/widgets.py",
-    ],
-
-    # E) Обвязка/лаунчеры (новая структура launcher/)
-    "E": [
-        # "app/__init__.py",
-        # "app/__main__.py",
-        # "app/launcher/__init__.py",
-
-        # "app/launcher_bootstrap.py",
-
-        "app/launcher/sections/*.py",
-        "app/launcher/base.py",
-        "app/launcher/main.py",
-        "app/launcher/wiring.py",
-        "app/launcher/sections/*.py",
-
-#         "core/updater.py",
-#         "core/logging_setup.py",
-    ],
-
-    # F) Vision
-    "F": [
         "core/vision/matching.py",
         "core/vision/utils/colors.py",
         "core/vision/win32/gdi_backend.py",
@@ -131,16 +56,23 @@ SECTIONS: dict[str, list[str]] = {
         "core/vision/matching/template_matcher.py",
     ],
 
-    # G) Arduino
-    "G": [
+    # C) Arduino
+    "C": [
         "core/arduino/safe_serial.py",
         "core/arduino/send_command.py",
         "core/arduino/send_safe.py",
         "core/arduino/serial_port.py",
     ],
 
-    # H) Autofarm engine (server/*)
-    "H": [
+    # D) Orchestrators (актуальные)
+    "D": [
+        "core/orchestrators/rules_base.py",
+        "core/orchestrators/runtime.py",
+        "core/orchestrators/snapshot.py",
+    ],
+
+    # E) Autofarm engine (актуальная структура core/engines/autofarm/*)
+    "E": [
         "core/engines/autofarm/__init__.py",
         "core/engines/autofarm/service.py",
         "core/engines/autofarm/runner.py",
@@ -153,31 +85,130 @@ SECTIONS: dict[str, list[str]] = {
         "core/engines/autofarm/server/*/**/*.json",
     ],
 
-    # I) WebUI (HTML/CSS/JS) — без бинарных ассетов
-    "I": [
+    # F) Launcher (новая структура)
+    "F": [
+        "app/launcher/base.py",
+        "app/launcher/main.py",
+        "app/launcher/wiring.py",
+        "app/launcher/sections/*.py",
+    ],
+
+    # G) WebUI (HTML/JS — без бинарных ассетов)
+    "G": [
         "app/webui/index.html",
-        # "app/webui/css/*.css",
         "app/webui/js/*.js",
-        # "app/webui/assets/*.txt",
+        "app/webui/hud.html",
+    ],
+
+    # H) Core/Servers (только базовые файлы, БЕЗ boh и l2mad)
+    "H": [
+        "core/servers/__init__.py",
+        "core/servers/base_config.py",
+        "core/servers/registry.py",
+    ],
+
+    # J) _archive/checks (только важное)
+    "J": [
+        "_archive/checks/charged.py",
+    ],
+
+    # K) _archive/core/features (только модули фич)
+    "K": [
+        "_archive/core/features/__init__.py",
+        "_archive/core/features/afterbuff_macros.py",
+        "_archive/core/features/buff_after_respawn.py",
+        "_archive/core/features/dashboard_reset.py",
+        "_archive/core/features/flow_actions.py",
+        "_archive/core/features/post_tp_row.py",
+        "_archive/core/features/restart_manager.py",
+        "_archive/core/features/to_village.py",
+        "_archive/core/features/tp_after_respawn.py",
+        # player_state — берем актуальный из core/engines/player_state (если он есть),
+        # а из _archive только при необходимости:
+        "_archive/core/features/archive/player_state.py",
+    ],
+
+    # L) _archive/core/runtime (ядро флоу: engine/runner/etc)
+    "L": [
+        "_archive/core/runtime/dashboard_guard.py",
+        "_archive/core/runtime/flow_config.py",
+        "_archive/core/runtime/flow_engine.py",
+        "_archive/core/runtime/flow_ops.py",
+        "_archive/core/runtime/flow_runner.py",
+        "_archive/core/runtime/poller.py",
+        "_archive/core/runtime/state_watcher.py",
+    ],
+
+    # M) Player State engine
+    "M": [
+        "core/engines/player_state/__init__.py",
+        "core/engines/player_state/runner.py",
+        "core/engines/player_state/watcher.py",
+        "core/engines/player_state/server/*/*.py",
+        "core/engines/player_state/server/*/**/*.py",
+        "core/engines/player_state/server/*/**/*.json",
+    ],
+
+    # N) Respawn engine
+    "N": [
+        "core/engines/respawn/__init__.py",
+        "core/engines/respawn/runner.py",
+        "core/engines/respawn/server/*/*.py",
+        "core/engines/respawn/server/*/**/*.py",
+        "core/engines/respawn/server/*/**/*.json",
     ],
 }
 
-OUT_FILENAMES = {
-    "A": "A_core_io.txt",
-    "B": "B_features.txt",
-    "C": "C_servers.txt",
-    "D": "D_ui_spec.txt",
-    "E": "E_wrappers.txt",
-    "F": "F_vision.txt",
-    "G": "G_arduino.txt",
-    "H": "H_autofarm.txt",
-    "I": "I_webui.txt",
+SECTION_TITLES: Dict[str, str] = {
+    "A": "Core I/O & Windows",
+    "B": "Vision",
+    "C": "Arduino",
+    "D": "Orchestrators",
+    "E": "Autofarm Engine",
+    "F": "Launcher",
+    "G": "Web UI",
+    "H": "Core Servers (base only)",
+    "J": "Archive Checks",
+    "K": "Archive Core Features",
+    "L": "Archive Core Runtime",
+    "M": "Player State Engine",
+    "N": "Respawn Engine",
 }
 
+OUT_FILENAMES: Dict[str, str] = {
+    "F": "1F_launcher.txt",
+    "D": "2D_orchestrators.txt",
+    "M": "3M_player_state_engine.txt",
+    "N": "4N_respawn_engine.txt",
+    "L": "5L_archive_runtime.txt",
+    "A": "A_core_io_windows.txt",
+    "B": "B_vision.txt",
+    "C": "C_arduino.txt",
+    "E": "E_autofarm_engine.txt",
+    "G": "G_webui.txt",
+    "H": "H_servers_base.txt",
+    "J": "J_archive_checks.txt",
+    "K": "K_archive_features.txt",
+}
+
+# Дополнительные глобальные исключения путей (строки, которые не должны попадать)
+# По условию: из core/servers НЕ брать папки boh и l2mad
+EXCLUDE_PATH_SUBSTR = [
+    "core/servers/boh/",
+    "core/servers/l2mad/",
+]
+
+def _excluded(p: Path, root: Path) -> bool:
+    rel = p.relative_to(root).as_posix()
+    for sub in EXCLUDE_PATH_SUBSTR:
+        if rel.startswith(sub):
+            return True
+    return False
+
 # ------------ СБОРЩИК ------------
-def _iter_matches(root: Path, patterns: Iterable[str]) -> list[Path]:
+def _iter_matches(root: Path, patterns: Iterable[str]) -> List[Path]:
     seen: set[Path] = set()
-    out: list[Path] = []
+    out: List[Path] = []
     for pat in patterns:
         paths = sorted(root.glob(pat), key=lambda p: str(p).lower())
         if not paths and ("*" not in pat and "?" not in pat and "**" not in pat):
@@ -185,6 +216,8 @@ def _iter_matches(root: Path, patterns: Iterable[str]) -> list[Path]:
             continue
         for p in paths:
             if p.is_file() and _is_text_file(p):
+                if _excluded(p, root):
+                    continue
                 rp = p.resolve()
                 if rp not in seen:
                     seen.add(rp)
@@ -211,7 +244,8 @@ def build_section(root: Path, out_dir: Path, letter: str) -> Tuple[int,int,List[
     manifest_entries: List[str] = []
 
     with io.open(dst, "w", encoding="utf-8", newline="\n") as w:
-        w.write(f"# === SECTION {letter} ===\n# root: {root}\n\n")
+        title = SECTION_TITLES.get(letter, letter)
+        w.write(f"# === SECTION {letter}: {title} ===\n# root: {root}\n\n")
         for p in files:
             if p.name.startswith("__MISSING__::"):
                 missing += 1
@@ -232,18 +266,18 @@ def build_section(root: Path, out_dir: Path, letter: str) -> Tuple[int,int,List[
     return included, missing, manifest_entries
 
 def main():
-    ap = argparse.ArgumentParser(description="Собрать файлы по разделам в один текстовый дамп на раздел + единый манифест.")
+    ap = argparse.ArgumentParser(description="Собрать файлы по разделам в текстовые дампы + единый манифест.")
     ap.add_argument("--root", default=".", help="корень проекта")
     ap.add_argument("--out", default="collected", help="каталог вывода")
-    ap.add_argument("--sections", default="A,B,C,D,E,F,G,H,I", help="какие разделы собирать, через запятую")
-    ap.add_argument("--manifest-name", default="manifest.txt", help="имя файла единого манифеста")
+    ap.add_argument("--sections", default="A,B,C,D,E,M,N,F,G,H,J,K,L", help="какие разделы собирать, через запятую")
+    ap.add_argument("--manifest-name", dest="manifest_name", default="manifest.txt", help="имя файла единого манифеста")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    all_entries: List[str] = []
+    all_entries_by_section: Dict[str, List[str]] = {}
     letters = [s.strip().upper() for s in args.sections.split(",") if s.strip()]
     for l in letters:
         if l not in SECTIONS:
@@ -251,19 +285,22 @@ def main():
             continue
         inc, miss, entries = build_section(root, out_dir, l)
         print(f"[{l}] written -> {OUT_FILENAMES[l]}  files: {inc}  missing: {miss}")
-        all_entries.extend(entries)
+        all_entries_by_section.setdefault(l, []).extend(entries)
 
-    # ЕДИНЫЙ МАНИФЕСТ
-    manifest_path = out_dir / args.manifest-name if hasattr(args, "manifest-name") else out_dir / args.manifest_name
-    # совместимость с argparse: использовать manifest_name
-    manifest_path = out_dir / getattr(args, "manifest_name", "manifest.txt")
+    # ЕДИНЫЙ МАНИФЕСТ (с разделителями по секторам)
+    manifest_path = out_dir / args.manifest_name
     with io.open(manifest_path, "w", encoding="utf-8", newline="\n") as mf:
         mf.write("# section\tstatus\tpath\n")
-        for line in all_entries:
-            mf.write(line + "\n")
+        for l in letters:
+            if l not in all_entries_by_section:
+                continue
+            title = SECTION_TITLES.get(l, l)
+            mf.write(f"\n# --- SECTION {l}: {title} ---\n")
+            for line in all_entries_by_section[l]:
+                mf.write(line + "\n")
 
     print(f"[done] output: {out_dir}")
-    print(f"[manifest] {manifest_path.name}: {len(all_entries)} entries")
+    print(f"[manifest] {manifest_path.name}: {sum(len(v) for v in all_entries_by_section.values())} entries")
 
 if __name__ == "__main__":
     sys.exit(main())

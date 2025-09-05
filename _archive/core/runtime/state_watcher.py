@@ -1,7 +1,7 @@
 # core/runtime/state_watcher.py
 from __future__ import annotations
 from typing import Callable, Optional, Dict
-from core.features.archive.player_state import PlayerState, PlayerStateMonitor
+from _archive.core.features.archive.player_state import PlayerState, PlayerStateMonitor
 
 class StateWatcher:
     """

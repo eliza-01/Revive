@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable, Optional, Dict
 import importlib
 
-from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 
 BUFF_MODE_PROFILE = "profile"
 BUFF_MODE_MAGE = "mage"

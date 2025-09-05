@@ -3,7 +3,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable, Optional
 
-from core.features.buff_after_respawn import (
+from _archive.core.features.buff_after_respawn import (
     BuffAfterRespawnWorker,
     BUFF_MODE_PROFILE,
     BUFF_MODE_MAGE,

@@ -26,7 +26,7 @@ class BuffSection(BaseSection):
 
     # --- внутреннее: создание worker-а бафа ---
     def _ensure_worker(self):
-        from core.features.buff_after_respawn import BuffAfterRespawnWorker
+        from _archive.core.features.buff_after_respawn import BuffAfterRespawnWorker
         if not self._worker:
             self._worker = BuffAfterRespawnWorker(
                 controller=self.controller,

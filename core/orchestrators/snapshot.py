@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-
 @dataclass
 class Snapshot:
     """Единый снимок состояния для оркестратора."""
@@ -12,27 +11,19 @@ class Snapshot:
     hp_ratio: Optional[float]     # 0.0–1.0 или None
     respawn_enabled: bool
     autofarm_enabled: bool
-    # можно добавлять новые поля (tp_enabled, buff_enabled и т.д.)
+    extras: Dict[str, Any] = None
 
-    extras: Dict[str, Any] = None   # для расширений
-
-
-def build_snapshot(sys_state: Dict[str, Any], watcher) -> Snapshot:
+def build_snapshot(sys_state: Dict[str, Any], _ps_adapter) -> Snapshot:
     """
-    Собираем срез состояния на основе sys_state и watcher.
-    Делается в начале каждого тика оркестратора.
+    Источник правды — наш player_state (см. wiring: _ps_adapter).
     """
     win = sys_state.get("window")
     has_window = bool(win and win.get("width") and win.get("height"))
 
+    st = _ps_adapter.last() or {}
+    alive = st.get("alive", None)
     try:
-        alive = watcher.is_alive()
-    except Exception:
-        alive = None
-
-    try:
-        st = watcher.last()
-        hp_ratio = float(getattr(st, "hp_ratio", 0.0))
+        hp_ratio = float(st.get("hp_ratio")) if st.get("hp_ratio") is not None else None
     except Exception:
         hp_ratio = None
 

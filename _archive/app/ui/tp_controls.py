@@ -3,7 +3,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable, Optional, Tuple
 
-from core.features.tp_after_respawn import (
+from _archive.core.features.tp_after_respawn import (
     TPAfterDeathWorker,
     TP_METHOD_DASHBOARD,
     TP_METHOD_GATEKEEPER,

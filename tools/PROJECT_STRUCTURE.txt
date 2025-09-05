@@ -1,26 +1,47 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-04 23:11:17
+Generated: 2025-09-05 02:34:27
 
 Revive
 ├── _archive
 │   ├── app
-│   │   ├── ui
-│   │   │   ├── __init__.py
-│   │   │   ├── account_settings.py
-│   │   │   ├── afterbuff_macros.py
-│   │   │   ├── buff_controls.py
-│   │   │   ├── interval_buff.py
-│   │   │   ├── respawn_controls.py
-│   │   │   ├── state_controls.py
-│   │   │   ├── tp_controls.py
-│   │   │   ├── updater_dialog.py
-│   │   │   ├── widgets.py
-│   │   │   └── window_probe.py
-│   │   └── __init__.py
-│   └── __init__.py
+│   │   └── ui
+│   │       ├── account_settings.py
+│   │       ├── afterbuff_macros.py
+│   │       ├── buff_controls.py
+│   │       ├── interval_buff.py
+│   │       ├── respawn_controls.py
+│   │       ├── state_controls.py
+│   │       ├── tp_controls.py
+│   │       ├── updater_dialog.py
+│   │       ├── widgets.py
+│   │       └── window_probe.py
+│   ├── checks
+│   │   └── charged.py
+│   └── core
+│       ├── features
+│       │   ├── archive
+│       │   │   ├── __init__.py
+│       │   │   └── player_state.py
+│       │   ├── __init__.py
+│       │   ├── afterbuff_macros.py
+│       │   ├── buff_after_respawn.py
+│       │   ├── dashboard_reset.py
+│       │   ├── flow_actions.py
+│       │   ├── flow_orchestrator.py
+│       │   ├── post_tp_row.py
+│       │   ├── restart_manager.py
+│       │   ├── to_village.py
+│       │   └── tp_after_respawn.py
+│       └── runtime
+│           ├── __init__.py
+│           ├── dashboard_guard.py
+│           ├── flow_config.py
+│           ├── flow_engine.py
+│           ├── flow_ops.py
+│           ├── flow_runner.py
+│           ├── poller.py
+│           └── state_watcher.py
 ├── app
-│   ├── dep
-│   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 │   ├── launcher
 │   │   ├── sections
 │   │   │   ├── autofarm.py
@@ -39,40 +60,30 @@ Revive
 │   │   │   ├── icon.png
 │   │   │   └── preloader1.gif
 │   │   ├── css
+│   │   │   ├── hud.css
 │   │   │   └── style.css
 │   │   ├── js
 │   │   │   ├── app.js
 │   │   │   ├── autofarm.ui.js
 │   │   │   ├── buff.ui.js
+│   │   │   ├── hud.js
 │   │   │   ├── macros.ui.js
 │   │   │   ├── respawn.ui.js
 │   │   │   ├── state.poller.js
 │   │   │   ├── state.ui.js
 │   │   │   └── tp.ui.js
+│   │   ├── hud.html
 │   │   └── index.html
 │   ├── __init__.py
 │   ├── __main__.py
 │   └── launcher_bootstrap.py
 ├── assets
-│   ├── upx
-│   │   ├── COPYING
-│   │   ├── LICENSE
-│   │   ├── NEWS
-│   │   ├── README
-│   │   ├── THANKS.txt
-│   │   ├── upx-doc.html
-│   │   ├── upx-doc.txt
-│   │   ├── upx.1
-│   │   └── upx.exe
-│   └── icon.ico
 ├── core
 │   ├── arduino
 │   │   ├── safe_serial.py
 │   │   ├── send_command.py
 │   │   ├── send_safe.py
 │   │   └── serial_port.py
-│   ├── checks
-│   │   └── charged.py
 │   ├── engines
 │   │   ├── autofarm
 │   │   │   ├── server
@@ -227,20 +238,6 @@ Revive
 │   │   ├── ui_state
 │   │   │   └── __init__.py
 │   │   └── __init__.py
-│   ├── features
-│   │   ├── archive
-│   │   │   ├── __init__.py
-│   │   │   └── player_state.py
-│   │   ├── __init__.py
-│   │   ├── afterbuff_macros.py
-│   │   ├── buff_after_respawn.py
-│   │   ├── dashboard_reset.py
-│   │   ├── flow_actions.py
-│   │   ├── flow_orchestrator.py
-│   │   ├── post_tp_row.py
-│   │   ├── restart_manager.py
-│   │   ├── to_village.py
-│   │   └── tp_after_respawn.py
 │   ├── orchestrators
 │   │   ├── rules_base.py
 │   │   ├── runtime.py
@@ -249,15 +246,6 @@ Revive
 │   │   └── win
 │   │       ├── mouse.py
 │   │       └── window.py
-│   ├── runtime
-│   │   ├── __init__.py
-│   │   ├── dashboard_guard.py
-│   │   ├── flow_config.py
-│   │   ├── flow_engine.py
-│   │   ├── flow_ops.py
-│   │   ├── flow_runner.py
-│   │   ├── poller.py
-│   │   └── state_watcher.py
 │   ├── servers
 │   │   ├── boh
 │   │   │   ├── flows
@@ -520,17 +508,16 @@ Revive
 │   ├── keys_test.py
 │   └── micro.ino
 ├── tools
+│   ├── PROJECT_STRUCTURE.txt
 │   ├── add_headers.py
 │   ├── dump.py
 │   └── tree.py
 ├── .gitignore
-├── PROJECT_STRUCTURE.txt
 ├── Revive.spec
-├── autofarm_settings_window.png
 ├── build.bat
+├── latest_version.txt
 ├── main.py
 ├── release.bat
 ├── requirements.build.txt
 ├── requirements.txt
-├── revive.log
-└── run_release.bat
+└── revive.log

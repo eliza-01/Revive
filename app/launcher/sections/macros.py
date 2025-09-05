@@ -1,7 +1,7 @@
 # app/launcher/sections/macros.py
 from __future__ import annotations
 from ..base import BaseSection
-from core.features.afterbuff_macros import AfterBuffMacroRunner
+from _archive.core.features.afterbuff_macros import AfterBuffMacroRunner
 
 class MacrosSection(BaseSection):
     def __init__(self, window, controller, sys_state):

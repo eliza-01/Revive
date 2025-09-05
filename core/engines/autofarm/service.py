@@ -4,8 +4,8 @@ import time
 import threading
 from typing import Dict, Any, Optional
 
-from core.runtime.poller import RepeaterThread
-from core.runtime.dashboard_guard import DASHBOARD_GUARD
+from _archive.core.runtime import RepeaterThread
+from _archive.core.runtime.dashboard_guard import DASHBOARD_GUARD
 from core.engines.autofarm.runner import run_autofarm
 
 

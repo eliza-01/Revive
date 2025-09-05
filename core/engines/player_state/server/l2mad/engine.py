@@ -1,19 +1,13 @@
 # core/engines/player_state/server/boh/engine.py
 from __future__ import annotations
 import time
-from typing import Dict, Any, Optional, Callable, Tuple, List
+from typing import Dict, Any, Optional, Callable
 
 import numpy as np
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.utils.colors import mask_for_colors_bgr, biggest_horizontal_band
 
-from .state_data import (
-    ZONES,
-    COLORS,
-    HP_TOLERANCE_ALIVE,
-    HP_TOLERANCE_DEAD,
-    DEFAULT_POLL_INTERVAL,
-)
+from .state_data import ZONES, COLORS, HP_COLOR_TOLERANCE, DEFAULT_POLL_INTERVAL
 
 
 class PlayerState:
@@ -33,21 +27,14 @@ def _emit(status_cb: Optional[Callable[[str, Optional[bool]], None]], msg: str, 
         print(f"[player_state/boh] {msg}")
 
 
-def _compute_hp_ratio(
-    win: Dict,
-    zone_ltrb: Tuple[int, int, int, int],
-    colors_alive: List[Tuple[int, int, int]],
-    colors_dead: List[Tuple[int, int, int]],
-    tol_alive: int,
-    tol_dead: int,
-    prev_ratio: float,
-) -> float:
+def _compute_hp_ratio(win: Dict, zone_ltrb: tuple, colors_alive, colors_dead, tol: int,
+                      prev_ratio: float) -> float:
     img = capture_window_region_bgr(win, zone_ltrb)
     if img is None or img.size == 0:
         return prev_ratio  # нет кадра — держим прошлую оценку
 
-    alive_mask = mask_for_colors_bgr(img, colors_alive, tol=tol_alive) if colors_alive else None
-    dead_mask  = mask_for_colors_bgr(img, colors_dead,  tol=tol_dead)  if colors_dead  else None
+    alive_mask = mask_for_colors_bgr(img, colors_alive, tol=tol) if colors_alive else None
+    dead_mask  = mask_for_colors_bgr(img, colors_dead,  tol=tol) if colors_dead  else None
 
     if alive_mask is not None and dead_mask is not None:
         a_rect = biggest_horizontal_band(alive_mask)
@@ -93,15 +80,12 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
     colors_alive = COLORS.get("hp_alive_rgb", []) or []
     colors_dead = COLORS.get("hp_dead_rgb", []) or []
-
-    # Допуски: отдельные для alive/dead, с возможностью переопределения через cfg
-    tol_alive = int(cfg.get("hp_tol_alive", HP_TOLERANCE_ALIVE))
-    tol_dead  = int(cfg.get("hp_tol_dead",  HP_TOLERANCE_DEAD))
+    tol = int(HP_COLOR_TOLERANCE)
 
     poll_interval = float(cfg.get("poll_interval", DEFAULT_POLL_INTERVAL))
 
     prev_ratio = 1.0
-    _emit(on_status, f"[boh] player_state старт (poll={poll_interval}s, tol_alive={tol_alive}, tol_dead={tol_dead})…", None)
+    _emit(on_status, f"[boh] player_state старт (poll={poll_interval}s, tol={tol})…", None)
 
     try:
         while True:
@@ -118,7 +102,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 time.sleep(poll_interval)
                 continue
 
-            hp_ratio = _compute_hp_ratio(win, zone, colors_alive, colors_dead, tol_alive, tol_dead, prev_ratio)
+            hp_ratio = _compute_hp_ratio(win, zone, colors_alive, colors_dead, tol, prev_ratio)
             prev_ratio = hp_ratio
 
             if on_update:

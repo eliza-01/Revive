@@ -11,6 +11,7 @@ class StateSection(BaseSection):
         super().__init__(window, sys_state)
         self.watcher = watcher
 
+    # watcher — это сервис нового player_state с методами is_running/start/stop
     def watcher_set_enabled(self, enabled: bool):
         if enabled and not self.watcher.is_running():
             self.watcher.start()

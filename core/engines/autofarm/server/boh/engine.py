@@ -13,7 +13,7 @@ import numpy as np
 
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.utils.colors import mask_for_colors_bgr, biggest_horizontal_band
-from core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 
 # локальный счётчик перезапусков именно АФ-цикла (НЕ общий рестарт менеджера)
 _RESTART_STREAK = 0

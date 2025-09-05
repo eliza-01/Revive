@@ -1,4 +1,3 @@
-# app/launcher/main.py
 # минимум обязанностей: создать окно, собрать секции, экспортировать их методы.
 from __future__ import annotations
 import os, sys, json
@@ -96,35 +95,32 @@ def launch_gui(local_version: str):
         if not os.path.exists(hud_path):
             raise RuntimeError(f"Не найден HUD UI: {hud_path}")
 
-        # --- HUD окно (создаем первым, чтобы было поверх главного) ---
-        # ВАЖНО: без альфа-цветов. Только #RRGGBB, иначе ValueError.
+        # --- HUD окно (создаём первым, чтобы было поверх главного) ---
+        # только #RRGGBB, без альфа-цветов
         hud_window = webview.create_window(
             title="Revive HUD",
             url=hud_path,
             width=200,
             height=50,
             resizable=False,
-            frameless=True,  # компактная плашка без рамки
-            easy_drag=True,  # ← разрешить перетаскивать за любую область
-            on_top=True,  # по умолчанию поверх всех
-            background_color="#000000",  # непрозрачный цвет, иначе будет ValueError
+            frameless=True,             # компактная плашка без рамки
+            easy_drag=False,            # перетаскивание через CSS: -webkit-app-region: drag
+            on_top=True,                # по умолчанию поверх всех
+            background_color="#000000", # непрозрачный цвет, иначе ValueError
         )
 
-        # Экспорт небольшого API в HUD-окно (для пина)
-        def hud_get_state():
+        # API для HUD (совместимо с window.ReviveHUD.toggleOnTop() в hud.html)
+        def hud_state():
             try:
                 return {"on_top": bool(getattr(hud_window, "on_top", False))}
             except Exception as e:
                 return {"error": str(e)}
 
-        def hud_toggle_pin():
-            """
-            Тоггл always-on-top делаем асинхронно, чтобы не клинить GUI-тред.
-            Возвращаем новое состояние сразу.
-            """
+        def hud_toggle_on_top():
+            """Тоггл on_top без блокировки GUI-потока."""
             try:
                 cur = bool(getattr(hud_window, "on_top", False))
-                new_state = (not cur)
+                new_state = not cur
 
                 import threading
                 def apply():
@@ -132,14 +128,13 @@ def launch_gui(local_version: str):
                         hud_window.on_top = new_state
                     except Exception as ex:
                         print("[HUD] toggle error:", ex)
-
                 threading.Timer(0.01, apply).start()
 
                 return {"on_top": new_state}
             except Exception as e:
                 return {"error": str(e)}
 
-        hud_window.expose(hud_get_state, hud_toggle_pin)
+        hud_window.expose(hud_state, hud_toggle_on_top)
 
         # --- Главное окно ---
         window = webview.create_window(
@@ -151,13 +146,12 @@ def launch_gui(local_version: str):
             background_color="#000000",
         )
 
-        # соберём зависимости/секции и отэкспортируем методы
-        # ПЕРЕДАЁМ hud_window в build_container
+        # собрать контейнер и экспортировать методы секций
         c = build_container(window, local_version, hud_window=hud_window)
         for name, fn in c["exposed"].items():
             window.expose(fn)
 
-        # закрыть сплэш при загрузке любого из окон (main достаточно)
+        # закрыть сплэш при загрузке UI
         def _close_splash(*_):
             _kill_splash(splash_proc, splash_ps1)
 
@@ -173,15 +167,14 @@ def launch_gui(local_version: str):
                 pass
             try:
                 if hud_window:
-                    hud_window.destroy()    # закроем HUD вместе с главным
+                    hud_window.destroy()
             except Exception:
                 pass
 
         window.events.closing += _on_main_closing
 
-        # стартуем оба окна
+        # старт
         try:
-            # multiple windows supported; HUD будет сверху из-за on_top=True
             webview.start(debug=False, gui="edgechromium", http_server=True)
         finally:
             _kill_splash(splash_proc, splash_ps1)

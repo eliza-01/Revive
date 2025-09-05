@@ -1,7 +1,7 @@
 # app/launcher/sections/tp.py
 from __future__ import annotations
 from ..base import BaseSection
-from core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER
+from _archive.core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD
 from core.servers.l2mad.locations_map import get_categories, get_locations
 
 class TPSection(BaseSection):

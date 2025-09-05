@@ -1,8 +1,8 @@
 # app/launcher/sections/system.py
 from __future__ import annotations
-import os, sys, json, threading
-from typing import Any, Dict, List
-from pathlib import Path
+import threading
+import json
+from typing import Any, Dict
 from ..base import BaseSection
 
 from core.connection import ReviveController
@@ -11,15 +11,9 @@ from core.vision.capture.gdi import find_window, get_window_info
 from core.connection_test import run_test_command
 from core.updater import get_remote_version, is_newer_version
 
-from core.features.afterbuff_macros import AfterBuffMacroRunner
-from core.features.flow_orchestrator import FlowOrchestrator
-from core.features.restart_manager import RestartManager
-from core.features.post_tp_row import PostTPRowRunner, RowsController
-from core.features.to_village import ToVillage
-from core.runtime.state_watcher import StateWatcher
-from core.checks.charged import ChargeChecker, BuffTemplateProbe
-
-from core.features.tp_after_respawn import TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER
+# отключили архивные зависимости
+TP_METHOD_DASHBOARD = "dashboard"
+TP_METHOD_GATEKEEPER = "gatekeeper"
 
 def _schedule(fn, ms: int):
     t = threading.Timer(max(0.0, ms) / 1000.0, fn)
@@ -28,23 +22,26 @@ def _schedule(fn, ms: int):
 
 class SystemSection(BaseSection):
     """
-    Инициализация контроллера, вотчера и “бэк-сервисов”.
+    Инициализация контроллера и “бэк-сервисов”.
     Экспортирует:
       - get_init_state, set_language, set_server, find_window, test_connect
       - account_get/account_save
       - get_state_snapshot, get_status_snapshot
       - run_update_check
-      - shutdown, _py_exit
+      - shutdown
     Остальные разделы (respawn/buff/macros/tp/autofarm) — отдельные секции.
     """
+
     def __init__(self, window, local_version: str, controller: ReviveController,
-                 watcher: StateWatcher, orch: FlowOrchestrator,
+                 ps_adapter,  # новый адаптер состояния игрока
                  sys_state: Dict[str, Any], schedule):
         super().__init__(window, sys_state)
         self.s.setdefault("version", local_version)
         self.s.setdefault("language", "rus")
         self.s.setdefault("server", (list_servers() or ["l2mad"])[0])
         self.s.setdefault("_last_status", {})
+
+        # дефолты фич
         self.s.setdefault("respawn_enabled", True)
         self.s.setdefault("respawn_wait_enabled", False)
         self.s.setdefault("respawn_wait_seconds", 120)
@@ -63,41 +60,11 @@ class SystemSection(BaseSection):
         self.s.setdefault("tp_row_id", "")
 
         self.controller = controller
-        self.watcher = watcher
-        self.orch = orch
+        self.ps = ps_adapter
         self.schedule = schedule
 
         # — server profile —
         self._apply_profile(self.s["server"])
-
-        # — checker + buff probes —
-        self.s["checker"] = ChargeChecker(interval_minutes=10, mode="ANY")
-        self.s["checker"].register_probe(
-            "autobuff_icons",
-            BuffTemplateProbe(
-                name="autobuff_icons",
-                server_getter=lambda: self.s["server"],
-                get_window=lambda: self.s.get("window"),
-                get_language=lambda: self.s["language"],
-                zone_key="buff_bar",
-                tpl_keys=["buff_icon_shield", "buff_icon_blessedBody"],
-                threshold=0.85,
-                debug=True,
-            ),
-            enabled=True,
-        )
-
-        # — service: to_village, postrow, restart уже созданы снаружи; rows —
-        self.s["rows_ctrl"] = RowsController(
-            get_server=lambda: self.s["server"],
-            get_language=lambda: self.s["language"],
-            get_destination=lambda: (self.s["tp_category"], self.s["tp_location"]),
-            schedule=lambda fn, ms: _schedule(fn, ms),
-            on_values=self._rows_set_values,
-            on_select_row_id=lambda rid: self._set_tp_row_id(rid or ""),
-            log=print,
-        )
-        self.s["rows_ctrl"].start()
 
         # — Arduino ping status —
         try:
@@ -129,27 +96,6 @@ class SystemSection(BaseSection):
         except Exception:
             self.s["buff_method"] = ""
             self.s["buff_methods"] = []
-
-    # ---------- rows UI ----------
-    def _rows_set_values(self, rows: List[tuple[str, str]]):
-        js = f"window.ReviveUI && window.ReviveUI.onRows({json.dumps(rows)})"
-        try: self.window.evaluate_js(js)
-        except Exception: pass
-
-    def _set_tp_row_id(self, rid: str):
-        self.s["tp_row_id"] = rid
-        try:
-            self.window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onRowSelected({json.dumps(rid)})")
-        except Exception:
-            pass
-
-    # ---------- watchers → orch ----------
-    def _on_dead_proxy(self, st):
-        self.orch.on_dead(st)
-
-    def _on_alive_proxy(self, st):
-        self.orch.on_alive(st)
-        # arm автофарма после ТП делает секция автофарма
 
     # ---------- auto-find window ----------
     def _autofind_tick(self):
@@ -193,7 +139,7 @@ class SystemSection(BaseSection):
             "server": self.s["server"],
             "servers": servers,
             "window_found": bool(self.s.get("window_found")),
-            "monitoring": bool(self.watcher.is_running()),
+            "monitoring": bool(self.ps.is_running() if hasattr(self.ps, "is_running") else self.s.get("_ps_running", False)),
             "buff_methods": self.s.get("buff_methods") or [],
             "buff_current": self.s.get("buff_method") or "",
             "tp_methods": [TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER],
@@ -208,18 +154,13 @@ class SystemSection(BaseSection):
 
     def set_language(self, lang: str):
         self.s["language"] = (lang or "rus").lower()
-        try: self.watcher.set_language(self.s["language"])
+        try: self.ps.set_language(self.s["language"])
         except Exception: pass
 
     def set_server(self, server: str):
         self._apply_profile(server)
-        try: self.watcher.set_server(self.s["server"])
+        try: self.ps.set_server(self.s["server"])
         except Exception: pass
-        try:
-            # ToVillage зависит от сервера, если снаружи держится один экземпляр — уведомим его через профайл здесь не лезем
-            pass
-        except Exception:
-            pass
         # обновить список методов бафа на UI
         methods = self.s.get("buff_methods") or []
         cur = self.s.get("buff_method") or ""
@@ -266,11 +207,20 @@ class SystemSection(BaseSection):
         return dict(self.s.get("_last_status") or {})
 
     def get_state_snapshot(self) -> Dict[str, Any]:
+        """
+        ВАЖНО: ps.last() возвращает dict, а не объект.
+        Предыдущая версия читала через getattr(...) и из-за этого
+        отдавала hp=0 → мигание в UI (перезапись корректного on_update).
+        """
         try:
-            st = self.watcher.last()
-            hp_ratio = float(getattr(st, "hp_ratio", 0.0) or 0.0)
-            alive = bool(getattr(st, "alive", True))
-            return {"hp": max(0, min(100, int(round(hp_ratio*100)))), "cp": 100, "alive": alive}
+            st = self.ps.last() or {}
+            hp_ratio = st.get("hp_ratio")
+            if hp_ratio is None:
+                return {"hp": None, "cp": None, "alive": None}
+            hp = max(0, min(100, int(round(float(hp_ratio) * 100))))
+            alive_val = st.get("alive")
+            alive = bool(alive_val) if alive_val is not None else (hp > 0)
+            return {"hp": hp, "cp": 100, "alive": alive}
         except Exception:
             return {"hp": None, "cp": None, "alive": None}
 
@@ -287,7 +237,8 @@ class SystemSection(BaseSection):
     def shutdown(self) -> None:
         try:
             self.s["_autofind_stop"] = True
-            self.watcher.stop()
+            if hasattr(self.ps, "stop"):
+                self.ps.stop()
         except Exception:
             pass
         try:

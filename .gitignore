@@ -1,5 +1,7 @@
+_archive/
 app/dep/
 collected/
+documents/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
