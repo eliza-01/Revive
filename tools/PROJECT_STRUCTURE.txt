@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-05 02:34:27
+Generated: 2025-09-05 12:10:52
 
 Revive
 ├── _archive
@@ -42,6 +42,8 @@ Revive
 │           ├── poller.py
 │           └── state_watcher.py
 ├── app
+│   ├── dep
+│   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 │   ├── launcher
 │   │   ├── sections
 │   │   │   ├── autofarm.py
@@ -78,13 +80,146 @@ Revive
 │   ├── __main__.py
 │   └── launcher_bootstrap.py
 ├── assets
+│   ├── upx
+│   │   ├── COPYING
+│   │   ├── LICENSE
+│   │   ├── NEWS
+│   │   ├── README
+│   │   ├── THANKS.txt
+│   │   ├── upx-doc.html
+│   │   ├── upx-doc.txt
+│   │   ├── upx.1
+│   │   └── upx.exe
+│   └── icon.ico
 ├── core
 │   ├── arduino
+│   │   ├── firmware
+│   │   │   ├── __init__.py
+│   │   │   ├── keys_test.py
+│   │   │   └── micro.ino
+│   │   ├── __init__.py
+│   │   ├── connection.py
+│   │   ├── connection_test.py
 │   │   ├── safe_serial.py
 │   │   ├── send_command.py
 │   │   ├── send_safe.py
 │   │   └── serial_port.py
 │   ├── engines
+│   │   ├── autofarm
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       ├── target_blue_dot.png
+│   │   │   │   │   │   │       └── target_red_dot.png
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── target_init.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       ├── monsters
+│   │   │   │   │   │       │   └── names
+│   │   │   │   │   │       │       ├── василиск_стражник.png
+│   │   │   │   │   │       │       ├── гризли_диона.png
+│   │   │   │   │   │       │       ├── змей.png
+│   │   │   │   │   │       │       ├── людоед_тумран.png
+│   │   │   │   │   │       │       ├── монстроглаз_искатель.png
+│   │   │   │   │   │       │       ├── придорожный_падальщик.png
+│   │   │   │   │   │       │       ├── рейнджер_гноллов.png
+│   │   │   │   │   │       │       └── хобгоблин.png
+│   │   │   │   │   │       └── sys_messages
+│   │   │   │   │   │           └── target_unvisible.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   ├── Dion_1
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Dwarf_village
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Ruins_of_agony_start
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── orchestrator_rules.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── common
+│   │   │   │   │   ├── skills
+│   │   │   │   │   │   ├── attack.png
+│   │   │   │   │   │   ├── aura_flare.png
+│   │   │   │   │   │   ├── aura_flash.png
+│   │   │   │   │   │   ├── cancellation.png
+│   │   │   │   │   │   ├── curse_fear.png
+│   │   │   │   │   │   ├── dash.png
+│   │   │   │   │   │   ├── freezing_skin.png
+│   │   │   │   │   │   ├── frost_bolt.png
+│   │   │   │   │   │   ├── hydro_blast.png
+│   │   │   │   │   │   ├── ice_dagger.png
+│   │   │   │   │   │   ├── ice_vortex.png
+│   │   │   │   │   │   ├── light_vortex.png
+│   │   │   │   │   │   ├── sleep.png
+│   │   │   │   │   │   ├── solar_flare.png
+│   │   │   │   │   │   ├── stun_shot.png
+│   │   │   │   │   │   └── surrender_to_water.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── professions.json
+│   │   │   │   │   ├── skills_catalog.json
+│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── l2mad
+│   │   │   │   │   ├── flows
+│   │   │   │   │   │   └── af_click.json
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── autofarm.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       └── interface
+│   │   │   │   │   │           └── autofarm.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   ├── skill_repo.py
+│   │   │   └── zone_repo.py
+│   │   ├── buff
+│   │   │   └── __init__.py
+│   │   ├── is_charged
+│   │   │   ├── server
+│   │   │   │   └── boh
+│   │   │   │       ├── templates
+│   │   │   │       │   └── resolver.py
+│   │   │   │       └── engine.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
+│   │   ├── macros
+│   │   │   └── __init__.py
 │   │   ├── player_state
 │   │   │   ├── server
 │   │   │   │   ├── boh
@@ -92,9 +227,13 @@ Revive
 │   │   │   │   │   ├── engine.py
 │   │   │   │   │   └── state_data.py
 │   │   │   │   ├── l2mad
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── state_data.py
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
 │   │   │   ├── runner.py
+│   │   │   ├── service.py
 │   │   │   └── watcher.py
 │   │   ├── respawn
 │   │   │   ├── server
@@ -120,8 +259,16 @@ Revive
 │   │   │   └── __init__.py
 │   │   ├── teleport
 │   │   │   └── __init__.py
-│   │   ├── ui_state
-│   │   │   └── __init__.py
+│   │   ├── window_focus
+│   │   │   ├── server
+│   │   │   │   ├── common
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   └── engine.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── orchestrator_rules.py
+│   │   │   ├── runner.py
+│   │   │   └── service.py
 │   │   └── __init__.py
 │   ├── orchestrators
 │   │   ├── rules_base.py
@@ -379,8 +526,6 @@ Revive
 │   │   ├── matching.py
 │   │   └── zones.py
 │   ├── __init__.py
-│   ├── connection.py
-│   ├── connection_test.py
 │   ├── logging_setup.py
 │   ├── revive.log
 │   └── updater.py
@@ -388,12 +533,9 @@ Revive
 │   ├── mask_alive.png
 │   ├── mask_any.png
 │   └── target_zone_bgr.png
-├── firmware
-│   ├── .editorconfig
-│   ├── keys_test.py
-│   └── micro.ino
 ├── tools
 │   ├── PROJECT_STRUCTURE.txt
+│   ├── PRO_STRUC.txt
 │   ├── add_headers.py
 │   ├── dump.py
 │   └── tree.py

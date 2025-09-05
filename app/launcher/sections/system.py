@@ -38,7 +38,7 @@ class SystemSection(BaseSection):
         super().__init__(window, sys_state)
         self.s.setdefault("version", local_version)
         self.s.setdefault("language", "rus")
-        self.s.setdefault("server", (list_servers() or ["l2mad"])[0])
+        self.s.setdefault("server", (list_servers() or ["boh"])[0])
         self.s.setdefault("_last_status", {})
 
         # дефолты фич
@@ -120,7 +120,7 @@ class SystemSection(BaseSection):
 
     # ---------- API: init / language / server ----------
     def get_init_state(self) -> Dict[str, Any]:
-        servers = list_servers() or ["l2mad"]
+        servers = list_servers() or ["boh"]
         if self.s["server"] not in servers:
             self._apply_profile(servers[0])
 
@@ -175,15 +175,23 @@ class SystemSection(BaseSection):
         for t in titles:
             hwnd = find_window(t)
             if hwnd:
-                info = get_window_info(hwnd, client=True)
-                if all(k in info for k in ("x","y","width","height")):
-                    self.s["window"] = info
+                win_info = get_window_info(hwnd, client=True) or {}
+                # гарантируем наличие hwnd — это критично для window_focus
+                try:
+                    win_info["hwnd"] = int(hwnd)
+                except Exception:
+                    pass
+                if isinstance(win_info, dict) and all(k in win_info for k in ("x", "y", "width", "height")):
+                    self.s["window"] = win_info
                     self.s["window_found"] = True
                     self.emit("window", "[✓] Окно найдено", True)
-                    return {"found": True, "title": t, "info": info}
+                    return {"found": True, "title": t, "info": win_info}
+
         self.s["window"] = None
         self.s["window_found"] = False
         self.emit("window", "[×] Окно не найдено", False)
+        print("[window dump] None")
+        self.emit("window", "dump: None", None)
         return {"found": False}
 
     def test_connect(self) -> str:

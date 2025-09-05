@@ -1,6 +1,7 @@
-﻿from __future__ import annotations
+﻿# core/engines/respawn/server/boh/engine.py
+from __future__ import annotations
 import time
-from typing import Optional, Dict, Tuple, Callable, List
+from typing import Optional, Dict, Tuple, Callable, List, Any
 
 from core.vision.zones import compute_zone_ltrb
 from core.vision.matching.template_matcher import match_in_zone
@@ -16,24 +17,6 @@ DEFAULT_CONFIRM_TIMEOUT_S = 6.0
 # порядок проверки шаблонов
 PREFERRED_TEMPLATE_KEYS: List[str] = ["reborn_banner", "death_banner", "accept_button", "decline_button"]
 
-
-# сигналы (как договорились)
-# SIG_SCAN_START         = "BANNERS_SCAN_START"
-# SIG_FOUND_DEATH        = "BANNER_FOUND:DEATH"
-# SIG_FOUND_REBORN       = "BANNER_FOUND:REBORN"
-# SIG_CLICK_DEATH        = "CLICK:DEATH"
-# SIG_CLICK_REBORN       = "CLICK:REBORN_ACCEPT"
-# SIG_GONE_DEATH         = "BANNER_GONE:DEATH"
-# SIG_GONE_REBORN        = "BANNER_GONE:REBORN"
-# SIG_WAITING_HP         = "WAITING_HP"
-# SIG_ALIVE_OK           = "ALIVE_OK"
-# SIG_WAIT_TICK          = "WAIT_TICK"
-# SIG_TIMEOUT_CONFIRM    = "TIMEOUT:CONFIRM"
-# SIG_TIMEOUT_WAIT       = "TIMEOUT:WAIT_REBORN"
-# SIG_NO_BANNERS         = "NO_BANNERS"
-# SIG_FAIL               = "FAIL"
-# SIG_SUCCESS            = "SUCCESS"
-
 class RespawnEngine:
     """
     Движок подъёма после смерти (respawn) со сканером баннеров и режимами процедуры.
@@ -42,7 +25,7 @@ class RespawnEngine:
     def __init__(
         self,
         server: str,
-        controller,
+        controller: Any,
         is_alive_cb: Optional[Callable[[], bool]] = None,
         click_threshold: float = DEFAULT_CLICK_THRESHOLD,
         confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
@@ -352,12 +335,12 @@ class RespawnEngine:
 
 def create_engine(
     server: str,
-    controller,
+    controller: Any,
     is_alive_cb: Optional[Callable[[], bool]] = None,
     click_threshold: float = DEFAULT_CLICK_THRESHOLD,
     confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
     debug: bool = False,
-    on_report: Optional[Callable[[str, str], None]] = None,
+    on_report: Optional[Callable[[str, str]], None] = None,
 ) -> RespawnEngine:
     return RespawnEngine(
         server=server,

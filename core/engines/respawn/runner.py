@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
-from typing import Callable, Optional, Dict
+﻿# core/engines/respawn/runner.py
+from __future__ import annotations
+from typing import Callable, Optional, Dict, Any
 
 class RespawnRunner:
     """
@@ -12,7 +13,7 @@ class RespawnRunner:
 
     def __init__(
         self,
-        engine,
+        engine: Any,
         get_window: Callable[[], Optional[Dict]],
         get_language: Callable[[], str],
     ):
@@ -23,8 +24,25 @@ class RespawnRunner:
     def set_server(self, server: str) -> None:
         self.engine.set_server(server)
 
-    def run(self, mode: str = "auto", wait_seconds: int = 0, total_timeout_ms: int = 14_000) -> bool:
-        """Запуск процедуры респавна согласно режиму."""
+    def run(
+        self,
+        mode: str = "auto",
+        wait_seconds: int = 0,
+        total_timeout_ms: int = 14_000,
+        **kwargs
+    ) -> bool:
+        """
+        Запуск процедуры респавна согласно режиму.
+
+        Поддерживает алиас timeout_ms (для обратной совместимости с правилами):
+        run(timeout_ms=14000) == run(total_timeout_ms=14000)
+        """
+        if "timeout_ms" in kwargs and kwargs["timeout_ms"] is not None:
+            try:
+                total_timeout_ms = int(kwargs["timeout_ms"])
+            except Exception:
+                pass
+
         win = self._get_window() or {}
         if not win:
             print("[respawn] no window")
@@ -34,10 +52,10 @@ class RespawnRunner:
             return bool(self.engine.run_procedure(
                 window=win,
                 lang=lang,
-                mode=mode,
-                wait_seconds=wait_seconds,
-                total_timeout_ms=total_timeout_ms,
+                mode=(mode or "auto"),
+                wait_seconds=int(wait_seconds or 0),
+                total_timeout_ms=int(total_timeout_ms),
             ))
         except AttributeError:
             # fallback на старый API
-            return bool(self.engine.run_stand_up_once(win, lang, timeout_ms=total_timeout_ms))
+            return bool(self.engine.run_stand_up_once(win, lang, timeout_ms=int(total_timeout_ms)))

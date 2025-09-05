@@ -1,0 +1,166 @@
+Root: C:\Projects\Revive
+Generated: 2025-09-05 11:25:34
+
+Revive
+├── _archive
+├── app
+│   ├── launcher
+│   │   ├── sections
+│   │   │   ├── autofarm.py
+│   │   │   ├── buff.py
+│   │   │   ├── macros.py
+│   │   │   ├── respawn.py
+│   │   │   ├── state.py
+│   │   │   ├── system.py
+│   │   │   └── tp.py
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── main.py
+│   │   └── wiring.py
+├── core
+│   ├── engines
+│   │   ├── autofarm
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       ├── target_blue_dot.png
+│   │   │   │   │   │   │       └── target_red_dot.png
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── target_init.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       ├── monsters
+│   │   │   │   │   │       │   └── names
+│   │   │   │   │   │       │       ├── василиск_стражник.png
+│   │   │   │   │   │       │       ├── гризли_диона.png
+│   │   │   │   │   │       └── sys_messages
+│   │   │   │   │   │           └── target_unvisible.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   ├── Dion_1
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Dwarf_village
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Ruins_of_agony_start
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── orchestrator_rules.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── common
+│   │   │   │   │   ├── skills
+│   │   │   │   │   │   ├── attack.png
+│   │   │   │   │   │   ├── aura_flare.png
+│   │   │   │   │   │   ├── aura_flash.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── professions.json
+│   │   │   │   │   ├── skills_catalog.json
+│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── l2mad
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   ├── skill_repo.py
+│   │   │   └── zone_repo.py
+│   │   ├── buff
+│   │   │   └── __init__.py
+│   │   ├── is_charged
+│   │   │   ├── server
+│   │   │   │   └── boh
+│   │   │   │       ├── templates
+│   │   │   │       │   └── resolver.py
+│   │   │   │       └── engine.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
+│   │   ├── macros
+│   │   │   └── __init__.py
+│   │   ├── player_state
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── state_data.py
+│   │   │   │   ├── l2mad
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── state_data.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   └── watcher.py
+│   │   ├── respawn
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   ├── rus
+│   │   │   │   │   │   │   ├── accept_button.png
+│   │   │   │   │   │   │   ├── decline_button.png
+│   │   │   │   │   │   │   ├── reborn_window.png
+│   │   │   │   │   │   │   └── to_village_button.png
+│   │   │   │   │   │   └── resolver.py
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── orchestrator_rules.py
+│   │   │   │   │   └── respawn_data.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
+│   │   ├── restart_manager
+│   │   │   └── __init__.py
+│   │   ├── rows
+│   │   │   └── __init__.py
+│   │   ├── teleport
+│   │   │   └── __init__.py
+│   │   ├── window_focus
+│   │   │   ├── __init__.py
+│   │   │   ├── engine.py
+│   │   │   ├── orchestrator_rules.py
+│   │   │   └── runner.py
+│   │   └── __init__.py
+│   ├── orchestrators
+│   │   ├── rules_base.py
+│   │   ├── runtime.py
+│   │   └── snapshot.py
+│   ├── os
+│   │   └── win
+│   │       ├── mouse.py
+│   │       └── window.py
+│   ├── vision
+│   │   ├── capture
+│   │   │   ├── __init__.py
+│   │   │   ├── gdi.py
+│   │   │   └── window_bgr_capture.py
+│   │   ├── matching
+│   │   │   ├── __init__.py
+│   │   │   └── template_matcher.py
+│   │   ├── utils
+│   │   │   └── colors.py
+│   │   ├── win32
+│   │   │   └── gdi_backend.py
+│   │   ├── __init__.py
+│   │   ├── matching.py
+│   │   └── zones.py
