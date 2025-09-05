@@ -123,19 +123,19 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             prev_ratio = hp_ratio
 
             # DEBUG: считаем количество пикселей dead|alive_colors и логируем
-            # try:
-            #     dbg_img = capture_window_region_bgr(win, zone)
-            #     if dbg_img is not None and dbg_img.size:
-            #         dead_mask_dbg = mask_for_colors_bgr(dbg_img, colors_dead, tol=tol_dead) if colors_dead else None
-            #         alive_mask_dbg = mask_for_colors_bgr(dbg_img, colors_alive, tol=tol_alive) if colors_alive else None
-            #         if dead_mask_dbg is not None:
-            #             dead_px = int(np.count_nonzero(dead_mask_dbg))
-            #             _emit(on_status, f"[HP] dead_pixels={dead_px}", None)
-            #         if alive_mask_dbg is not None:
-            #             alive_px = int(np.count_nonzero(alive_mask_dbg))
-            #             _emit(on_status, f"[HP] alive_pixels={alive_px}", None)
-            # except Exception:
-            #     pass
+            try:
+                dbg_img = capture_window_region_bgr(win, zone)
+                if dbg_img is not None and dbg_img.size:
+                    dead_mask_dbg = mask_for_colors_bgr(dbg_img, colors_dead, tol=tol_dead) if colors_dead else None
+                    alive_mask_dbg = mask_for_colors_bgr(dbg_img, colors_alive, tol=tol_alive) if colors_alive else None
+                    if dead_mask_dbg is not None:
+                        dead_px = int(np.count_nonzero(dead_mask_dbg))
+                        _emit(on_status, f"[HP] dead_pixels={dead_px}", None)
+                    if alive_mask_dbg is not None:
+                        alive_px = int(np.count_nonzero(alive_mask_dbg))
+                        _emit(on_status, f"[HP] alive_pixels={alive_px}", None)
+            except Exception:
+                pass
 
             if on_update:
                 try:

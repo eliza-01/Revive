@@ -21,8 +21,8 @@ from core.engines.respawn.server.boh.orchestrator_rules import make_respawn_rule
 from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule  # ← из window_focus
 
 # движки
-from core.engines.player_state.runner import run_player_state
-from core.engines.window_focus.runner import run_window_focus
+from core.engines.player_state.service import PlayerStateService
+from core.engines.window_focus.service import WindowFocusService
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
@@ -110,62 +110,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             print(f"[HUD] hp set error: {e}")
 
-    import threading as _th, time as _time
-
-    class _PlayerStateService:
-        def __init__(self):
-            self._run = False
-            self._thr = None
-
-        def is_running(self) -> bool:
-            return bool(self._run)
-
-        def start(self, poll_interval: float = 0.25):
-            if self._run:
-                return
-            self._run = True
-            sys_state["_ps_running"] = True
-
-            def loop():
-                while self._run:
-                    try:
-                        # если активна пауза по фокусу — не читаем состояние и не стартуем движок
-                        if bool((sys_state.get("_focus_pause") or {}).get("active")):
-                            _time.sleep(0.2)
-                            continue
-
-                        run_player_state(
-                            server=sys_state.get("server") or "boh",
-                            get_window=lambda: sys_state.get("window"),
-                            on_status=log_ui,
-                            on_update=_on_ps_update,
-                            cfg={"poll_interval": poll_interval},
-                            # прерываем также если включилась пауза фокуса
-                            should_abort=lambda: ((not self._run) or bool((sys_state.get("_focus_pause") or {}).get("active"))),
-                        )
-                    except Exception:
-                        pass
-                    _time.sleep(0.05)
-                sys_state["_ps_running"] = False
-
-            self._thr = _th.Thread(target=loop, daemon=True)
-            self._thr.start()
-
-        def stop(self):
-            self._run = False
-            # сбросить показатели в основном UI
-            try:
-                window.evaluate_js("document.getElementById('hp').textContent = '--'")
-            except Exception:
-                pass
-            # сбросить показатели в HUD
-            try:
-                if hud_window:
-                    hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','--')")
-            except Exception as e:
-                print(f"[HUD] hp reset error: {e}")
-
-    ps_service = _PlayerStateService()
+    ps_service = PlayerStateService(
+        server=lambda: sys_state.get("server"),
+        get_window=lambda: sys_state.get("window"),
+        on_update=_on_ps_update,
+        on_status=log_ui
+    )
     # зарегистрируем сервисы для оркестратора (может быть использовано другими правилами)
     sys_state.setdefault("_services", {})["player_state"] = ps_service
 
@@ -210,43 +160,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             except Exception:
                 pass
 
-    class _WindowFocusService:
-        def __init__(self):
-            self._run = False
-            self._thr = None
-
-        def is_running(self) -> bool:
-            return bool(self._run)
-
-        def start(self, poll_interval: float = 2.0):
-            if self._run:
-                return
-            self._run = True
-            sys_state["_wf_running"] = True
-
-            def loop():
-                while self._run:
-                    try:
-                        run_window_focus(
-                            server="common",
-                            get_window=lambda: sys_state.get("window"),
-                            on_status=lambda *_: None,
-                            on_update=_on_wf_update,
-                            cfg={"poll_interval": poll_interval, "debug_focus": True},
-                            should_abort=lambda: (not self._run),
-                        )
-                    except Exception:
-                        pass
-                    _time.sleep(0.05)
-                sys_state["_wf_running"] = False
-
-            self._thr = _th.Thread(target=loop, daemon=True)
-            self._thr.start()
-
-        def stop(self):
-            self._run = False
-
-    wf_service = _WindowFocusService()
+    wf_service = WindowFocusService(
+        get_window=lambda: sys_state.get("window"),
+        on_update=_on_wf_update,
+        on_status=None
+    )
 
     # Секции
     sections = [
