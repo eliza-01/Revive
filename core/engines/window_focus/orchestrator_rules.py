@@ -13,7 +13,7 @@ def make_focus_pause_rule(sys_state: Dict[str, Any], cfg: Optional[Dict[str, Any
 class _FocusPauseRule:
     def __init__(self, sys_state: Dict[str, Any], cfg: Dict[str, Any]):
         self.s = sys_state
-        self.grace = float(cfg.get("grace_seconds", 3.0))  # по ТЗ — минута
+        self.grace = float(cfg.get("grace_seconds", 1.0))  # по ТЗ — секунда
         self.key = "_focus_pause"  # {"active":bool, "saved":{...}}
 
     def when(self, snap) -> bool:
@@ -59,7 +59,7 @@ class _FocusPauseRule:
 
             try:
                 if callable(ui_emit):
-                    ui_emit("postrow", "Пауза: окно без фокуса > 1 мин — процессы остановлены", None)
+                    ui_emit("postrow", "Пауза: окно без фокуса — процессы остановлены", None)
             except Exception:
                 pass
             return

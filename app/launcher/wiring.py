@@ -161,11 +161,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     ps_adapter = _PSAdapter()
 
-    # === Window focus service (фокус окна) ===
+    # === Window focus service (изолированный) ===
     sys_state["_wf_last"] = {"has_focus": None, "ts": 0.0}
     sys_state["_wf_running"] = False
 
-    def _on_ui_update(data: Dict[str, Any]):
+    def _on_wf_update(data: Dict[str, Any]):
         # сохраняем предыдущее значение, чтобы логировать только на изменения
         prev = sys_state.get("_wf_last") or {}
         prev_focus = prev.get("has_focus")
@@ -181,9 +181,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         # в HUD и UI — только при смене состояния
         if prev_focus is None or prev_focus != has_focus:
             txt = f"Фокус окна: {'да' if has_focus else 'нет'}"
-            # HUD (скролл-лента)
             log_ui(f"[FOCUS] {'ON' if has_focus else 'OFF'}")
-            # основной UI (status row)
             try:
                 ui_emit("focus", txt, True if has_focus else None)
             except Exception:
@@ -210,7 +208,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                             server="common",
                             get_window=lambda: sys_state.get("window"),
                             on_status=lambda *_: None,
-                            on_update=_on_ui_update,
+                            on_update=_on_wf_update,
                             cfg={"poll_interval": poll_interval, "debug_focus": True},
                             should_abort=lambda: (not self._run),
                         )
@@ -225,7 +223,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         def stop(self):
             self._run = False
 
-    ui_service = _WindowFocusService()
+    wf_service = _WindowFocusService()
 
     # Секции
     sections = [
@@ -249,7 +247,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     # Правила оркестратора: СНАЧАЛА фокус/пауза, затем респавн
     rules = [
-        make_focus_pause_rule(sys_state, {"grace_seconds": 60.0}),
+        make_focus_pause_rule(sys_state, {"grace_seconds": 1.0}),
         make_respawn_rule(sys_state, ps_adapter, controller, report=log_ui),
     ]
 
@@ -267,7 +265,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     # стартуем сервисы
     ps_service.start(poll_interval=0.25)
-    ui_service.start(poll_interval=2.0)
+    wf_service.start(poll_interval=2.0)
     schedule(_orch_tick, 200)
 
     _shutdown_done = False
@@ -279,8 +277,8 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception: pass
         try: ps_service.stop()
         except Exception as e: print(f"[shutdown] ps_service.stop(): {e}")
-        try: ui_service.stop()
-        except Exception as e: print(f"[shutdown] ui_service.stop(): {e}")
+        try: wf_service.stop()
+        except Exception as e: print(f"[shutdown] wf_service.stop(): {e}")
         try: controller.close()
         except Exception as e: print(f"[shutdown] controller.close(): {e}")
 
