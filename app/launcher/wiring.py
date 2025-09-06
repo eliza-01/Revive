@@ -150,6 +150,22 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         ts = float(data.get("ts") or 0.0)
 
         sys_state["_wf_last"] = {"has_focus": has_focus, "ts": ts}
+        # >>> HUD: при потере фокуса показать "--" вместо HP
+        try:
+            if hud_window and has_focus is False:
+                hud_window.evaluate_js(
+                    "window.ReviveHUD && window.ReviveHUD.setHP('--','')"
+                )
+        except Exception:
+            pass
+        # >>> Основной UI: тоже подсказать "--" в поле HP
+        try:
+            if has_focus is False:
+                window.evaluate_js(
+                    "var el=document.getElementById('hp'); if(el){el.textContent='--';}"
+                )
+        except Exception:
+            pass
 
         # в HUD и UI — только при смене состояния
         if prev_focus is None or prev_focus != has_focus:
