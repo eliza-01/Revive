@@ -91,14 +91,8 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             "cp_ratio": data.get("cp_ratio"),
             "ts": data.get("ts"),
         }
-        try:
-            if hp is not None:
-                window.evaluate_js(
-                    f"document.getElementById('hp').textContent = '{int(max(0, min(1.0, float(hp))) * 100)} %'")
-        except Exception:
-            pass
 
-            # → HUD vitals
+        # → HUD vitals
         try:
             if hud_window:
                 h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
@@ -162,7 +156,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         try:
             if has_focus is False:
                 window.evaluate_js(
-                    "var el=document.getElementById('hp'); if(el){el.textContent='--';}"
+                    "var el=document.getElementById('hp'); if(el){el.textContent='--%';}"
                 )
         except Exception:
             pass
