@@ -152,14 +152,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                 )
         except Exception:
             pass
-        # >>> Основной UI: тоже подсказать "--" в поле HP
-        try:
-            if has_focus is False:
-                window.evaluate_js(
-                    "var el=document.getElementById('hp'); if(el){el.textContent='--%';}"
-                )
-        except Exception:
-            pass
 
         # в HUD и UI — только при смене состояния
         if prev_focus is None or prev_focus != has_focus:
