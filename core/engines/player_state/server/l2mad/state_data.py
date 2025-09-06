@@ -1,4 +1,4 @@
-# core/engines/player_state/server/boh/state_data.py
+# core/engines/player_state/server/l2mad/state_data.py
 from typing import Dict, Tuple, List
 
 Zone = Tuple[int, int, int, int]
@@ -7,7 +7,7 @@ RGB = Tuple[int, int, int]
 # Координаты зоны STATE (HP/CP/MP) в client-координатах окна.
 ZONES: Dict[str, Zone] = {
     # "state": (0, 0, 185, 85),
-    "state": (0, 0, 163, 32),
+    "state": (0, 0, 170, 70),
 }
 
 # Цвета для HP: «живые» и «мёртвые» сегменты полосы. Списки RGB-точек.
@@ -16,6 +16,8 @@ COLORS: Dict[str, List[RGB]] = {
         (154, 41, 30), (132, 28, 16), (165, 48, 33), (148, 36, 24),
         (159, 44, 30), (126, 50, 38), (134, 88, 79), (140, 97, 90),
         (123, 69, 57), (123, 60, 49),
+        (231, 48, 82), (192, 48, 66), (173, 48, 57), (206, 44, 57), (239, 73, 107), (255, 101, 148),
+        (255, 101, 148), (222, 67, 93), (206, 52, 66),
     ],
     "hp_dead_rgb": [
         (41, 28, 8), (49, 24, 16), (66, 40, 33), (49, 32, 24),
