@@ -122,12 +122,9 @@ Revive
 │   │   │   │   │   │   │   ├── reborn_window.png
 │   │   │   │   │   │   │   └── to_village_button.png
 │   │   │   │   │   │   └── resolver.py
-│   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
 │   │   │   │   │   ├── orchestrator_rules.py
 │   │   │   │   │   └── respawn_data.py
-│   │   │   │   └── __init__.py
-│   │   │   ├── __init__.py
 │   │   │   └── runner.py
 │   │   ├── restart_manager
 │   │   │   └── __init__.py

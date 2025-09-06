@@ -3,13 +3,9 @@ from __future__ import annotations
 import time
 from typing import Optional, Dict, Tuple, Callable, List, Any
 
-import cv2
-
 from core.vision.zones import compute_zone_ltrb
 from core.vision.matching.template_matcher import match_in_zone
-from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 
-from .templates import resolver as tplresolver
 from .respawn_data import ZONES, TEMPLATES
 
 Point = Tuple[int, int]
@@ -20,7 +16,6 @@ DEFAULT_CONFIRM_TIMEOUT_S = 6.0
 
 # порядок проверки шаблонов
 PREFERRED_TEMPLATE_KEYS: List[str] = ["reborn_banner", "death_banner", "accept_button", "decline_button"]
-
 
 class RespawnEngine:
     """
@@ -59,7 +54,6 @@ class RespawnEngine:
             return None
         ltrb = compute_zone_ltrb(window, zone_decl)
 
-        # 1) основной путь через match_in_zone (как было раньше)
         for key in PREFERRED_TEMPLATE_KEYS:
             parts = TEMPLATES.get(key)
             if not parts:
@@ -75,12 +69,6 @@ class RespawnEngine:
             )
             if pt is not None:
                 return (pt, key)
-
-        # 2) fallback на чистом OpenCV, если основной поиск не нашёл
-        fb = self._fallback_scan(window, (lang or "rus").lower(), ltrb)
-        if fb is not None:
-            return fb
-
         return None
 
     def run_procedure(
@@ -334,80 +322,32 @@ class RespawnEngine:
         self._report("FAIL", "Не удалось подняться")
         return False
 
-    # ---- Fallback OpenCV scan ----
-    def _fallback_scan(self, window: Dict, lang: str, ltrb: Tuple[int, int, int, int]) -> Optional[Tuple[Point, str]]:
-        """
-        Универсальный запасной поиск по всем ключам из PREFERRED_TEMPLATE_KEYS
-        через cv2.matchTemplate с несколькими масштабами.
-        """
-        img = capture_window_region_bgr(window, ltrb)
-        if img is None or img.size == 0:
-            return None
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        best = None  # {'score': float, 'loc': (x,y), 'w': int, 'h': int, 'key': str}
-        scales = (1.0, 0.9, 1.1, 0.8, 1.2)
-
-        for key in PREFERRED_TEMPLATE_KEYS:
-            parts = TEMPLATES.get(key)
-            if not parts:
-                continue
-            path = tplresolver.resolve(lang, *parts)
-            if not path:
-                if self.debug:
-                    print(f"[respawn/fallback] no template for key={key} lang={lang}")
-                continue
-
-            tpl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            if tpl is None or tpl.size == 0:
-                if self.debug:
-                    print(f"[respawn/fallback] failed to read: {path}")
-                continue
-
-            for s in scales:
-                tw = max(1, int(round(tpl.shape[1] * s)))
-                th = max(1, int(round(tpl.shape[0] * s)))
-                t = cv2.resize(
-                    tpl,
-                    (tw, th),
-                    interpolation=cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC
-                )
-                if t.shape[0] > gray.shape[0] or t.shape[1] > gray.shape[1]:
-                    continue
-
-                res = cv2.matchTemplate(gray, t, cv2.TM_CCOEFF_NORMED)
-                _, maxVal, _, maxLoc = cv2.minMaxLoc(res)
-                score = float(maxVal)
-                if best is None or score > best['score']:
-                    best = {'score': score, 'loc': maxLoc, 'w': t.shape[1], 'h': t.shape[0], 'key': key}
-
-        if best and best['score'] >= self.click_threshold:
-            zl, zt, _, _ = ltrb
-            # центр найденного шаблона в КЛИЕНТСКИХ координатах
-            cx_client = zl + best['loc'][0] + best['w'] // 2
-            cy_client = zt + best['loc'][1] + best['h'] // 2
-            # преобразуем в ЭКРАННЫЕ координаты
-            win_x = int(window.get("x", 0))
-            win_y = int(window.get("y", 0))
-            cx_screen = win_x + cx_client
-            cy_screen = win_y + cy_client
-
-            if self.debug:
-                print(f"[respawn/fallback] {best['key']} score={best['score']:.3f} @ ({cx_screen},{cy_screen})")
-
-            return ((cx_screen, cy_screen), best['key'])
-
-    # ---- util ----
     def _log(self, msg: str):
         if self.debug:
-            try:
-                print(msg)
-            except Exception:
-                pass
+            try: print(msg)
+            except Exception: pass
 
     def _report(self, code: str, text: str):
         if callable(self.on_report):
-            try:
-                self.on_report(code, text)
-            except Exception:
-                pass
+            try: self.on_report(code, text)
+            except Exception: pass
+
+
+def create_engine(
+    server: str,
+    controller: Any,
+    is_alive_cb: Optional[Callable[[], bool]] = None,
+    click_threshold: float = DEFAULT_CLICK_THRESHOLD,
+    confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
+    debug: bool = False,
+    on_report: Optional[Callable[[str, str]], None] = None,
+) -> RespawnEngine:
+    return RespawnEngine(
+        server=server,
+        controller=controller,
+        is_alive_cb=is_alive_cb,
+        click_threshold=click_threshold,
+        confirm_timeout_s=confirm_timeout_s,
+        debug=debug,
+        on_report=on_report,
+    )

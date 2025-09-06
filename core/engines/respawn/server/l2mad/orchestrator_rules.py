@@ -1,16 +1,11 @@
-﻿from __future__ import annotations
+﻿# core/engines/respawn/server/boh/orchestrator_rules.py
+from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 import time
 
 from core.orchestrators.snapshot import Snapshot
 from core.engines.respawn.runner import RespawnRunner
-
-# Пытаемся импортировать и фабрику, и класс; фолбэк, если фабрики нет
-try:
-    from core.engines.respawn.server.boh.engine import create_engine as _create_engine, RespawnEngine
-except Exception:
-    from core.engines.respawn.server.boh.engine import RespawnEngine  # type: ignore
-    _create_engine = None  # фабрики может не быть
+from core.engines.respawn.server.boh.engine import create_engine
 
 class _RespawnRule:
     def __init__(self, sys_state: Dict[str, Any], ps_adapter, controller, report: Callable[[str], None]):
@@ -35,27 +30,15 @@ class _RespawnRule:
                 ok = True if code == "SUCCESS" else False if code in ("FAIL","TIMEOUT:CONFIRM","TIMEOUT:WAIT_REBORN") else None
                 emit("respawn", text, ok)
 
-        # Создаём движок через фабрику, если она есть; иначе напрямую классом
-        if _create_engine:
-            self._engine = _create_engine(
-                server=self.s.get("server") or "boh",
-                controller=self.controller,
-                is_alive_cb=_is_alive,
-                click_threshold=float(self.s.get("respawn_click_threshold", 0.70)),
-                confirm_timeout_s=float(self.s.get("respawn_confirm_timeout_s", 6.0)),
-                debug=bool(self.s.get("respawn_debug", True)),  # временно True
-                on_report=_on_engine_report,
-            )
-        else:
-            self._engine = RespawnEngine(
-                server=self.s.get("server") or "boh",
-                controller=self.controller,
-                is_alive_cb=_is_alive,
-                click_threshold=float(self.s.get("respawn_click_threshold", 0.70)),
-                confirm_timeout_s=float(self.s.get("respawn_confirm_timeout_s", 6.0)),
-                debug=bool(self.s.get("respawn_debug", True)),  # временно True
-                on_report=_on_engine_report,
-            )
+        self._engine = create_engine(
+            server=self.s.get("server") or "boh",
+            controller=self.controller,
+            is_alive_cb=_is_alive,
+            click_threshold=float(self.s.get("respawn_click_threshold", 0.70)),
+            confirm_timeout_s=float(self.s.get("respawn_confirm_timeout_s", 6.0)),
+            debug=False,
+            on_report=_on_engine_report,
+        )
 
         self._runner = RespawnRunner(
             engine=self._engine,

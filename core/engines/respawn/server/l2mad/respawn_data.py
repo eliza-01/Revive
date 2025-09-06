@@ -10,7 +10,7 @@ ZoneDecl = Union[ZoneLTRB, dict]
 ZONES: Dict[str, ZoneDecl] = {
     # Кнопка/баннер «встать/возродиться».
     # Центр окна 280x200 — поправишь при необходимости.
-    "death_banners": {"fullscreen": True, "width": 280, "height": 200},
+    "death_banners": {"centered": True, "width": 280, "height": 200},
 }
 
 # Пути до шаблонов через серверный resolver
