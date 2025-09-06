@@ -71,8 +71,8 @@
 
     <!-- Поток -->
     <section class="card">
-      <h3>Поток</h3>
 
+      <h3>Поток</h3>
       <!-- Мониторинг/Респавн -->
       <div class="row compact wrap">
         <label class="switch">
@@ -80,140 +80,158 @@
           <span class="slider"></span>
           <span class="slabel">Мониторинг</span>
         </label>
-
-        <label class="switch ml">
-          <input type="checkbox" id="chkRespawn" checked>
-          <span class="slider"></span>
-          <span class="slabel">Встать после смерти</span>
-        </label>
       </div>
       <div class="row compact">
         <span id="status-watcher" class="status gray">Мониторинг: выкл</span>
       </div>
 
-      <!-- Состояние -->
+
       <div class="group">
+        <!-- Состояние -->
         <h4>Состояние</h4>
         <div class="row compact">
           <span>HP: <b id="hp">-- %</b></span>
           <span class="ml">CP: <b id="cp">-- %</b></span>
         </div>
       </div>
+    </section>
 
+    <section class="card">
+      <h3>Респавн</h3>
+
+      <div class="row compact wrap">
+        <label class="switch">
+          <input type="checkbox" id="chkRespawn">
+          <span class="slider"></span>
+          <span class="slabel">Авто-респавн</span>
+        </label>
+      </div>
+
+      <div class="row compact wrap">
+        <label class="switch">
+          <input type="checkbox" id="chkRespawnWait">
+          <span class="slider"></span>
+          <span class="slabel">Ждать возрождения</span>
+        </label>
+
+        <input id="respawnWaitSec" type="number" min="0" step="1" value="120" class="xs ml">
+        <span class="hint">сек.</span>
+      </div>
+    </section>
+
+    <section class="card">
       <!-- Баф -->
-      <div class="group">
-        <h4>Баф после респавна</h4>
-        <div class="row compact wrap">
-          <label class="switch">
-            <input type="checkbox" id="chkBuff">
-            <span class="slider"></span>
-            <span class="slabel">Включить</span>
-          </label>
+      <h4>Баф после респавна</h4>
+      <div class="row compact wrap">
+        <label class="switch">
+          <input type="checkbox" id="chkBuff">
+          <span class="slider"></span>
+          <span class="slabel">Включить</span>
+        </label>
 
-          <label class="ml">Режим:</label>
-          <select id="buffMode" class="xs">
-            <option value="profile">profile</option>
-            <option value="mage">mage</option>
-            <option value="fighter">fighter</option>
-          </select>
+        <label class="ml">Режим:</label>
+        <select id="buffMode" class="xs">
+          <option value="profile">profile</option>
+          <option value="mage">mage</option>
+          <option value="fighter">fighter</option>
+        </select>
 
-          <label class="ml">Метод:</label>
-          <select id="buffMethod" class="sm"></select>
+        <label class="ml">Метод:</label>
+        <select id="buffMethod" class="sm"></select>
 
-          <button class="ml" id="btnBuffOnce">Баф один раз</button>
-        </div>
-        <div class="row compact">
-          <span id="status-buff" class="status gray">Отключено</span>
-        </div>
+        <button class="ml" id="btnBuffOnce">Баф один раз</button>
       </div>
+      <div class="row compact">
+        <span id="status-buff" class="status gray">Отключено</span>
+      </div>
+    </section>
 
+    <section class="card">
       <!-- Макросы -->
-      <div class="group">
-        <h4>Макросы после бафа</h4>
-        <div class="row compact wrap">
-          <label class="switch">
-            <input type="checkbox" id="chkMacros">
-            <span class="slider"></span>
-            <span class="slabel">Включить</span>
-          </label>
+      <h4>Макросы после бафа</h4>
+      <div class="row compact wrap">
+        <label class="switch">
+          <input type="checkbox" id="chkMacros">
+          <span class="slider"></span>
+          <span class="slabel">Включить</span>
+        </label>
 
-          <label class="switch ml">
-            <input type="checkbox" id="chkMacrosAlways">
-            <span class="slider"></span>
-            <span class="slabel">Даже без бафа</span>
-          </label>
-        </div>
-
-        <div id="macrosRows" class="rows"></div>
-
-        <div class="row compact">
-          <button id="btnAddRow" class="icon-btn">＋</button>
-          <button id="btnDelRow" class="icon-btn ml">−</button>
-        </div>
-
-        <div class="row compact wrap">
-          <label>Между макросами, сек:</label>
-          <input id="macrosDelay" type="number" step="0.1" value="1" class="xs">
-          <label class="ml">На выполнение всех макросов, сек:</label>
-          <input id="macrosDur" type="number" step="0.1" value="2" class="xs">
-          <button class="ml" id="btnMacrosOnce">Выполнить</button>
-        </div>
-
-        <div class="row compact">
-          <span id="status-macros" class="status gray"></span>
-        </div>
+        <label class="switch ml">
+          <input type="checkbox" id="chkMacrosAlways">
+          <span class="slider"></span>
+          <span class="slabel">Даже без бафа</span>
+        </label>
       </div>
 
+      <div id="macrosRows" class="rows"></div>
+
+      <div class="row compact">
+        <button id="btnAddRow" class="icon-btn">＋</button>
+        <button id="btnDelRow" class="icon-btn ml">−</button>
+      </div>
+
+      <div class="row compact wrap">
+        <label>Между макросами, сек:</label>
+        <input id="macrosDelay" type="number" step="0.1" value="1" class="xs">
+        <label class="ml">На выполнение всех макросов, сек:</label>
+        <input id="macrosDur" type="number" step="0.1" value="2" class="xs">
+        <button class="ml" id="btnMacrosOnce">Выполнить</button>
+      </div>
+
+      <div class="row compact">
+        <span id="status-macros" class="status gray"></span>
+      </div>
+    </section>
+
+    <section class="card">
       <!-- ТП -->
-      <div class="group">
-        <h4>Телепорт</h4>
-        <div class="row compact wrap">
-          <label class="switch">
-            <input type="checkbox" id="chkTP">
-            <span class="slider"></span>
-            <span class="slabel">ТП после смерти</span>
-          </label>
+      <h4>Телепорт</h4>
+      <div class="row compact wrap">
+        <label class="switch">
+          <input type="checkbox" id="chkTP">
+          <span class="slider"></span>
+          <span class="slabel">ТП после смерти</span>
+        </label>
 
-          <label class="ml">Метод:</label>
-          <select id="tpMethod" class="sm"></select>
-        </div>
-
-        <div class="row compact wrap">
-          <label>Категория:</label><select id="tpCat" class="sm"></select>
-          <label class="ml">Локация:</label><select id="tpLoc" class="sm"></select>
-          <button class="ml" id="btnTPNow">ТП сейчас</button>
-        </div>
-
-        <div class="row compact">
-          <span id="status-tp" class="status gray">Выберите категорию и локацию</span>
-        </div>
-
-        <div class="row compact wrap mt">
-          <label>Маршрут:</label>
-          <select id="rows" class="md"></select>
-          <button id="btnRowClear" class="ml">Очистить</button>
-        </div>
+        <label class="ml">Метод:</label>
+        <select id="tpMethod" class="sm"></select>
       </div>
 
+      <div class="row compact wrap">
+        <label>Категория:</label><select id="tpCat" class="sm"></select>
+        <label class="ml">Локация:</label><select id="tpLoc" class="sm"></select>
+        <button class="ml" id="btnTPNow">ТП сейчас</button>
+      </div>
+
+      <div class="row compact">
+        <span id="status-tp" class="status gray">Выберите категорию и локацию</span>
+      </div>
+
+      <div class="row compact wrap mt">
+        <label>Маршрут:</label>
+        <select id="rows" class="md"></select>
+        <button id="btnRowClear" class="ml">Очистить</button>
+      </div>
+    </section>
+
+    <section class="card">
       <!-- Автофарм -->
-      <div class="group">
-        <h4>Автофарм</h4>
-        <div class="row compact wrap">
-          <label class="switch">
-            <input type="checkbox" id="chkAF">
-            <span class="slider"></span>
-            <span class="slabel">Включить</span>
-          </label>
+      <h4>Автофарм</h4>
+      <div class="row compact wrap">
+        <label class="switch">
+          <input type="checkbox" id="chkAF">
+          <span class="slider"></span>
+          <span class="slabel">Включить</span>
+        </label>
 
-          <label class="ml">Режим:</label>
-          <select id="afMode" class="sm">
-            <option value="after_tp">После ТП</option>
-            <option value="manual">Ручной запуск</option>
-          </select>
+        <label class="ml">Режим:</label>
+        <select id="afMode" class="sm">
+          <option value="after_tp">После ТП</option>
+          <option value="manual">Ручной запуск</option>
+        </select>
 
-          <button id="btnAFSettings" class="ml">Настройки</button>
-          <span id="status-af" class="status gray ml">Не настроено</span>
-        </div>
+        <button id="btnAFSettings" class="ml">Настройки</button>
+        <span id="status-af" class="status gray ml">Не настроено</span>
       </div>
 
       <!-- ПОПАП НАСТРОЕК -->
@@ -279,6 +297,13 @@
   </main>
 
   <script src="js/app.js"></script>
+  <script src="js/state.poller.js"></script>
+  <script src="js/state.ui.js"></script>
+  <script src="js/respawn.ui.js"></script>
+  <script src="js/buff.ui.js"></script>
+  <script src="js/macros.ui.js"></script>
+  <script src="js/tp.ui.js"></script>
   <script src="js/autofarm.ui.js?v=debug1"></script>
+
 </body>
 </html>

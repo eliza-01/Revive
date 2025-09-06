@@ -1,0 +1,35 @@
+:root {
+  --bg: #111315;
+  --card: #181b1f;
+  --text: #e2e5ea;
+  --muted: #8a9099;
+  --line: #272b31;
+  --accent: #ff9a00;
+}
+
+html,body { margin:0; height:100%; background:transparent; }
+body { -webkit-app-region: drag; } /* перетаскивать за любое место */
+
+.hud {
+  display:flex; align-items:center; gap:8px;
+  width:100%; height:100%;
+  background: var(--card);
+  color: var(--text);
+  border:1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  box-shadow: 0 12px 28px rgba(0,0,0,.5);
+}
+
+.pin { font-size:16px; user-select:none; -webkit-app-region: no-drag; }
+.log {
+  font: 700 12px/1.3 "Segoe UI", Tahoma, Verdana, system-ui;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+  -webkit-app-region: no-drag; /* чтобы можно было выделить текст */
+  flex: 1 1 auto;
+}

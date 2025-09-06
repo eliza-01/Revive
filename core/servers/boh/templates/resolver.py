@@ -1,25 +1,4 @@
 ﻿# core/servers/boh/templates/resolver.py
-"""
-L2MAD template resolver.
-
-Structure:
-core/servers/l2mad/templates/<lang>/
-  dashboard/
-    dashboard_init.png
-    dashboard_is_locked.png
-    teleport/
-      dashboard_teleport_button.png
-      villages/<Village>/<Location>.png
-    buffer/
-      dashboard_buffer_button.png
-      dashboard_buffer_useProfile.png
-      dashboard_buffer_useMage.png
-      dashboard_buffer_useFighter.png
-      dashboard_buffer_restoreHp.png
-      dashboard_buffer_init.png
-  death/
-    to_village_button.png
-"""
 import os
 from typing import List, Optional
 

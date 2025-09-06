@@ -10,7 +10,6 @@ Provides:
 - gdi_capture_zone(window_info, zone_dict)
 """
 from typing import Optional, Tuple, Dict
-import numpy as np
 
 from core.vision.win32.gdi_backend import (
     find_window,

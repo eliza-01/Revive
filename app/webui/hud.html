@@ -1,0 +1,131 @@
+<!-- app/webui/hud.html -->
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Revive HUD</title>
+  <style>
+    :root{ --bg:#111; --text:#e7e9ee; --muted:#9aa1ac; --accent:#ff9a00; --on:#34c759; }
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:600 11px/1.3 "Segoe UI",system-ui}
+    body{ -webkit-app-region: drag; user-select:none; }
+
+    .nodrag{ -webkit-app-region: no-drag; cursor:pointer; }
+
+    .wrap{display:flex;flex-direction:column;gap:4px;height:100%;padding:6px 8px;box-sizing:border-box}
+
+    .top{display:flex;align-items:center;gap:8px;min-height:18px}
+    .pin{width:14px;height:14px;display:inline-block;background:#222;border-radius:4px;position:relative}
+    .pin::before{content:"";position:absolute;inset:3px;background:var(--muted);border-radius:2px;transition:all .15s ease}
+    .pin.active::before{ background:var(--on); box-shadow:0 0 6px rgba(52,199,89,.6); }
+
+    .gauge{display:flex;align-items:center;gap:6px}
+    .lbl{opacity:.8}
+    #hudHP,#hudCP{min-width:38px;text-align:right}
+    #hudHP{color:#28a745}
+    #hudCP{color:#61dafb}
+
+    .log{flex:1;min-height:16px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+    .strong{color:var(--text)}
+    .sep{flex:1}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <!-- по умолчанию активная, чтобы соответствовать on_top=True из Python -->
+      <div id="pin" class="pin nodrag active" title="Всегда поверх окон: вкл/выкл"></div>
+      <div class="gauge">
+        <span class="lbl">HP:</span><span id="hudHP">--</span>
+        <span class="lbl">CP:</span><span id="hudCP">--</span>
+      </div>
+      <div class="sep"></div>
+    </div>
+    <div id="hudline" class="log">HUD готов. Жду события оркестратора…</div>
+  </div>
+
+  <script>
+    (function(){
+      const line = document.getElementById('hudline');
+      const pin  = document.getElementById('pin');
+      const elHP = document.getElementById('hudHP');
+      const elCP = document.getElementById('hudCP');
+
+      const MAX = 20;
+      const buf = [];
+
+      function setLog(text){
+        line.textContent = String(text||"—");
+      }
+      function push(text){
+        const t = `[${new Date().toLocaleTimeString()}] ${text}`;
+        buf.push(t);
+        while (buf.length > MAX) buf.shift();
+        if (/(SUCCESS|FAIL|ERROR|Респавн|Поднялись)/i.test(String(text))) {
+          line.classList.add('strong');
+        } else {
+          line.classList.remove('strong');
+        }
+        setLog(text);
+      }
+
+      function setHP(hp, cp){
+        if (typeof hp === "string" && hp.trim() !== "") elHP.textContent = hp;
+        if (typeof cp === "string" && cp.trim() !== "") elCP.textContent = cp;
+      }
+
+      function syncPinFromApi(){
+        try{
+          if (!window.pywebview || !pywebview.api || !pywebview.api.hud_state) return;
+          pywebview.api.hud_state().then(st=>{
+            if (st && typeof st.on_top === "boolean"){
+              pin.classList.toggle('active', !!st.on_top);
+            }
+          }).catch(()=>{});
+        }catch(_){}
+      }
+
+      // клик по пину
+      pin.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        try{
+          if (window.pywebview && pywebview.api && pywebview.api.hud_toggle_on_top){
+            const r = await pywebview.api.hud_toggle_on_top();
+            if (r && typeof r.on_top === "boolean"){
+              pin.classList.toggle('active', !!r.on_top);
+            }
+          }
+        }catch(_){}
+      });
+
+      // Инициализация: учитываем, что pywebview.api может появиться позже.
+      function boot(){
+        // по умолчанию пин активен (on_top=True по умолчанию в Python)
+        pin.classList.add('active');
+
+        const init = ()=>{ syncPinFromApi(); };
+        if (window.pywebview && window.pywebview.api){ init(); }
+        else {
+          const onReady = ()=>{ document.removeEventListener('pywebviewready', onReady); init(); };
+          document.addEventListener('pywebviewready', onReady);
+          let tries = 0;
+          const poll = setInterval(()=>{
+            if (window.pywebview && window.pywebview.api){ clearInterval(poll); init(); }
+            else if (++tries > 100){ clearInterval(poll); }
+          }, 50);
+        }
+      }
+
+      // Экспортируемое API для Python
+      window.ReviveHUD = {
+        push,
+        dump(){ return buf.slice(); },
+        setHP(hp, cp){ setHP(hp, cp); }
+      };
+
+      document.addEventListener('DOMContentLoaded', boot);
+    })();
+  </script>
+</body>
+</html>

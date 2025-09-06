@@ -1,10 +1,13 @@
-﻿from __future__ import annotations
-import importlib
+﻿# core/engines/autofarm/service.py
+from __future__ import annotations
 import time
 import threading
 from typing import Dict, Any, Optional
-from core.runtime.poller import RepeaterThread
-from core.runtime.dashboard_guard import DASHBOARD_GUARD
+
+from _archive.core.runtime import RepeaterThread
+from _archive.core.runtime.dashboard_guard import DASHBOARD_GUARD
+from core.engines.autofarm.runner import run_autofarm
+
 
 class AutoFarmService:
     def __init__(self, controller, get_server, get_language, get_window, is_alive,
@@ -63,23 +66,22 @@ class AutoFarmService:
 
     def _runner(self, cfg: Dict[str, Any]):
         server = (self.get_server() or "l2mad").lower()
-        try:
-            mod = importlib.import_module(f"core.engines.autofarm.{server}.engine")
-        except Exception as e:
-            self.on_status(f"[af] engine import error: {e}", False)
-            return
-        ctx = {
-            "server": server,
-            "controller": self.controller,
-            "get_window": self.get_window,
-            "get_language": self.get_language,
-            "on_status": self.on_status,
-            "should_abort": self._should_abort,  # ВАЖНО: даём движку флаг отмены
-        }
         self._running = True
         try:
-            ok = bool(mod.start(ctx, cfg or {}))
-            self.on_status("Автофарм завершён" if ok else "Автофарм остановлен/ошибка", True if ok else None)
+            ok = bool(run_autofarm(
+                server=server,
+                controller=self.controller,
+                get_window=self.get_window,
+                get_language=self.get_language,
+                on_status=self.on_status,
+                cfg=cfg or {},
+                should_abort=self._should_abort,
+            ))
+            # run_autofarm сам публикует статусы; этот финальный — мягкий резюме
+            if ok:
+                self.on_status("Автофарм завершён", True)
+            else:
+                self.on_status("Автофарм остановлен/ошибка", None)
         except Exception as e:
             self.on_status(f"[af] start error: {e}", False)
         finally:
