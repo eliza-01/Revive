@@ -55,7 +55,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
         # макросы (новый UI + совместимость со старым)
         "macros_enabled": False,
-        "macros_repeat_enabled": True,  # ← включаем повторы по умолчанию
+        "macros_repeat_enabled": False,  # ← выключаем повторы по умолчанию
         "macros_mode": "manual",     # "manual" | "after_respawn" | "after_buff" | "after_tp" (задел)
         "macros_rows": [],           # [{key, cast_s, repeat_s}]
         # для старого UI, если он ещё активен

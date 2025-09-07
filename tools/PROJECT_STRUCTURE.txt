@@ -1,0 +1,218 @@
+Root: C:\Projects\Revive
+Generated: 2025-09-07 15:55:28
+
+Revive
+├── _archive
+│   ├── app
+│   │   └── ui
+│   │       ├── account_settings.py
+│   │       ├── afterbuff_macros.py
+│   │       ├── buff_controls.py
+│   │       ├── interval_buff.py
+│   │       ├── respawn_controls.py
+│   │       ├── state_controls.py
+│   │       ├── tp_controls.py
+│   │       ├── updater_dialog.py
+│   │       ├── widgets.py
+│   │       └── window_probe.py
+│   ├── checks
+│   │   └── charged.py
+│   └── core
+│       └── runtime
+│           ├── __init__.py
+│           ├── dashboard_guard.py
+│           ├── flow_config.py
+│           ├── flow_engine.py
+│           ├── flow_ops.py
+│           ├── flow_runner.py
+│           ├── poller.py
+│           └── state_watcher.py
+├── app
+│   ├── dep
+│   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
+│   ├── launcher
+│   │   ├── sections
+│   │   │   ├── autofarm.py
+│   │   │   ├── buff.py
+│   │   │   ├── macros.py
+│   │   │   ├── respawn.py
+│   │   │   ├── state.py
+│   │   │   ├── system.py
+│   │   │   └── tp.py
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── main.py
+│   │   └── wiring.py
+│   ├── webui
+│   │   ├── css
+│   │   │   ├── hud.css
+│   │   │   └── style.css
+│   │   ├── js
+│   │   │   ├── app.js
+│   │   │   ├── autofarm.ui.js
+│   │   │   ├── buff.ui.js
+│   │   │   ├── hud.js
+│   │   │   ├── macros.ui.js
+│   │   │   ├── respawn.ui.js
+│   │   │   ├── state.poller.js
+│   │   │   ├── state.ui.js
+│   │   │   └── tp.ui.js
+│   │   ├── hud.html
+│   │   └── index.html
+│   ├── __init__.py
+│   ├── __main__.py
+│   └── launcher_bootstrap.py
+├── core
+│   ├── arduino
+│   │   ├── firmware
+│   │   │   ├── __init__.py
+│   │   │   ├── keys_test.py
+│   │   │   └── micro.ino
+│   │   ├── __init__.py
+│   │   ├── connection.py
+│   │   ├── connection_test.py
+│   │   ├── safe_serial.py
+│   │   ├── send_command.py
+│   │   ├── send_safe.py
+│   │   └── serial_port.py
+│   ├── engines
+│   │   ├── autofarm
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       ├── monsters
+│   │   │   │   │   │       │   └── names
+│   │   │   │   │   │       └── sys_messages
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   ├── Dion_1
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   ├── Dwarf_village
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   ├── Ruins_of_agony_start
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── orchestrator_rules.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── common
+│   │   │   │   │   ├── skills
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── professions.json
+│   │   │   │   │   ├── skills_catalog.json
+│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   ├── skill_repo.py
+│   │   │   └── zone_repo.py
+│   │   ├── buff
+│   │   │   └── __init__.py
+│   │   ├── dashboard
+│   │   │   └── server
+│   │   │       └── boh
+│   │   │           └── templates
+│   │   │               ├── eng
+│   │   │               └── rus
+│   │   ├── is_charged
+│   │   │   ├── server
+│   │   │   │   └── boh
+│   │   │   │       ├── templates
+│   │   │   │       │   └── resolver.py
+│   │   │   │       └── engine.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
+│   │   ├── macros
+│   │   │   ├── server
+│   │   │   │   └── boh
+│   │   │   │       ├── engine.py
+│   │   │   │       └── orchestrator_rules.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   └── service.py
+│   │   ├── player_state
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── state_data.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── tests
+│   │   │   │   ├── probe_hp_bar.py
+│   │   │   │   └── probe_hp_templates.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   └── watcher.py
+│   │   ├── respawn
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   ├── rus
+│   │   │   │   │   │   └── resolver.py
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── orchestrator_rules.py
+│   │   │   │   │   └── respawn_data.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
+│   │   ├── restart_manager
+│   │   │   └── __init__.py
+│   │   ├── rows
+│   │   │   └── __init__.py
+│   │   ├── teleport
+│   │   │   └── __init__.py
+│   │   ├── window_focus
+│   │   │   ├── server
+│   │   │   │   ├── common
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   └── engine.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── orchestrator_rules.py
+│   │   │   ├── runner.py
+│   │   │   └── service.py
+│   │   └── __init__.py
+│   ├── orchestrators
+│   │   ├── rules_base.py
+│   │   ├── runtime.py
+│   │   └── snapshot.py
+│   ├── os
+│   │   └── win
+│   │       ├── mouse.py
+│   │       └── window.py
+│   ├── vision
+│   │   ├── capture
+│   │   │   ├── __init__.py
+│   │   │   ├── gdi.py
+│   │   │   └── window_bgr_capture.py
+│   │   ├── matching
+│   │   │   ├── __init__.py
+│   │   │   └── template_matcher.py
+│   │   ├── utils
+│   │   │   └── colors.py
+│   │   ├── win32
+│   │   │   └── gdi_backend.py
+│   │   ├── __init__.py
+│   │   ├── matching.py
+│   │   └── zones.py
+│   ├── __init__.py
+│   ├── logging_setup.py
+│   └── updater.py
+├── latest_version.txt
+├── main.py
+└── requirements.txt

@@ -28,6 +28,7 @@ class MacrosSection(BaseSection):
     # ---- setters (новый UI) ----
     def macros_set_enabled(self, enabled: bool):
         self.s["macros_enabled"] = bool(enabled)
+        self.s["macros_repeat_enabled"] = bool(enabled)
         self.emit("macros", "Макросы: вкл" if enabled else "Макросы: выкл", True if enabled else None)
 
     def macros_set_mode(self, mode: str):
