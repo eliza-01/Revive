@@ -1,4 +1,4 @@
-# core/connection_test.py
+﻿# core/arduino/connection_test.py
 def run_test_command(controller, status_label=None):
     try:
         controller.send("ping")

@@ -13,27 +13,102 @@
     return el;
   }
 
-  function buildMacrosRow(val) {
+  function buildKeySelect(val) {
     const sel = create("select", { class: "key", "data-scope": "macros-key" });
     KEYS.forEach(k => sel.appendChild(create("option", { value: k }, k)));
     sel.value = (val && KEYS.includes(String(val))) ? String(val) : "1";
-    sel.addEventListener("change", () => {
-      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
-    });
+    sel.addEventListener("change", pushRowsToBackend);
     return sel;
   }
 
-  function readMacrosSequence() {
+  function buildNumberInput({min, max, step, ds, placeholder}) {
+    const inp = create("input", { type: "number", "data-scope": ds });
+    inp.min = String(min);
+    inp.max = String(max);
+    inp.step = String(step);
+    if (placeholder) inp.placeholder = placeholder;
+    inp.addEventListener("change", ()=>{
+      const v = parseFloat(inp.value || "0");
+      const clamped = isFinite(v) ? Math.max(min, Math.min(max, v)) : 0;
+      inp.value = String(clamped);
+      pushRowsToBackend();
+    });
+    return inp;
+  }
+
+  function buildRow(row) {
+    // row: { key, cast_s, repeat_s }
+    const wrap = create("div", { class: "macros-grid macros-row" });
+
+    // col1: удалить
+    const colDel = create("div");
+    const btnDel = create("button", { class: "icon-btn danger", title: "Удалить" }, "−");
+    btnDel.addEventListener("click", () => {
+      const cont = $("#macrosRows");
+      if (!cont) return;
+      cont.removeChild(wrap);
+      ensureAtLeastOneRow();
+      pushRowsToBackend();
+    });
+    colDel.appendChild(btnDel);
+
+    // col2: выбор кнопки
+    const colKey = create("div");
+    const keySel = buildKeySelect(row && row.key);
+    colKey.appendChild(keySel);
+
+    // col3: кастуется (сек)
+    const colCast = create("div");
+    const castWrap = create("div", { class: "macros-field" });
+    const castInp = buildNumberInput({min:0, max:99, step:1, ds:"macros-cast", placeholder:"0..99"});
+    castInp.value = (row && Number.isFinite(row.cast_s)) ? String(row.cast_s) : "0";
+    castWrap.appendChild(castInp);
+    castWrap.appendChild(create("span", { class:"hint" }, "сек."));
+    colCast.appendChild(castWrap);
+
+    // col4: повторять через (сек)
+    const colRep = create("div");
+    const repWrap = create("div", { class: "macros-field" });
+    const repInp = buildNumberInput({min:0, max:9999, step:1, ds:"macros-repeat", placeholder:"0..9999"});
+    repInp.value = (row && Number.isFinite(row.repeat_s)) ? String(row.repeat_s) : "0";
+    repWrap.appendChild(repInp);
+    repWrap.appendChild(create("span", { class:"hint" }, "сек."));
+    colRep.appendChild(repWrap);
+
+    wrap.appendChild(colDel);
+    wrap.appendChild(colKey);
+    wrap.appendChild(colCast);
+    wrap.appendChild(colRep);
+
+    return wrap;
+  }
+
+  function readRows() {
     const cont = $("#macrosRows");
     if (!cont) return [];
-    return Array.from(cont.querySelectorAll('select[data-scope="macros-key"]')).map(x => x.value);
+    const rows = [];
+    cont.querySelectorAll(".macros-row").forEach(r=>{
+      const key = (r.querySelector('[data-scope="macros-key"]')||{}).value || "1";
+      const cast = parseFloat((r.querySelector('[data-scope="macros-cast"]')||{}).value || "0") || 0;
+      const rep  = parseFloat((r.querySelector('[data-scope="macros-repeat"]')||{}).value || "0") || 0;
+      rows.push({ key, cast_s: clamp(cast, 0, 99), repeat_s: clamp(rep, 0, 9999) });
+    });
+    return rows;
+  }
+
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+  function pushRowsToBackend(){
+    try {
+      const rows = readRows();
+      pywebview.api.macros_set_rows(rows);
+    } catch(_){}
   }
 
   function ensureAtLeastOneRow() {
     const cont = $("#macrosRows");
     if (!cont) return;
-    if (!cont.children.length) cont.appendChild(buildMacrosRow("1"));
-    try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
+    if (!cont.children.length) cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
   }
 
   function wire() {
@@ -41,37 +116,31 @@
     if (add) add.addEventListener("click", () => {
       const cont = $("#macrosRows");
       if (!cont) return;
-      cont.appendChild(buildMacrosRow("1"));
-      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
-    });
-
-    const del = $("#btnDelRow");
-    if (del) del.addEventListener("click", () => {
-      const cont = $("#macrosRows");
-      if (!cont) return;
-      if (cont.children.length > 1) cont.removeChild(cont.lastElementChild);
-      try { pywebview.api.macros_set_sequence(readMacrosSequence()); } catch (_) {}
+      cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
+      pushRowsToBackend();
     });
 
     const chk = $("#chkMacros");
-    if (chk) chk.addEventListener("change", e => { try { pywebview.api.macros_set_enabled(!!e.target.checked); } catch(_){} });
+    if (chk) chk.addEventListener("change", e => {
+      const enabled = !!e.target.checked;
+      try {
+        pywebview.api.macros_set_enabled(enabled);
+        pywebview.api.macros_set_repeat_enabled(enabled);  // ← добавлено
+      } catch(_){}
+    });
 
-    const alw = $("#chkMacrosAlways");
-    if (alw) alw.addEventListener("change", e => { try { pywebview.api.macros_set_run_always(!!e.target.checked); } catch(_){} });
-
-    const delay = $("#macrosDelay");
-    if (delay) delay.addEventListener("change", e => { try { pywebview.api.macros_set_delay(parseFloat(e.target.value || "0")); } catch(_){} });
-
-    const dur = $("#macrosDur");
-    if (dur) dur.addEventListener("change", e => { try { pywebview.api.macros_set_duration(parseFloat(e.target.value || "0")); } catch(_){} });
-
-    const once = $("#btnMacrosOnce");
-    if (once) once.addEventListener("click", () => { try { pywebview.api.macros_run_once(); } catch(_){} });
+    const mode = $("#macrosMode");
+    if (mode) mode.addEventListener("change", e => {
+      try { pywebview.api.macros_set_mode(String(e.target.value || "after_buff")); } catch(_){}
+    });
   }
 
   window.UIMacros = {
     init() {
-      ensureAtLeastOneRow();
+      const cont = $("#macrosRows");
+      if (cont) {
+        cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
+      }
       wire();
     }
   };

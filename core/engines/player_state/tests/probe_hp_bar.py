@@ -1,4 +1,4 @@
-# core/engines/player_state/tests/probe_hp_colorbar.py
+﻿# core/engines/player_state/tests/probe_hp_bar.py
 from __future__ import annotations
 import os
 import sys

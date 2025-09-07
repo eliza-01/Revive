@@ -146,42 +146,45 @@
       </div>
     </section>
 
-    <section class="card">
+        <section class="card">
       <!-- Макросы -->
-      <h4>Макросы после бафа</h4>
-      <div class="row compact wrap">
+      <h4>Макросы</h4>
+
+      <div class="row compact wrap macros">
         <label class="switch">
           <input type="checkbox" id="chkMacros">
           <span class="slider"></span>
           <span class="slabel">Включить</span>
         </label>
 
-        <label class="switch ml">
-          <input type="checkbox" id="chkMacrosAlways">
-          <span class="slider"></span>
-          <span class="slabel">Даже без бафа</span>
-        </label>
+        <label class="ml">Режим запуска:</label>
+        <select id="macrosMode" class="sm">
+          <option value="after_death">После смерти</option>
+          <option value="after_buff">После бафа</option>
+          <option value="after_tp">После ТП</option>
+        </select>
       </div>
 
-      <div id="macrosRows" class="rows"></div>
+      <!-- заголовок таблицы -->
+      <div class="macros-grid macros-grid--header">
+        <div></div>
+        <div>Кнопка</div>
+        <div>Кастуется</div>
+        <div>Повторять через</div>
+      </div>
+
+      <!-- строки -->
+      <div id="macrosRows" class="macros-rows"></div>
 
       <div class="row compact">
-        <button id="btnAddRow" class="icon-btn">＋</button>
-        <button id="btnDelRow" class="icon-btn ml">−</button>
-      </div>
-
-      <div class="row compact wrap">
-        <label>Между макросами, сек:</label>
-        <input id="macrosDelay" type="number" step="0.1" value="1" class="xs">
-        <label class="ml">На выполнение всех макросов, сек:</label>
-        <input id="macrosDur" type="number" step="0.1" value="2" class="xs">
-        <button class="ml" id="btnMacrosOnce">Выполнить</button>
+        <button id="btnAddRow" class="icon-btn primary">＋</button>
       </div>
 
       <div class="row compact">
         <span id="status-macros" class="status gray"></span>
       </div>
     </section>
+
 
     <section class="card">
       <!-- ТП -->

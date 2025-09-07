@@ -73,12 +73,45 @@ select:focus, input:focus, button:focus { outline: 2px solid rgba(255,154,0,.25)
 .icon-btn { width: 30px; padding: 0; text-align: center; }
 
 /* Sizes */
-.xs { width: 64px; }
+.xs { width: 80px; }
 .sm { width: 140px; }
 .md { width: 220px; }
 
 /* Macros key input: one digit with small reserve */
 select.key { width: 60px; }
+/* --- Macros grid layout --- */
+.macros-grid{
+  display: grid;
+  grid-template-columns: 24px 74px 120px 140px; /* delete | key | cast | repeat */
+  column-gap: 12px;
+  align-items: center;
+  margin: 6px 0;
+}
+.macros-grid--header{
+  opacity: .85;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+.macros-grid--header > div{
+  font-weight: 600;
+}
+.macros-row .macros-field{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.macros-row select.key{ width: 100%; }
+.macros-row input[type="number"]{ width: 100%; }
+
+.row.macros {
+  margin-bottom: 15px;
+}
+/* мобайл-фолбэк: сжимаем последние две колонки */
+@media (max-width: 520px){
+  .macros-grid{
+    grid-template-columns: 24px 64px 1fr 1fr;
+  }
+}
 
 /* Status */
 .status { font-size: 11px; color: var(--muted); }

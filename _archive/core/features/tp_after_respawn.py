@@ -1,4 +1,4 @@
-# core/features/tp_after_respawn.py
+﻿# _archive/core/features/tp_after_respawn.py
 from __future__ import annotations
 import time
 import importlib

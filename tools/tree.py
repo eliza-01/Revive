@@ -6,7 +6,9 @@ import os
 import sys
 import datetime
 
-IGNORED_DIRS = {"venv", ".idea", "_tmp", "__pycache__", ".git", "build", "dist", "documents", "collected"}
+IGNORED_DIRS = {"venv", ".idea", "_tmp", "__pycache__", ".git", "build", "dist", "documents", "collected", "features", "servers", "tools", "assets", "l2mad"}
+IGNORED_FILES = {".gitignore", "build.bat", "release.bat", "requirements.build.txt", "Revive.spec", "revive.log"}
+IGNORED_EXTENSIONS = {".png"}
 
 def list_dir(path: str):
     try:
@@ -24,7 +26,12 @@ def build_tree(root: str, prefix: str = ""):
     entries = list_dir(root)
     entries = [e for e in entries if e not in IGNORED_DIRS]
     dirs = [e for e in entries if is_dir(os.path.join(root, e))]
-    files = [e for e in entries if not is_dir(os.path.join(root, e))]
+    files = [
+        e for e in entries
+        if not is_dir(os.path.join(root, e))
+        and e not in IGNORED_FILES
+        and os.path.splitext(e)[1].lower() not in IGNORED_EXTENSIONS
+    ]
     entries = sorted(dirs) + sorted(files)
 
     for i, name in enumerate(entries):
