@@ -1,4 +1,4 @@
-# core/checks/charged.py
+﻿# _archive/checks/charged.py
 from __future__ import annotations
 import importlib
 import time

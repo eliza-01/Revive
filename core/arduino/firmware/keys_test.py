@@ -1,4 +1,4 @@
-﻿# firmware/keys_test.py
+﻿# core/arduino/firmware/keys_test.py
 # Требует: pip install pyserial
 import argparse
 import sys

@@ -1,4 +1,4 @@
-# core/features/afterbuff_macros.py
+﻿# _archive/core/features/afterbuff_macros.py
 from __future__ import annotations
 import time
 from typing import Callable, Iterable, List

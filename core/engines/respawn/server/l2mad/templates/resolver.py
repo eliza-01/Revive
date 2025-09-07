@@ -1,4 +1,4 @@
-﻿# core/engines/respawn/server/boh/templates/resolver.py
+﻿# core/engines/respawn/server/l2mad/templates/resolver.py
 # Жёсткий, предсказуемый резолвер для шаблонов respawn-движка.
 # Поддерживает только известные файлы. Никаких плейсхолдеров.
 

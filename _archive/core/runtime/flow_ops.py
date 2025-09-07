@@ -1,4 +1,4 @@
-# core/runtime/flow_ops.py
+﻿# _archive/core/runtime/flow_ops.py
 from __future__ import annotations
 
 import time
@@ -317,9 +317,6 @@ class FlowOpExecutor:
                         time.sleep(delay_ms / 1000.0)
                 ok = True
 
-
-
-
             elif op == "enter_text":
                 text = self._subst(str(step.get("text", "")))
                 layout = (step.get("layout") or "auto").lower()
@@ -328,7 +325,6 @@ class FlowOpExecutor:
                     text = _ru_to_us_keys(text)
                 self.ctx.controller.send(f"enter_text {text}")
                 ok = True
-
 
             elif op == "press_enter":
                 self.ctx.controller.send("press_enter")

@@ -18,11 +18,13 @@ from .sections.autofarm import AutofarmSection
 # оркестратор
 from core.orchestrators.runtime import orchestrator_tick
 from core.engines.respawn.server.boh.orchestrator_rules import make_respawn_rule
+from core.engines.macros.server.boh.orchestrator_rules import make_macros_rule
 from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule  # ← из window_focus
 
 # движки
 from core.engines.player_state.service import PlayerStateService
 from core.engines.window_focus.service import WindowFocusService
+from core.engines.macros.service import MacrosRepeatService  # ← новый сервис
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
@@ -45,11 +47,22 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         "_charged": None,
 
         # респавн дефолты
-        "respawn_enabled": True,
+        "respawn_enabled": False,
         "respawn_wait_enabled": False,
-        "respawn_wait_seconds": 120,
+        "respawn_wait_seconds": 30,
         "respawn_click_threshold": 0.70,
         "respawn_confirm_timeout_s": 6.0,
+
+        # макросы (новый UI + совместимость со старым)
+        "macros_enabled": False,
+        "macros_repeat_enabled": True,  # ← включаем повторы по умолчанию
+        "macros_mode": "manual",     # "manual" | "after_respawn" | "after_buff" | "after_tp" (задел)
+        "macros_rows": [],           # [{key, cast_s, repeat_s}]
+        # для старого UI, если он ещё активен
+        "macros_run_always": False,
+        "macros_delay_s": 1.0,
+        "macros_duration_s": 2.0,
+        "macros_sequence": ["1"],
     }
 
     # --- HUD ---
@@ -67,6 +80,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             print(msg)
         finally:
             hud_push(msg)
+
+    def log_ui_with_ok(msg: str, ok: Optional[bool] = None):
+        try:
+            print(f"[MACROS] {msg}")
+        finally:
+            hud_push(f"Повтор макроса: {msg}")
 
     # универсальный emit в основной UI
     def ui_emit(scope: str, text: str, ok):
@@ -192,6 +211,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     rules = [
         make_focus_pause_rule(sys_state, {"grace_seconds": 0.0}),
         make_respawn_rule(sys_state, ps_adapter, controller, report=log_ui),
+        make_macros_rule(sys_state, controller, report=log_ui),  # ← добавили
     ]
 
     _orch_stop = {"stop": False}
@@ -211,6 +231,19 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     wf_service.start(poll_interval=2.0)
     schedule(_orch_tick, 200)
 
+    # --- фоновый сервис повторов макросов ---
+    macros_repeat_service = MacrosRepeatService(
+        server=lambda: sys_state.get("server") or "boh",
+        controller=controller,
+        get_window=lambda: sys_state.get("window"),
+        get_language=lambda: sys_state.get("language") or "rus",
+        get_rows=lambda: sys_state.get("macros_rows") or [],
+        is_enabled=lambda: bool(sys_state.get("macros_repeat_enabled", False)),
+        on_status=log_ui_with_ok,
+    )
+    macros_repeat_service.start(poll_interval=1.0)
+    sys_state.setdefault("_services", {})["macros_repeat"] = macros_repeat_service
+
     _shutdown_done = False
     def shutdown():
         nonlocal _shutdown_done
@@ -222,8 +255,14 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e: print(f"[shutdown] ps_service.stop(): {e}")
         try: wf_service.stop()
         except Exception as e: print(f"[shutdown] wf_service.stop(): {e}")
-        try: controller.close()
-        except Exception as e: print(f"[shutdown] controller.close(): {e}")
+        try:
+            controller.close()
+        except Exception as e:
+            print(f"[shutdown] controller.close(): {e}")
+        try:
+            macros_repeat_service.stop()
+        except Exception as e:
+            print(f"[shutdown] macros_repeat_service.stop(): {e}")
 
     # HUD прочее
     def hud_dump():
