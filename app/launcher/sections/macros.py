@@ -16,7 +16,6 @@ class MacrosSection(BaseSection):
 
         # Дефолты (новый формат)
         self.s.setdefault("macros_enabled", False)
-        self.s.setdefault("macros_mode", "manual")   # manual | after_respawn | after_buff | after_tp
         self.s.setdefault("macros_rows", [])         # [{key, cast_s, repeat_s}]
 
         # Совместимость со старым UI
@@ -30,9 +29,6 @@ class MacrosSection(BaseSection):
         self.s["macros_enabled"] = bool(enabled)
         self.s["macros_repeat_enabled"] = bool(enabled)
         self.emit("macros", "Макросы: вкл" if enabled else "Макросы: выкл", True if enabled else None)
-
-    def macros_set_mode(self, mode: str):
-        self.s["macros_mode"] = (mode or "manual").lower()
 
     def macros_set_rows(self, rows):
         """
@@ -110,7 +106,6 @@ class MacrosSection(BaseSection):
             # новый интерфейс
             "macros_set_enabled": self.macros_set_enabled,
             "macros_set_repeat_enabled": lambda enabled: self.s.__setitem__("macros_repeat_enabled", bool(enabled)),
-            "macros_set_mode": self.macros_set_mode,
             "macros_set_rows": self.macros_set_rows,
             "macros_run_once": self.macros_run_once,
 
