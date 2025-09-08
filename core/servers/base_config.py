@@ -3,7 +3,7 @@ import importlib
 
 def load_feature_config(server: str, feature: str):
     """
-    feature: 'respawn' | 'buff' | 'tp'
+    feature: 'respawn' | 'buffer' | 'tp'
     returns dict: {"ZONES":..., "TEMPLATES":..., "SEQUENCE":...} or empty
     """
     module_name = f"core.servers.{server}.zones.{feature}"

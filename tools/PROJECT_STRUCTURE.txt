@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-07 15:55:28
+Generated: 2025-09-08 21:31:29
 
 Revive
 ├── _archive
@@ -41,6 +41,7 @@ Revive
 │   │   │   └── tp.py
 │   │   ├── __init__.py
 │   │   ├── base.py
+│   │   ├── debug_repeat_test.py
 │   │   ├── main.py
 │   │   └── wiring.py
 │   ├── webui
@@ -76,55 +77,30 @@ Revive
 │   │   ├── send_safe.py
 │   │   └── serial_port.py
 │   ├── engines
-│   │   ├── autofarm
+│   │   ├── dashboard
 │   │   │   ├── server
 │   │   │   │   ├── boh
 │   │   │   │   │   ├── templates
-│   │   │   │   │   │   ├── common
-│   │   │   │   │   │   │   └── interface
 │   │   │   │   │   │   ├── eng
-│   │   │   │   │   │   │   └── interface
-│   │   │   │   │   │   └── rus
-│   │   │   │   │   │       ├── monsters
-│   │   │   │   │   │       │   └── names
-│   │   │   │   │   │       └── sys_messages
-│   │   │   │   │   ├── zones
-│   │   │   │   │   │   ├── Dion_1
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   ├── Dwarf_village
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   ├── Ruins_of_agony_start
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   └── Varka_1
-│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │   ├── rus
+│   │   │   │   │   │   │   ├── buffer
+│   │   │   │   │   │   │   ├── main
+│   │   │   │   │   │   │   └── teleport
+│   │   │   │   │   │   │       ├── catacombs
+│   │   │   │   │   │   │       ├── towns
+│   │   │   │   │   │   │       │   ├── Giran
+│   │   │   │   │   │   │       │   ├── Goddard
+│   │   │   │   │   │   │       │   └── Rune
+│   │   │   │   │   │   │       └── villages
+│   │   │   │   │   │   ├── __init__.py
+│   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── engine.py
-│   │   │   │   │   ├── orchestrator_rules.py
-│   │   │   │   │   └── zones.json
-│   │   │   │   ├── common
-│   │   │   │   │   ├── skills
-│   │   │   │   │   ├── zones
-│   │   │   │   │   │   └── Varka_1
-│   │   │   │   │   │       └── gallery
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── professions.json
-│   │   │   │   │   ├── skills_catalog.json
-│   │   │   │   │   ├── templates_map.py
-│   │   │   │   │   └── zones.json
+│   │   │   │   │   ├── dashboard_data.py
+│   │   │   │   │   └── engine.py
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
 │   │   │   ├── runner.py
-│   │   │   ├── service.py
-│   │   │   ├── skill_repo.py
-│   │   │   └── zone_repo.py
-│   │   ├── buff
-│   │   │   └── __init__.py
-│   │   ├── dashboard
-│   │   │   └── server
-│   │   │       └── boh
-│   │   │           └── templates
-│   │   │               ├── eng
-│   │   │               └── rus
+│   │   │   └── service.py
 │   │   ├── is_charged
 │   │   │   ├── server
 │   │   │   │   └── boh

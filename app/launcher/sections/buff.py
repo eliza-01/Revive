@@ -1,4 +1,4 @@
-# app/launcher/sections/buff.py
+# app/launcher/sections/buffer.py
 from __future__ import annotations
 from typing import Any
 from ..base import BaseSection
@@ -33,7 +33,7 @@ class BuffSection(BaseSection):
                 server=self.s["server"],
                 get_window=lambda: self.s.get("window"),
                 get_language=lambda: self.s["language"],
-                on_status=lambda t, ok=None: self.emit("buff", t, ok),
+                on_status=lambda t, ok=None: self.emit("buffer", t, ok),
                 click_threshold=0.87,
                 debug=True,
             )
@@ -57,7 +57,7 @@ class BuffSection(BaseSection):
             val = self.checker.force_check()
             return bool(val is True)
         except Exception as e:
-            self.emit("buff", f"[charged] check failed: {e}", None)
+            self.emit("buffer", f"[charged] check failed: {e}", None)
             return False
 
     # --- API: переключатели/настройки ---
@@ -79,7 +79,7 @@ class BuffSection(BaseSection):
     # --- API: выполнение бафа с проверкой зарядки и повторами ---
     def buff_run_once(self) -> bool:
         if not self.s.get("window"):
-            self.emit("buff", "Окно не найдено", False)
+            self.emit("buffer", "Окно не найдено", False)
             return False
 
         w = self._ensure_worker()
@@ -89,23 +89,23 @@ class BuffSection(BaseSection):
             # 1) нажатие бафа
             ok = bool(w.run_once())
             if not ok:
-                self.emit("buff", "Баф не выполнен", False)
+                self.emit("buffer", "Баф не выполнен", False)
                 return False
 
             # 2) проверка «заряженности»
             charged = self._verify_charged()
             if charged:
-                self.emit("buff", "Баф выполнен (заряд есть)", True)
+                self.emit("buffer", "Баф выполнен (заряд есть)", True)
                 return True
 
             # 3) нет зарядки — делаем ограниченные повторы
             if attempt >= self._MAX_RETRIES:
                 # Баф был нажат, но иконки зарядки не увидели — завершаем нейтральным статусом
-                self.emit("buff", "Баф выполнен, но заряд не обнаружен после повторов", None)
+                self.emit("buffer", "Баф выполнен, но заряд не обнаружен после повторов", None)
                 return True
 
             attempt += 1
-            self.emit("buff", f"Заряд не обнаружен, повтор {attempt}/{self._MAX_RETRIES}…", None)
+            self.emit("buffer", f"Заряд не обнаружен, повтор {attempt}/{self._MAX_RETRIES}…", None)
             try:
                 import time
                 time.sleep(self._RETRY_DELAY_S)

@@ -63,7 +63,7 @@ class FlowActions:
 
     # public APIs
     def buff(self, mode_key_provider) -> bool:
-        return self._run("buff", extras={"mode_key_provider": mode_key_provider}, guard=True)
+        return self._run("buffer", extras={"mode_key_provider": mode_key_provider}, guard=True)
 
     def tp_dashboard(self, category_id: str, location_id: str) -> bool:
         return self._run(

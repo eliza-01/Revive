@@ -1,6 +1,6 @@
-﻿# core/servers/boh/flows/buff.py
+﻿# core/servers/boh/flows/buffer.py
 # =========================
-# buff.py — оставь как «шлюз» (бэк-компат)
+# buffer.py — оставь как «шлюз» (бэк-компат)
 
 from .buff_dashboard import FLOW  # переиспользуем
 
