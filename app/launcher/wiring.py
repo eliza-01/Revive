@@ -4,7 +4,7 @@ from typing import Dict, Any
 import json, time
 
 from core.arduino.connection import ReviveController
-from core.servers.registry import get_server_profile, list_servers
+from _archive.servers import get_server_profile, list_servers
 
 # секции
 from .sections.system import SystemSection

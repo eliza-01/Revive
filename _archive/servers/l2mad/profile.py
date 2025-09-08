@@ -1,10 +1,9 @@
 # core/servers/l2mad/profile.py
 from __future__ import annotations
 from typing import List
-from core.servers.registry import (
+from _archive.servers.registry import (
     BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC,
-    TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER,
-)
+    TP_METHOD_DASHBOARD, )
 
 def _server_id() -> str:
     try:

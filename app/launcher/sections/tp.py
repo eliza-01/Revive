@@ -2,7 +2,7 @@
 from __future__ import annotations
 from ..base import BaseSection
 from _archive.core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD
-from core.servers.l2mad.locations_map import get_categories, get_locations
+from _archive.servers import get_categories, get_locations
 
 class TPSection(BaseSection):
     def __init__(self, window, controller, watcher, sys_state, schedule):

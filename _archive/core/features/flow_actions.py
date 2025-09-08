@@ -5,7 +5,8 @@ from typing import Callable, Optional, Dict, Any
 
 from _archive.core.runtime.dashboard_guard import DASHBOARD_GUARD
 from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
-from core.servers.l2mad.templates import resolver as l2mad_resolver
+from _archive.servers.l2mad.templates import resolver as l2mad_resolver
+
 
 class FlowActions:
     def __init__(

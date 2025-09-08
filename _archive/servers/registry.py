@@ -5,7 +5,7 @@ from importlib import import_module
 import pkgutil
 from typing import List, Protocol, Optional
 
-import core.servers as _servers_pkg
+import _archive.servers as _servers_pkg
 
 # --- публичные константы (как раньше) ---
 TP_METHOD_DASHBOARD = "dashboard"
