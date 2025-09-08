@@ -176,7 +176,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             # при возврате фокуса сразу восстановим последние HP/CP
             elif hud_window and has_focus is True and prev_focus is not True:
                 last = sys_state.get("_ps_last") or {}
-                hp = last.get("hp_ratio");
+                hp = last.get("hp_ratio")
                 cp = last.get("cp_ratio")
                 h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                 c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
@@ -208,7 +208,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         RespawnSection(window, sys_state),
         BuffSection(window, controller, ps_adapter, sys_state, schedule, checker=None),
         MacrosSection(window, controller, sys_state),
-        PipelineSection(window, sys_state),
         TPSection(window, controller, ps_adapter, sys_state, schedule),
         AutofarmSection(window, controller, ps_adapter, sys_state, schedule),
         PipelineSection(window, sys_state),
@@ -226,7 +225,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     # Правила оркестратора: СНАЧАЛА фокус/пауза, затем респавн
     rules = [
         # можно убрать focus_pause_rule, если хотите, пайплайн сам смотрит на фокус
-        # make_focus_pause_rule(sys_state, {"grace_seconds": 0.0}),
+        make_focus_pause_rule(sys_state, {"grace_seconds": 0.3}),
         make_pipeline_rule(sys_state, ps_adapter, controller, report=log_ui),
     ]
 
