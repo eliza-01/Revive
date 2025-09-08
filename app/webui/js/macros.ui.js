@@ -125,7 +125,7 @@
       const enabled = !!e.target.checked;
       try {
         pywebview.api.macros_set_enabled(enabled);
-        pywebview.api.macros_set_repeat_enabled(enabled);  // ← добавлено
+        pywebview.api.macros_set_repeat_enabled(enabled);
       } catch(_){}
     });
   }
