@@ -1,4 +1,4 @@
-﻿// app/webui/js/pipeline.ui.js
+// app/webui/js/pipeline.ui.js
 (function(){
   const $ = (s)=>document.querySelector(s);
 
@@ -43,7 +43,9 @@
         el.classList.remove("over");
         const k = ev.dataTransfer.getData("k");
         const src = [...el.parentNode.children].find(x=>x.dataset.key===k);
-        if (src && src!==el) el.parentNode.insertBefore(src, el.nextSibling);
+        if (src && src!==el) {
+          el.parentNode.insertBefore(src, el.nextSibling);
+        }
       });
     }
     return el;
@@ -67,40 +69,46 @@
     let cfg = {enabled:true, order:["respawn","macros"], allowed:["respawn","macros","buff","tp","autofarm"]};
     try { cfg = await pywebview.api.pipeline_get_order(); } catch(_){}
 
-    // фиксированный Respawn
+    // Respawn (fixed)
     list.appendChild(li("respawn", keyTitle("respawn"), true));
-
-    // порядок из бэкенда
+    // остальные — в порядке из конфига
     cfg.order.filter(k=>k!=="respawn").forEach(k=>{
       if (cfg.allowed.includes(k)) list.appendChild(li(k, keyTitle(k), false));
     });
-
-    // добавим отсутствующие разрешённые (новые шаги)
+    // добавим отсутствующие разрешённые (новые фичи)
     cfg.allowed.forEach(k=>{
       if (k!=="respawn" && ![...list.children].some(n=>n.dataset.key===k)) {
         list.appendChild(li(k, keyTitle(k), false));
       }
     });
 
-    dlg.style.display = "flex";
+    dlg.style.display = "block";
   }
 
   async function saveOrder(){
-    const order = ["respawn", ...[...document.querySelectorAll("#pipeList > li")]
-      .map(n=>n.dataset.key).filter(k=>k && k!=="respawn")];
-    try { await pywebview.api.pipeline_set_order(order); } catch(_){}
+    const list = $("#pipeList");
+    const order = ["respawn", ...[...list.children].map(n=>n.dataset.key).filter(k=>k!=="respawn")];
+    try {
+      await pywebview.api.pipeline_set_order(order);
+    } catch(_){}
     $("#pipelineDlg")?.remove();
   }
 
+  // кнопка в блоке «Респавн»
   function wireButton(){
-    const host = $("#respawnBlock");
-    if (!host || $("#btnPipeline")?.__wired) return;
-    const btn = $("#btnPipeline");
-    if (btn) {
-      btn.__wired = true;
+    const host = document.querySelector("#respawnBlock .actions") || document.querySelector("#respawnBlock");
+    if (!host) return;
+    let btn = document.getElementById("btnPipeline");
+    if (!btn){
+      btn = document.createElement("button");
+      btn.id = "btnPipeline";
+      btn.className = "btn";
+      btn.textContent = "Установить порядок действий";
+      host.appendChild(btn);
       btn.addEventListener("click", openDialog);
     }
   }
 
-  document.addEventListener("DOMContentLoaded", wireButton);
+  window.UIPipeline = { init(){ wireButton(); } };
+  document.addEventListener("DOMContentLoaded", ()=> setTimeout(()=>window.UIPipeline.init(), 0));
 })();

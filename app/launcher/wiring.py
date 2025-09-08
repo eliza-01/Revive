@@ -14,9 +14,13 @@ from .sections.buff import BuffSection
 from .sections.macros import MacrosSection
 from .sections.tp import TPSection
 from .sections.autofarm import AutofarmSection
+from .sections.pipeline import PipelineSection
+
 
 # оркестратор
 from core.orchestrators.runtime import orchestrator_tick
+from core.orchestrators.pipeline_rule import make_pipeline_rule
+
 from core.engines.respawn.server.boh.orchestrator_rules import make_respawn_rule
 from core.engines.macros.server.boh.orchestrator_rules import make_macros_rule
 from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule  # ← из window_focus
@@ -63,6 +67,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         "macros_delay_s": 1.0,
         "macros_duration_s": 2.0,
         "macros_sequence": ["1"],
+        # Пайплайн после смерти
+        "pipeline_enabled": True,
+        "pipeline_order": ["respawn", "macros"],  # respawn всегда первый и фиксированный
     }
 
     # --- HUD ---
@@ -196,6 +203,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         MacrosSection(window, controller, sys_state),
         TPSection(window, controller, ps_adapter, sys_state, schedule),
         AutofarmSection(window, controller, ps_adapter, sys_state, schedule),
+        PipelineSection(window, sys_state),
     ]
 
     exposed: Dict[str, Any] = {}
@@ -210,8 +218,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     # Правила оркестратора: СНАЧАЛА фокус/пауза, затем респавн
     rules = [
         make_focus_pause_rule(sys_state, {"grace_seconds": 0.0}),
-        make_respawn_rule(sys_state, ps_adapter, controller, report=log_ui),
-        make_macros_rule(sys_state, controller, report=log_ui),  # ← добавили
+        make_pipeline_rule(sys_state, controller, ps_adapter, report=log_ui),
+        make_respawn_rule(sys_state, ps_adapter, controller, report=log_ui),  # будут молчать при pipeline_enabled=True
+        make_macros_rule(sys_state, controller, report=log_ui),               # —//—
     ]
 
     _orch_stop = {"stop": False}

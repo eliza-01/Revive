@@ -243,3 +243,19 @@ select.sm.with-icon{
   box-shadow: none !important;
   border-color: #2a2e36 !important; /* вернуть базовый цвет рамки */
 }
+
+/* pipeline */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;z-index:9999;display:flex;align-items:center;justify-content:center}
+.modal{background:#1b1e24;color:#fff;border-radius:10px;min-width:420px;max-width:600px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+.modal-hdr{font-weight:600;padding:12px 16px;border-bottom:1px solid #2b2f36}
+.modal-body{padding:12px 16px}
+.modal-ftr{padding:12px 16px;border-top:1px solid #2b2f36;display:flex;gap:8px;justify-content:flex-end}
+.pipe-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.pipe-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#2b2f36;border-radius:8px}
+.pipe-item.fixed{opacity:.7}
+.pipe-item .grip{cursor:grab}
+.pipe-item.drag{opacity:.6}
+.pipe-item.over{outline:2px dashed #5a86ff}
+.btn{padding:6px 10px;border-radius:6px;border:1px solid #3a3f49;background:#2b2f36;color:#fff;cursor:pointer}
+.btn.primary{background:#5a86ff;border-color:#5a86ff}
+.hint{opacity:.75;font-size:12px;margin:0 0 8px}
