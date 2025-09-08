@@ -2,7 +2,6 @@
 from __future__ import annotations
 from ..base import BaseSection
 from _archive.core.features.tp_after_respawn import TPAfterDeathWorker, TP_METHOD_DASHBOARD
-from _archive.servers import get_categories, get_locations
 
 class TPSection(BaseSection):
     def __init__(self, window, controller, watcher, sys_state, schedule):
@@ -18,15 +17,15 @@ class TPSection(BaseSection):
     def tp_get_selected_row_id(self) -> str: return str(self.s.get("tp_row_id") or "")
     def tp_set_selected_row_id(self, rid: str): self.s["tp_row_id"] = rid or ""
 
-    def tp_get_categories(self):
-        lang = self.s["language"]
-        cats = get_categories(lang=lang)
-        return [{"id": c["id"], "title": c["display_rus"] if lang == "rus" else c["display_eng"]} for c in cats]
+    # def tp_get_categories(self):
+    #     lang = self.s["language"]
+    #     cats = get_categories(lang=lang)
+    #     return [{"id": c["id"], "title": c["display_rus"] if lang == "rus" else c["display_eng"]} for c in cats]
 
-    def tp_get_locations(self, category_id: str):
-        lang = self.s["language"]
-        locs = get_locations(category_id, lang=lang) if category_id else []
-        return [{"id": l["id"], "title": l["display_rus"] if lang == "rus" else l["display_eng"]} for l in locs]
+    # def tp_get_locations(self, category_id: str):
+    #     lang = self.s["language"]
+    #     locs = get_locations(category_id, lang=lang) if category_id else []
+    #     return [{"id": l["id"], "title": l["display_rus"] if lang == "rus" else l["display_eng"]} for l in locs]
 
     def tp_teleport_now(self) -> bool:
         if not self.s.get("window"): self.emit("tp", "Окно не найдено", False); return False
@@ -48,8 +47,8 @@ class TPSection(BaseSection):
             "tp_set_method": self.tp_set_method,
             "tp_set_category": self.tp_set_category,
             "tp_set_location": self.tp_set_location,
-            "tp_get_categories": self.tp_get_categories,
-            "tp_get_locations": self.tp_get_locations,
+            # "tp_get_categories": self.tp_get_categories,
+            # "tp_get_locations": self.tp_get_locations,
             "tp_get_selected_row_id": self.tp_get_selected_row_id,
             "tp_set_selected_row_id": self.tp_set_selected_row_id,
             "tp_teleport_now": self.tp_teleport_now,

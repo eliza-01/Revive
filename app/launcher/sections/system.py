@@ -6,7 +6,7 @@ from typing import Any, Dict
 from ..base import BaseSection
 
 from core.arduino.connection import ReviveController
-from _archive.servers import get_server_profile, list_servers
+from core.servers import get_server_profile, list_servers
 from core.vision.capture.gdi import find_window, get_window_info
 from core.arduino.connection_test import run_test_command
 from core.updater import get_remote_version, is_newer_version
