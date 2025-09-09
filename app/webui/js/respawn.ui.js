@@ -1,106 +1,49 @@
-﻿// app/webui/js/pipeline.ui.js
-(function(){
-  const $ = (s)=>document.querySelector(s);
+﻿// app/webui/js/respawn.ui.js
+(function () {
+  const $ = (sel) => document.querySelector(sel);
 
-  function ensurePopup() {
-    let dlg = $("#pipelineDlg");
-    if (dlg) return dlg;
-    dlg = document.createElement("div");
-    dlg.id = "pipelineDlg";
-    dlg.className = "modal-backdrop";
-    dlg.innerHTML = `
-      <div class="modal">
-        <div class="modal-hdr">Порядок действий</div>
-        <div class="modal-body">
-          <p class="hint">Respawn закреплён сверху. Перетащите остальные.</p>
-          <ul id="pipeList" class="pipe-list"></ul>
-        </div>
-        <div class="modal-ftr">
-          <button id="pipeCancel" class="btn">Отмена</button>
-          <button id="pipeSave" class="btn primary">Сохранить</button>
-        </div>
-      </div>`;
-    document.body.appendChild(dlg);
-    dlg.addEventListener("click", (e)=>{ if (e.target===dlg) dlg.remove(); });
-    $("#pipeCancel").onclick = ()=> dlg.remove();
-    $("#pipeSave").onclick = saveOrder;
-    return dlg;
+  async function initValuesFromInitState() {
+    try {
+      const init = await pywebview.api.get_init_state();
+      const r = (init && init.respawn) || {};
+      const chkRespawn = $("#chkRespawn");
+      const chkWait = $("#chkRespawnWait");
+      const sec = $("#respawnWaitSec");
+
+      if (chkRespawn) chkRespawn.checked = !!r.enabled;
+      if (chkWait) chkWait.checked = !!r.wait_enabled;
+      if (sec) sec.value = (typeof r.wait_seconds === "number" ? r.wait_seconds : 120);
+    } catch (_) {}
   }
 
-  function li(key, text, fixed=false){
-    const el = document.createElement("li");
-    el.draggable = !fixed;
-    el.dataset.key = key;
-    el.className = "pipe-item" + (fixed ? " fixed":"");
-    el.innerHTML = `<span class="grip">☰</span><span>${text}</span>`;
-    if (!fixed) {
-      el.addEventListener("dragstart", (ev)=>{ ev.dataTransfer.setData("k", key); el.classList.add("drag"); });
-      el.addEventListener("dragend", ()=> el.classList.remove("drag"));
-      el.addEventListener("dragover", (ev)=>{ ev.preventDefault(); el.classList.add("over"); });
-      el.addEventListener("dragleave", ()=> el.classList.remove("over"));
-      el.addEventListener("drop", (ev)=>{
-        ev.preventDefault();
-        el.classList.remove("over");
-        const k = ev.dataTransfer.getData("k");
-        const src = [...el.parentNode.children].find(x=>x.dataset.key===k);
-        if (src && src!==el) el.parentNode.insertBefore(src, el.nextSibling);
+  function wireRespawn() {
+    const chkRespawn = $("#chkRespawn");
+    if (chkRespawn) {
+      chkRespawn.addEventListener("change", e => {
+        try { pywebview.api.respawn_set_enabled(!!e.target.checked); } catch (_) {}
       });
     }
-    return el;
-  }
 
-  function keyTitle(k){
-    return {
-      "respawn":"Respawn",
-      "macros":"Макросы",
-      "buff":"Баф",
-      "tp":"Телепорт",
-      "autofarm":"Автофарм",
-    }[k] || k;
-  }
+    const chkWait = $("#chkRespawnWait");
+    if (chkWait) {
+      chkWait.addEventListener("change", e => {
+        try { pywebview.api.respawn_set_wait_enabled(!!e.target.checked); } catch (_) {}
+      });
+    }
 
-  async function openDialog(){
-    const dlg = ensurePopup();
-    const list = $("#pipeList");
-    list.innerHTML = "";
-
-    let cfg = {enabled:true, order:["respawn","macros"], allowed:["respawn","macros","buff","tp","autofarm"]};
-    try { cfg = await pywebview.api.pipeline_get_order(); } catch(_){}
-
-    // фиксированный Respawn
-    list.appendChild(li("respawn", keyTitle("respawn"), true));
-
-    // порядок из бэкенда
-    cfg.order.filter(k=>k!=="respawn").forEach(k=>{
-      if (cfg.allowed.includes(k)) list.appendChild(li(k, keyTitle(k), false));
-    });
-
-    // добавим отсутствующие разрешённые (новые шаги)
-    cfg.allowed.forEach(k=>{
-      if (k!=="respawn" && ![...list.children].some(n=>n.dataset.key===k)) {
-        list.appendChild(li(k, keyTitle(k), false));
-      }
-    });
-
-    dlg.style.display = "flex";
-  }
-
-  async function saveOrder(){
-    const order = ["respawn", ...[...document.querySelectorAll("#pipeList > li")]
-      .map(n=>n.dataset.key).filter(k=>k && k!=="respawn")];
-    try { await pywebview.api.pipeline_set_order(order); } catch(_){}
-    $("#pipelineDlg")?.remove();
-  }
-
-  function wireButton(){
-    const host = $("#respawnBlock");
-    if (!host || $("#btnPipeline")?.__wired) return;
-    const btn = $("#btnPipeline");
-    if (btn) {
-      btn.__wired = true;
-      btn.addEventListener("click", openDialog);
+    const sec = $("#respawnWaitSec");
+    if (sec) {
+      sec.addEventListener("change", e => {
+        const v = parseInt(e.target.value || "0", 10);
+        try { pywebview.api.respawn_set_wait_seconds(isFinite(v) ? v : 0); } catch (_) {}
+      });
     }
   }
 
-  document.addEventListener("DOMContentLoaded", wireButton);
+  window.UIRespawn = {
+    init() {
+      wireRespawn();
+      initValuesFromInitState();
+    }
+  };
 })();

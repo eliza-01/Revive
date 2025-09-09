@@ -106,6 +106,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     def _on_ps_update(data: Dict[str, Any]):
         hp = data.get("hp_ratio")
+
+        # ⬇️ Новое: если нет фокуса — не трогаем бэкенд-состояние HP вообще
+        if (sys_state.get("_wf_last") or {}).get("has_focus") is False:
+            return
+
         alive = None if hp is None else bool(hp > 0.001)
         sys_state["_ps_last"] = {
             "alive": alive,
@@ -154,7 +159,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     ps_adapter = _PSAdapter()
 
     # === Window focus service (изолированный) ===
-    sys_state["_wf_last"] = {"has_focus": None, "ts": 0.0}
+    sys_state["_wf_last"] = {"has_focus": False, "ts": time.time()}
     sys_state["_wf_running"] = False
 
     def _on_wf_update(data: Dict[str, Any]):
@@ -168,6 +173,14 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         ts = float(data.get("ts") or 0.0)
 
         sys_state["_wf_last"] = {"has_focus": has_focus, "ts": ts}
+        # ⬇️ Новое: на OFF — сбрасываем мониторинг (только состояние)
+        if has_focus is False:
+            sys_state["_ps_last"] = {
+                "alive": None,
+                "hp_ratio": None,
+                "cp_ratio": None,
+                "ts": time.time(),
+            }
 
         # HUD: при потере фокуса показать "--"
         try:
@@ -242,8 +255,8 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         schedule(_orch_tick, 200)
 
     # стартуем сервисы
-    ps_service.start(poll_interval=0.25)
-    wf_service.start(poll_interval=2.0)
+    wf_service.start(poll_interval=1.0)
+    ps_service.start(poll_interval=1.0)
     schedule(_orch_tick, 200)
 
     # --- фоновый сервис повторов макросов ---
@@ -279,6 +292,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             print(f"[shutdown] macros_repeat_service.stop(): {e}")
 
+    sys_state["respawn_debug"] = True
     # HUD прочее
     def hud_dump():
         try: return {"ok": True}
