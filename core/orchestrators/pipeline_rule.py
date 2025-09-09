@@ -56,7 +56,11 @@ class PipelineRule:
         # Корректный детект смерти:
         is_dead = (snap.alive is False) or (snap.hp_ratio is not None and snap.hp_ratio <= 0.001)
         respawn_on = bool(self.s.get("respawn_enabled", False))
-        self._dbg(f"respawn_enabled={respawn_on} win={snap.has_window} alive={snap.alive} hp={snap.hp_ratio}")
+        # Дебаг по тику оркестратора
+        self._dbg(f"win={snap.has_window} focus={(self.s.get('_wf_last') or {}).get('has_focus')}")
+        self._dbg(f"alive={snap.alive} is_dead={is_dead} hp={snap.hp_ratio}")
+        self._dbg(f"respawn={respawn_on} macros={self.s.get('macros_enabled')}")
+        self._dbg(f"-----------------------------------------------------------------------------")
 
         # Смерть есть, окно есть, а авто-респавн выключен — сообщим и подождём
         if (not self._active) and is_dead and (not respawn_on) and snap.has_window:
@@ -74,12 +78,12 @@ class PipelineRule:
                 self._dbg(f"activate: dead={is_dead} alive={snap.alive} hp={snap.hp_ratio}")
                 self.report("[PIPE] старт пайплайна после смерти")
                 return True
-            self._dbg(
-                "no-activate:"
-                f" dead={is_dead}"
-                f" respawn={respawn_on}"
-                f" has_window={snap.has_window}"
-            )
+            # self._dbg(
+            #     "no-activate:"
+            #     f" dead={is_dead}"
+            #     f" respawn={respawn_on}"
+            #     f" has_window={snap.has_window}"
+            # )
             return False
 
         # уже активен — двигаем шаг
@@ -117,8 +121,27 @@ class PipelineRule:
             self._running = False
 
     # ---------- steps ----------
+
+    # === единая карта тумблеров шагов ===
+    _STEP_FLAGS = {
+        "respawn":  "respawn_enabled",
+        "buff":     "buff_enabled",
+        "tp":       "tp_enabled",
+        "macros":   "macros_enabled",
+        "autofarm": "af_enabled",
+    }
+
+    def _is_step_enabled(self, step: str) -> bool:
+        key = self._STEP_FLAGS.get(step)
+        return True if key is None else bool(self.s.get(key, False))
+
     def _run_step(self, step: str, snap: Snapshot) -> tuple[bool, bool]:
         step = (step or "").lower().strip()
+
+        # ⬇️ ЕДИНООБРАЗНО: уважаем тумблер шага
+        if not self._is_step_enabled(step):
+            self._dbg(f"{step}: disabled -> pass")
+            return True, True
 
         if step == "respawn":
             return self._step_respawn(snap)
@@ -131,18 +154,22 @@ class PipelineRule:
         if step == "autofarm":
             return self._step_autofarm(snap)
 
-        self.report(f"[PIPE] неизвестный шаг: {step} — пропуск")
         self._dbg(f"unknown step: {step}")
+        self.report(f"[PIPE] неизвестный шаг: {step} — пропуск")
         return True, True
 
     def _step_respawn(self, snap: Snapshot) -> tuple[bool, bool]:
+        # не начинать без окна
         if not snap.has_window:
             self._dbg("respawn: no window")
             return False, False
+
+        # если уже жив — шаг успешен и идём дальше
         if snap.alive is True:
             self._dbg("respawn: already alive")
             return True, True
 
+        # опциональное ожидание «ждать возрождения»
         wait_enabled = bool(self.s.get("respawn_wait_enabled"))
         wait_seconds = int(self.s.get("respawn_wait_seconds", 0))
         if wait_enabled and wait_seconds > 0:
@@ -162,8 +189,8 @@ class PipelineRule:
                     self.report(f"[RESPAWN] ожидание возрождения… {sec}/{wait_seconds}")
                 time.sleep(1.0)
 
+        # активная попытка восстановления
         self.report("[RESPAWN] Активная попытка восстановления…")
-
         try:
             self._respawn_runner.set_server(self.s.get("server") or "boh")
         except Exception:
@@ -174,22 +201,19 @@ class PipelineRule:
         return (ok, ok)
 
     def _step_buff(self, snap: Snapshot) -> tuple[bool, bool]:
-        if not bool(self.s.get("buff_enabled", False)):
-            self._dbg("buff: disabled -> pass")
-            return True, True
+        # удаляем локальную проверку buff_enabled — теперь сверху
         self._toast("buff", "Баф выполнен (stub)", True)
         self._dbg("buff: stub ok")
         return True, True
 
     def _step_tp(self, snap: Snapshot) -> tuple[bool, bool]:
-        if not bool(self.s.get("tp_enabled", False)):
-            self._dbg("tp: disabled -> pass")
-            return True, True
+        # удаляем локальную проверку tp_enabled — теперь сверху
         self._toast("tp", "ТП выполнено (stub)", True)
         self._dbg("tp: stub ok")
         return True, True
 
     def _step_macros(self, snap: Snapshot) -> tuple[bool, bool]:
+        # удаляем локальную проверку macros_enabled — теперь сверху
         rows = list(self.s.get("macros_rows") or [])
         if not rows:
             seq = list(self.s.get("macros_sequence") or ["1"])
@@ -207,16 +231,13 @@ class PipelineRule:
             get_language=lambda: self.s.get("language") or "rus",
             on_status=_status,
             cfg={"rows": rows},
-            # Больше не прерываемся по фокусу
             should_abort=lambda: False,
         )
         self._dbg(f"macros: result ok={ok}")
         return (bool(ok), bool(ok))
 
     def _step_autofarm(self, snap: Snapshot) -> tuple[bool, bool]:
-        if not bool(self.s.get("af_enabled", False)):
-            self._dbg("autofarm: disabled -> pass")
-            return True, True
+        # удаляем локальную проверку af_enabled — теперь сверху
         self._toast("autofarm", "Автофарм запущен (stub)", True)
         self._dbg("autofarm: stub ok")
         return True, True
