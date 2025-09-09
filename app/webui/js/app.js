@@ -137,15 +137,6 @@
       else setStatus("#status-update", `Последняя версия: ${r.local}`, true);
     });
 
-    document.getElementById("btnDumpPool")?.addEventListener("click", async ()=>{
-      try {
-        const d = await pywebview.api.pool_dump();
-        const out = document.getElementById("poolOut");
-        if (out) out.textContent = JSON.stringify(d.state || d, null, 2);
-        else alert(JSON.stringify(d.state || d, null, 2));
-      } catch (e) { console.error(e); }
-    });
-
     $("#btnAccSave").addEventListener("click", async () => {
       await pywebview.api.account_save({
         login: $("#acc-login").value,

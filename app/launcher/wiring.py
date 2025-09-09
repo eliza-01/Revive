@@ -1,5 +1,4 @@
-﻿# app/launcher/wiring.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Dict, Any, Optional
 import json, time, threading
 
@@ -27,7 +26,7 @@ from core.engines.window_focus.service import WindowFocusService
 from core.engines.macros.service import MacrosRepeatService
 
 # пул
-from core.state.pool import ensure_pool, pool_write, pool_get
+from core.state.pool import ensure_pool, pool_write, pool_get, dump_pool
 
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
@@ -42,7 +41,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         t.daemon = True
         t.start()
 
-    # === ЕДИНЫЙ state (никаких sys_st./_state) ===
+    # === ЕДИНЫЙ state (никаких legacy полей) ===
     state: Dict[str, Any] = {}
     ensure_pool(state)
 
@@ -55,7 +54,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     pool_write(state, "services.player_state", {"running": False})
     pool_write(state, "services.macros_repeat", {"running": False})
 
-    # фичи/пайплайн дефолты (если надо переназначить — секции это сделают)
+    # фичи/пайплайн дефолты
     pool_write(state, "features.respawn", {
         "enabled": False, "wait_enabled": False, "wait_seconds": 30,
         "click_threshold": 0.70, "confirm_timeout_s": 6.0, "status": "idle",
@@ -67,8 +66,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     pool_write(state, "features.buff", {"enabled": False, "mode": "", "methods": [], "status": "idle"})
     pool_write(state, "features.tp", {"enabled": False, "status": "idle"})
     pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
-    pool_write(state, "pipeline", {"allowed": ["respawn", "buff", "macros", "tp", "autofarm"], "order": ["respawn", "macros"],
-                                   "active": False, "idx": 0, "last_step": ""})
+    pool_write(state, "pipeline", {
+        "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
+        "order": ["respawn", "macros"],
+        "active": False, "idx": 0, "last_step": ""
+    })
 
     # --- HUD ---
     def hud_push(text: str):
@@ -100,7 +102,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})")
         except Exception:
             pass
-    state["ui_emit"] = ui_emit  # если где-то ожидается
+    state["ui_emit"] = ui_emit
 
     # === Player State service ===
     def _on_ps_update(data: Dict[str, Any]):
@@ -110,11 +112,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             return
 
         alive = None if hp is None else bool(hp > 0.001)
-        pool_write(state, "player", {
-            "alive": alive,
-            "hp_ratio": hp,
-            "cp_ratio": data.get("cp_ratio"),
-        })
+        pool_write(state, "player", {"alive": alive, "hp_ratio": hp, "cp_ratio": data.get("cp_ratio")})
 
         # HUD vitals
         try:
@@ -132,7 +130,8 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         on_update=_on_ps_update,
         on_status=log_ui,
     )
-    # адаптер для оркестратора/секций — сразу читаем из пула
+
+    # адаптер для оркестратора — читает только из пула
     class _PSAdapter:
         def last(self) -> Dict[str, Any]:
             p = pool_get(state, "player", {}) or {}
@@ -162,11 +161,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                     hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
             except Exception:
                 pass
-        # ON после OFF → восстанавливаем HUD цифрами из пула
+        # ON после OFF → восстановить HUD из пула
         elif hud_window and prev_focus is not True:
             last = pool_get(state, "player", {}) or {}
             hp = last.get("hp_ratio"); cp = last.get("cp_ratio")
-            h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
+            h = "" if hp is None else str(int(max(0, min(1.0, float(h))) * 100))
             c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
             try:
                 hud_window.evaluate_js(f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})")
@@ -206,6 +205,35 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             print(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
+    # ---- pool_dump: JSON-safe дамп пула ----
+    def pool_dump():
+        try:
+            return {"ok": True, "state": dump_pool(state, compact=True)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    exposed["pool_dump"] = pool_dump  # <— КЛЮЧ: имя JS-метода будет pool_dump
+
+    # немедленно экспонируем всё в pywebview (чтобы JS точно увидел)
+    def _expose_dict(win, api: Dict[str, Any]):
+        wrappers = []
+        for name, fn in api.items():
+            # оборачиваем, чтобы имя функции в JS было ровно как в ключе
+            def make_wrap(_fn, _name):
+                def _w(*a, **kw):
+                    return _fn(*a, **kw)
+
+                _w.__name__ = _name
+                return _w
+
+            wrappers.append(make_wrap(fn, name))
+        try:
+            win.expose(*wrappers)
+        except Exception as e:
+            print("[wiring] expose error:", e)
+
+    _expose_dict(window, exposed)
+
     # Правила оркестратора
     rules = [
         make_focus_pause_rule(state, {"grace_seconds": 0.3}),
@@ -226,14 +254,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                     "window": {"found": pool_get(state, "window.found"), "title": pool_get(state, "window.title", "")},
                     "focus": pool_get(state, "focus.has_focus"),
                     "player": {"alive": pool_get(state, "player.alive"), "hp": pool_get(state, "player.hp_ratio")},
-                    "features": {
-                        "respawn": {"en": pool_get(state, "features.respawn.enabled"),
-                                    "wait_en": pool_get(state, "features.respawn.wait_enabled"),
-                                    "wait_s": pool_get(state, "features.respawn.wait_seconds")},
-                        "macros": {"en": pool_get(state, "features.macros.enabled"),
-                                   "rep": pool_get(state, "features.macros.repeat_enabled"),
-                                   "rows": len(pool_get(state, "features.macros.rows", []) or [])},
-                    },
                     "services": {
                         "ps": pool_get(state, "services.player_state.running"),
                         "wf": pool_get(state, "services.window_focus.running"),

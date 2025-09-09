@@ -1,5 +1,4 @@
-﻿# core/state/pool.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Dict, Iterable
 import time
 
@@ -7,7 +6,7 @@ import time
 def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     ЕДИНЫЙ пул состояния живёт прямо в корневом dict `state`.
-    Никаких sys_st. и state["_state"] больше нет.
+    Никаких sys_state/_state — только `state`.
     """
     st = state
 
@@ -125,3 +124,34 @@ def pool_get(state: Dict[str, Any], path: str, default: Any = None) -> Any:
             return default
         cur = cur[p]
     return cur
+
+
+# ── JSON-safe дамп всего state ───────────────────────────────────────────────
+def _round_numbers(v: Any) -> Any:
+    if isinstance(v, float):
+        return round(v, 3)
+    if isinstance(v, dict):
+        return {k: _round_numbers(v2) for k, v2 in v.items()}
+    if isinstance(v, list):
+        return [_round_numbers(x) for x in v]
+    if isinstance(v, tuple):
+        return tuple(_round_numbers(x) for x in v)
+    return v
+
+def _json_sanitize(x: Any) -> Any:
+    if isinstance(x, (str, int, float, bool)) or x is None:
+        return x
+    if isinstance(x, dict):
+        return {k: _json_sanitize(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_json_sanitize(v) for v in x]
+    return f"<{x.__class__.__name__}>"
+
+def dump_pool(state: Dict[str, Any], *, compact: bool = True) -> Dict[str, Any]:
+    """
+    Возвращает JSON-безопасную копию текущего state (единый пул в корне).
+    compact=True слегка округляет float'ы.
+    """
+    ensure_pool(state)
+    data = state
+    return _json_sanitize(_round_numbers(data) if compact else data)
