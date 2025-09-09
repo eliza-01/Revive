@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from ..base import BaseSection
 from core.engines.macros.runner import run_macros
 
+from core.state.pool import pool_merge
 
 class MacrosSection(BaseSection):
     """
@@ -28,6 +29,9 @@ class MacrosSection(BaseSection):
     def macros_set_enabled(self, enabled: bool):
         self.s["macros_enabled"] = bool(enabled)
         self.s["macros_repeat_enabled"] = bool(enabled)
+        pool_merge(self.s, "features.macros", {
+            "enabled": bool(enabled), "repeat_enabled": bool(enabled)
+        })
         self.emit("macros", "Макросы: вкл" if enabled else "Макросы: выкл", True if enabled else None)
 
     def macros_set_rows(self, rows):
@@ -49,6 +53,7 @@ class MacrosSection(BaseSection):
         except Exception:
             norm = [{"key": "1", "cast_s": 0, "repeat_s": 0}]
         self.s["macros_rows"] = norm
+        pool_merge(self.s, "features.macros", {"rows": list(norm)})
 
     # ---- совместимость (старый UI вызывает эти методы) ----
     def macros_set_run_always(self, enabled: bool):

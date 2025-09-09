@@ -11,6 +11,8 @@ from core.vision.capture.gdi import find_window, get_window_info
 from core.arduino.connection_test import run_test_command
 from core.updater import get_remote_version, is_newer_version
 
+from core.state.pool import pool_merge
+
 # отключили архивные зависимости
 TP_METHOD_DASHBOARD = "dashboard"
 TP_METHOD_GATEKEEPER = "gatekeeper"
@@ -66,6 +68,8 @@ class SystemSection(BaseSection):
         # — server profile —
         self._apply_profile(self.s["server"])
 
+        pool_merge(self.s, "features.buff", {"mode": self.s.get("buff_method", ""),
+                                             "enabled": bool(self.s.get("buff_enabled", False))})
         # — Arduino ping status —
         try:
             self.controller.send("ping")
@@ -185,6 +189,7 @@ class SystemSection(BaseSection):
                     self.s["window"] = win_info
                     self.s["window_found"] = True
                     self.emit("window", "[✓] Окно найдено", True)
+                    pool_merge(self.s, "window", {"info": win_info, "found": True})
                     return {"found": True, "title": t, "info": win_info}
 
         self.s["window"] = None
@@ -192,6 +197,7 @@ class SystemSection(BaseSection):
         self.emit("window", "[×] Окно не найдено", False)
         print("[window dump] None")
         self.emit("window", "dump: None", None)
+        pool_merge(self.s, "window", {"info": None, "found": False})
         return {"found": False}
 
     def test_connect(self) -> str:

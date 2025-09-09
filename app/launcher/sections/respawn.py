@@ -2,6 +2,8 @@
 from __future__ import annotations
 from ..base import BaseSection
 
+from core.state.pool import pool_merge
+
 class RespawnSection(BaseSection):
     """
     Только управление настройками респавна:
@@ -25,21 +27,25 @@ class RespawnSection(BaseSection):
 
     # --- API: setters ---
     def respawn_set_enabled(self, enabled: bool):
-        self.s["respawn_enabled"] = bool(enabled)
-        self.emit("respawn", "Авто-респавн: вкл" if enabled else "Авто-респавн: выкл",
-                  True if enabled else None)
+        val = bool(enabled)
+        self.s["respawn_enabled"] = val  # legacy
+        pool_merge(self.s, "features.respawn", {"enabled": val})
+        print(f"[RESPAWN] Авто-респавн: {'вкл' if val else 'выкл'}")
 
     def respawn_set_wait_enabled(self, enabled: bool):
-        self.s["respawn_wait_enabled"] = bool(enabled)
-        self.emit("respawn", "Ждать возрождения: да" if enabled else "Ждать возрождения: нет", None)
+        val = bool(enabled)
+        self.s["respawn_wait_enabled"] = val  # legacy
+        pool_merge(self.s, "features.respawn", {"wait_enabled": val})
+        print(f"[RESPAWN] Ждать возрождения: {'да' if val else 'нет'}")
 
     def respawn_set_wait_seconds(self, seconds: int):
         try:
             val = max(0, int(seconds or 0))
         except Exception:
             val = 0
-        self.s["respawn_wait_seconds"] = val
-        self.emit("respawn", f"Таймаут ожидания возрождения: {val} сек.", None)
+        self.s["respawn_wait_seconds"] = val  # legacy
+        pool_merge(self.s, "features.respawn", {"wait_seconds": val})
+        print(f"[RESPAWN] Таймаут ожидания: {val} сек.")
 
     # --- API: getters ---
     def respawn_get_wait_config(self) -> dict:

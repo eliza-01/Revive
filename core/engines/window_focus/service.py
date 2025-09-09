@@ -4,6 +4,7 @@ from typing import Callable, Optional, Dict, Any
 import threading, time
 
 from core.engines.window_focus.runner import run_window_focus
+from core.state.pool import pool_merge
 
 class WindowFocusService:
     """
@@ -21,6 +22,7 @@ class WindowFocusService:
         self._get_window = get_window
         self._on_update = on_update
         self._on_status = on_status or (lambda *_: None)
+        self._state = state_ref  # ⬅️ сохраняем sys_state
         self._run = False
         self._thr: Optional[threading.Thread] = None
 
@@ -31,6 +33,7 @@ class WindowFocusService:
         if self._run:
             return
         self._run = True
+        if self._state: pool_merge(self._state, "services.window_focus", {"running": True})
 
         def loop():
             try:
@@ -49,9 +52,11 @@ class WindowFocusService:
                     time.sleep(0.05)
             finally:
                 self._run = False
+        if self._state: pool_merge(self._state, "services.window_focus", {"running": False})
 
         self._thr = threading.Thread(target=loop, daemon=True)
         self._thr.start()
 
     def stop(self):
         self._run = False
+        if self._state: pool_merge(self._state, "services.window_focus", {"running": False})

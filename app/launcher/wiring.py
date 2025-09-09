@@ -27,6 +27,8 @@ from core.engines.player_state.service import PlayerStateService
 from core.engines.window_focus.service import WindowFocusService
 from core.engines.macros.service import MacrosRepeatService
 
+from core.state.pool import ensure_pool, pool_merge, pool_set, pool_get
+
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
     server = (list_servers() or ["boh"])[0]
@@ -66,7 +68,38 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         # пайплайн
         "pipeline_allowed": ["respawn","buff","macros","tp","autofarm"],
         "pipeline_order":   ["respawn","macros"],
+
+        "_state": {  # единый пул
+            "player": {"alive": None, "hp_ratio": None, "cp_ratio": None, "ts": 0.0},
+            "focus":  {"has_focus": None, "ts": 0.0},
+        },
     }
+
+    ensure_pool(sys_state)
+
+    # инициал значения из текущих дефолтов (зеркалим legacy → pool)
+    pool_merge(sys_state, "features.respawn", {
+        "enabled": bool(sys_state.get("respawn_enabled", False))
+    })
+    pool_merge(sys_state, "features.macros", {
+        "enabled": bool(sys_state.get("macros_enabled", False)),
+        "repeat_enabled": bool(sys_state.get("macros_repeat_enabled", False)),
+        "rows": list(sys_state.get("macros_rows") or [])
+    })
+    pool_merge(sys_state, "features.buff", {
+        "enabled": bool(sys_state.get("buff_enabled", False)),
+        "mode": sys_state.get("buff_method", "")
+    })
+    pool_merge(sys_state, "features.tp", {
+        "enabled": bool(sys_state.get("tp_enabled", False))
+    })
+    pool_merge(sys_state, "features.autofarm", {
+        "enabled": bool(sys_state.get("af_enabled", False))
+    })
+    pool_merge(sys_state, "pipeline", {
+        "allowed": list(sys_state.get("pipeline_allowed") or []),
+        "order": list(sys_state.get("pipeline_order") or [])
+    })
 
     # --- HUD ---
     def hud_push(text: str):
@@ -118,6 +151,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             "cp_ratio": data.get("cp_ratio"),
             "ts": data.get("ts"),
         }
+        pool_merge(sys_state, "player", {
+            "alive": alive,
+            "hp_ratio": hp,
+            "cp_ratio": data.get("cp_ratio"),
+        })
 
         # → HUD vitals: только когда окно в фокусе
         try:
@@ -138,8 +176,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         server=lambda: sys_state.get("server"),
         get_window=lambda: sys_state.get("window"),
         on_update=_on_ps_update,
-        on_status=log_ui
+        on_status=log_ui,
     )
+    ps_service._state = sys_state
     # зарегистрируем сервисы для оркестратора (может быть использовано другими правилами)
     sys_state.setdefault("_services", {})["player_state"] = ps_service
 
@@ -168,6 +207,8 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
         try:
             has_focus = bool(data.get("has_focus"))
+            #в глобальный пул состояний
+            pool_merge(sys_state, "focus", {"has_focus": has_focus})
         except Exception:
             has_focus = False
         ts = float(data.get("ts") or 0.0)
@@ -181,6 +222,8 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
                 "cp_ratio": None,
                 "ts": time.time(),
             }
+            #в глобальный пул состояний
+            pool_merge(sys_state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
 
         # HUD: при потере фокуса показать "--"
         try:
@@ -211,8 +254,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     wf_service = WindowFocusService(
         get_window=lambda: sys_state.get("window"),
         on_update=_on_wf_update,
-        on_status=None
+        on_status=None,
     )
+    wf_service._state = sys_state
 
     # Секции
     sections = [
@@ -252,12 +296,17 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             orchestrator_tick(sys_state, ps_adapter, rules)
         except Exception as e:
             print("[orch] tick error:", e)
-        schedule(_orch_tick, 1000)
+        schedule(_orch_tick, 2222)
 
     # стартуем сервисы
     wf_service.start(poll_interval=1.0)
     ps_service.start(poll_interval=1.0)
-    schedule(_orch_tick, 1000)
+    schedule(_orch_tick, 2222)
+
+    #переходим на общий глобальный пул состояний
+    pool_merge(sys_state, "services.window_focus", {"running": True})
+    pool_merge(sys_state, "services.player_state", {"running": True})
+    pool_merge(sys_state, "services.macros_repeat", {"running": True})
 
     # --- фоновый сервис повторов макросов ---
     macros_repeat_service = MacrosRepeatService(
@@ -280,9 +329,13 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         _shutdown_done = True
         try: _orch_stop["stop"] = True
         except Exception: pass
-        try: ps_service.stop()
+        try:
+            ps_service.stop()
+            pool_merge(sys_state, "services.player_state", {"running": False})
         except Exception as e: print(f"[shutdown] ps_service.stop(): {e}")
-        try: wf_service.stop()
+        try:
+            wf_service.stop()
+            pool_merge(sys_state, "services.window_focus", {"running": False})
         except Exception as e: print(f"[shutdown] wf_service.stop(): {e}")
         try:
             controller.close()
@@ -290,10 +343,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             print(f"[shutdown] controller.close(): {e}")
         try:
             macros_repeat_service.stop()
+            pool_merge(sys_state, "services.macros_repeat", {"running": False})
         except Exception as e:
             print(f"[shutdown] macros_repeat_service.stop(): {e}")
 
     sys_state["respawn_debug"] = True
+    sys_state["pool_debug"] = True  # временно включили дамп пула на каждый тик
     # HUD прочее
     def hud_dump():
         try: return {"ok": True}

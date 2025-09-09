@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Any, Dict, List
 from ..base import BaseSection
 
+from core.state.pool import pool_merge
+
 ALLOWED_STEPS_DEFAULT = ["respawn", "buff", "macros", "tp", "autofarm"]
 
 class PipelineSection(BaseSection):
@@ -10,6 +12,11 @@ class PipelineSection(BaseSection):
         self.s.setdefault("pipeline_allowed", list(ALLOWED_STEPS_DEFAULT))
         # по умолчанию: респавн → макросы (остальные можно подтянуть позже)
         self.s.setdefault("pipeline_order", ["respawn", "macros"])
+
+        pool_merge(self.s, "pipeline", {
+            "allowed": list(self.s.get("pipeline_allowed") or []),
+            "order": list(self.s.get("pipeline_order") or []),
+        })
 
     def _sanitize(self, order: List[str]) -> List[str]:
         allowed = [x for x in (self.s.get("pipeline_allowed") or []) if isinstance(x, str)]
@@ -51,6 +58,7 @@ class PipelineSection(BaseSection):
         seq = [x for x in seq if x in allowed and (x not in seen and not seen.add(x))]
 
         self.s["pipeline_order"] = seq
+        pool_merge(self.s, "pipeline", {"order": list(seq)})
         self.emit("pipeline", f"Порядок сохранён: {', '.join(seq)}", None)
         return True
 
