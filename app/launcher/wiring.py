@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# app/launcher/wiring.py
+from __future__ import annotations
 from typing import Dict, Any, Optional
 import json, time, threading
 
@@ -247,23 +248,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             return
         try:
             orchestrator_tick(state, ps_adapter, rules)
-            if pool_get(state, "runtime.debug.pool_debug", False):
-                summary = {
-                    "app": {"v": pool_get(state, "app.version"), "srv": pool_get(state, "config.server"),
-                            "lang": pool_get(state, "config.language")},
-                    "window": {"found": pool_get(state, "window.found"), "title": pool_get(state, "window.title", "")},
-                    "focus": pool_get(state, "focus.has_focus"),
-                    "player": {"alive": pool_get(state, "player.alive"), "hp": pool_get(state, "player.hp_ratio")},
-                    "services": {
-                        "ps": pool_get(state, "services.player_state.running"),
-                        "wf": pool_get(state, "services.window_focus.running"),
-                        "mr": pool_get(state, "services.macros_repeat.running"),
-                    },
-                    "pipeline": {"order": pool_get(state, "pipeline.order"),
-                                 "idx": pool_get(state, "pipeline.idx"),
-                                 "active": pool_get(state, "pipeline.active")},
-                }
-                print("[POOL]", json.dumps(summary, ensure_ascii=False))
         except Exception as e:
             print("[orch] tick error:", e)
         schedule(_orch_tick, 2222)

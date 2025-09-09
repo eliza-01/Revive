@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import time
+import importlib
 
 from core.orchestrators.snapshot import Snapshot
 from core.engines.respawn.runner import RespawnRunner
@@ -240,14 +241,14 @@ class PipelineRule:
         )
         self._dbg(f"macros: result ok={ok}")
 
-        # после успешного «ручного» прогона — сдвигаем таймер повтора
-        if ok:
-            try:
+        # после успешного «ручного» прогона — сдвигаем таймер повтора (если сервис доступен в контейнере)
+        try:
+            if ok:
                 svc = (self.s.get("_services") or {}).get("macros_repeat")
                 if hasattr(svc, "bump_all"):
                     svc.bump_all()
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         return (bool(ok), bool(ok))
 
@@ -268,12 +269,34 @@ class PipelineRule:
         rest = [x for x in raw if x and x.lower() != "respawn"]
         return ["respawn"] + rest
 
-    def _make_respawn_engine(self):
+    def _load_respawn_module(self, server: str):
+        """
+        Динамически загружает модуль движка респавна:
+        core.engines.respawn.server.<server>.engine
+        Фолбэк: core.engines.respawn.server.boh.engine (если серверный модуль не найден).
+        """
+        server = (server or "boh").lower()
+        module_name = f"core.engines.respawn.server.{server}.engine"
         try:
-            from core.engines.respawn.server.boh.engine import create_engine as _create_engine
+            return importlib.import_module(module_name)
         except Exception:
-            _create_engine = None
-        from core.engines.respawn.server.boh.engine import RespawnEngine  # type: ignore
+            # мягкий фолбэк
+            try:
+                return importlib.import_module("core.engines.respawn.server.boh.engine")
+            except Exception as e:
+                raise ImportError(f"Respawn engine module not found for '{server}' and fallback 'boh': {e}") from e
+
+    def _make_respawn_engine(self):
+        mod = self._load_respawn_module(pool_get(self.s, "config.server", "boh"))
+
+        create_engine = getattr(mod, "create_engine", None)
+        RespawnEngine = getattr(mod, "RespawnEngine", None)
+
+        # общие параметры из пула
+        server = pool_get(self.s, "config.server", "boh")
+        click_threshold = float(pool_get(self.s, "features.respawn.click_threshold", 0.70))
+        confirm_timeout_s = float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0))
+        debug = bool(pool_get(self.s, "runtime.debug.respawn_debug", False))
 
         def _is_alive():
             try:
@@ -285,13 +308,8 @@ class PipelineRule:
         def _on_engine_report(code: str, text: str):
             self.report(f"[RESPAWN] {text}")
 
-        server = pool_get(self.s, "config.server", "boh")
-        click_threshold = float(pool_get(self.s, "features.respawn.click_threshold", 0.70))
-        confirm_timeout_s = float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0))
-        debug = bool(pool_get(self.s, "runtime.debug.respawn_debug", False))
-
-        if _create_engine:
-            return _create_engine(
+        if callable(create_engine):
+            return create_engine(
                 server=server,
                 controller=self.controller,
                 is_alive_cb=_is_alive,
@@ -300,7 +318,7 @@ class PipelineRule:
                 debug=debug,
                 on_report=_on_engine_report,
             )
-        else:
+        elif RespawnEngine is not None:
             return RespawnEngine(
                 server=server,
                 controller=self.controller,
@@ -310,6 +328,9 @@ class PipelineRule:
                 debug=debug,
                 on_report=_on_engine_report,
             )
+        else:
+            # крайний случай — явно падаем, чтобы было видно проблему с серверным модулем
+            raise RuntimeError("Respawn engine class/factory not found in loaded module")
 
     def _finish(self):
         self.report("[PIPE] пайплайн завершён")

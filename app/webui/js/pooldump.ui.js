@@ -1,3 +1,4 @@
+﻿// app/webui/js/pooldump.ui.js
 // Пул-дамп: попап + Ctrl+P с автоподключением стилей
 (function () {
   const $ = (sel) => document.querySelector(sel);
