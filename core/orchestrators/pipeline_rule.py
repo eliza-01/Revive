@@ -60,7 +60,7 @@ class PipelineRule:
         self._dbg(f"win={snap.has_window} focus={(self.s.get('_wf_last') or {}).get('has_focus')}")
         self._dbg(f"alive={snap.alive} is_dead={is_dead} hp={snap.hp_ratio}")
         self._dbg(f"respawn={respawn_on} macros={self.s.get('macros_enabled')}")
-        self._dbg(f"-----------------------------------------------------------------------------")
+        self._dbg(f"----------------------------------------")
 
         # Смерть есть, окно есть, а авто-респавн выключен — сообщим и подождём
         if (not self._active) and is_dead and (not respawn_on) and snap.has_window:
@@ -213,7 +213,6 @@ class PipelineRule:
         return True, True
 
     def _step_macros(self, snap: Snapshot) -> tuple[bool, bool]:
-        # удаляем локальную проверку macros_enabled — теперь сверху
         rows = list(self.s.get("macros_rows") or [])
         if not rows:
             seq = list(self.s.get("macros_sequence") or ["1"])
@@ -234,6 +233,16 @@ class PipelineRule:
             should_abort=lambda: False,
         )
         self._dbg(f"macros: result ok={ok}")
+
+        # ⬇️ после успешного «ручного» прогона — сдвигаем таймер повтора
+        if ok:
+            try:
+                svc = (self.s.get("_services") or {}).get("macros_repeat")
+                if hasattr(svc, "bump_all"):
+                    svc.bump_all()
+            except Exception:
+                pass
+
         return (bool(ok), bool(ok))
 
     def _step_autofarm(self, snap: Snapshot) -> tuple[bool, bool]:

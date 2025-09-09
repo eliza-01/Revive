@@ -267,6 +267,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         get_language=lambda: sys_state.get("language") or "rus",
         get_rows=lambda: sys_state.get("macros_rows") or [],
         is_enabled=lambda: bool(sys_state.get("macros_repeat_enabled", False)),
+        is_alive=lambda: bool((sys_state.get("_ps_last") or {}).get("alive")),
         on_status=log_ui_with_ok,
     )
     macros_repeat_service.start(poll_interval=1.0)
