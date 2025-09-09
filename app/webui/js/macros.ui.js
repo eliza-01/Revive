@@ -124,8 +124,8 @@
     if (chk) chk.addEventListener("change", e => {
       const enabled = !!e.target.checked;
       try {
+        // ВАЖНО: только один вызов. Он синхронизирует enabled + repeat_enabled в пуле.
         pywebview.api.macros_set_enabled(enabled);
-        pywebview.api.macros_set_repeat_enabled(enabled);
       } catch(_){}
     });
   }

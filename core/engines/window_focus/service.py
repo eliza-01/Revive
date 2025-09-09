@@ -1,16 +1,20 @@
-# core/engines/window_focus/service.py
+﻿# core/engines/window_focus/service.py
+#core/engines/window_focus/service.py
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import threading, time
 
 from core.engines.window_focus.runner import run_window_focus
-from core.state.pool import pool_merge
+
 
 class WindowFocusService:
     """
     Фоновый сервис проверки фокуса окна.
     Обновляет состояние через on_update.
     Интерфейс: is_running(), start(poll_interval=2.0), stop()
+
+    ВНИМАНИЕ: сервис сам НЕ пишет ничего в пул.
+    Выставление services.window_focus.running делается снаружи (в wiring).
     """
 
     def __init__(
@@ -22,7 +26,6 @@ class WindowFocusService:
         self._get_window = get_window
         self._on_update = on_update
         self._on_status = on_status or (lambda *_: None)
-        self._state = state_ref  # ⬅️ сохраняем sys_state
         self._run = False
         self._thr: Optional[threading.Thread] = None
 
@@ -33,7 +36,6 @@ class WindowFocusService:
         if self._run:
             return
         self._run = True
-        if self._state: pool_merge(self._state, "services.window_focus", {"running": True})
 
         def loop():
             try:
@@ -52,11 +54,9 @@ class WindowFocusService:
                     time.sleep(0.05)
             finally:
                 self._run = False
-        if self._state: pool_merge(self._state, "services.window_focus", {"running": False})
 
         self._thr = threading.Thread(target=loop, daemon=True)
         self._thr.start()
 
     def stop(self):
         self._run = False
-        if self._state: pool_merge(self._state, "services.window_focus", {"running": False})

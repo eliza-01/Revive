@@ -1,4 +1,4 @@
-﻿# core/servers/l2mad/flows/buffer.py
+﻿# _archive/servers/l2mad/flows/buff.py
 # =========================
 # buffer.py — оставь как «шлюз» (бэк-компат)
 

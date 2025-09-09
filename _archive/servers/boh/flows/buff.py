@@ -1,4 +1,4 @@
-﻿# core/servers/boh/flows/buffer.py
+﻿# _archive/servers/boh/flows/buff.py
 # =========================
 # buffer.py — оставь как «шлюз» (бэк-компат)
 

@@ -1,4 +1,4 @@
-# core/orchestrators/pipeline_rule.py
+﻿# core/orchestrators/pipeline_rule.py
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import time
@@ -12,12 +12,13 @@ from core.state.pool import pool_get, pool_merge
 
 class PipelineRule:
     """
-    Единый оркестратор-пайплайн. Порядок шагов задаётся в sys_state["pipeline_order"].
-    Сохраняет прогресс (индекс шага). Работает независимо от фокуса.
+    Единый оркестратор-пайплайн.
+    Порядок шагов читается из пула: pipeline.order.
+    Работает независимо от фокуса (пауза/резюм — отдельным правилом).
     """
 
-    def __init__(self, s: Dict[str, Any], ps_adapter, controller, report: Callable[[str], None]):
-        self.s = s
+    def __init__(self, state: Dict[str, Any], ps_adapter, controller, report: Callable[[str], None]):
+        self.s = state
         self.ps = ps_adapter
         self.controller = controller
         self.report = report
@@ -29,13 +30,13 @@ class PipelineRule:
 
         self._respawn_runner = RespawnRunner(
             engine=self._make_respawn_engine(),
-            get_window=lambda: self.s.get("window"),
-            get_language=lambda: self.s.get("language") or "rus",
+            get_window=lambda: pool_get(self.s, "window.info", None),
+            get_language=lambda: pool_get(self.s, "config.language", "rus"),
         )
 
     # --- util debug ---
     def _dbg(self, msg: str):
-        if self.s.get("respawn_debug") or self.s.get("pipeline_debug"):
+        if pool_get(self.s, "runtime.debug.respawn_debug", False) or pool_get(self.s, "runtime.debug.pipeline_debug", False):
             try:
                 print(f"[PIPE/DBG] {msg}")
             except Exception:
@@ -56,18 +57,18 @@ class PipelineRule:
             self._dbg("skip: empty order")
             return False
 
-        # Корректный детект смерти:
+        # Корректный детект смерти
         is_dead = (snap.alive is False) or (snap.hp_ratio is not None and snap.hp_ratio <= 0.001)
 
-        # Единообразно читаем тумблер авто-респавна из пула (с фолбэком на legacy)
-        respawn_on = bool(pool_get(self.s, "features.respawn.enabled", self.s.get("respawn_enabled", False)))
+        # Тумблер авто-респавна — только из пула
+        respawn_on = bool(pool_get(self.s, "features.respawn.enabled", False))
 
         # Дебаг по тику оркестратора
-        macros_on = bool(pool_get(self.s, "features.macros.enabled", self.s.get("macros_enabled")))
+        macros_on = bool(pool_get(self.s, "features.macros.enabled", False))
         self._dbg(
             "tick: "
             f"win={snap.has_window} "
-            f"focus={(self.s.get('_wf_last') or {}).get('has_focus')} "
+            f"focus={snap.has_focus} "
             f"alive={snap.alive} is_dead={is_dead} hp={snap.hp_ratio} "
             f"respawn={respawn_on} macros={macros_on} active={self._active} idx={self._idx}"
         )
@@ -78,7 +79,6 @@ class PipelineRule:
             self._dbg("no-activate: dead but respawn disabled")
             self.report("[PIPE] смерть обнаружена, но авто-респавн выключен")
             self._busy_until = time.time() + 2.0
-            # В пул ничего не пишем — пайплайн не активировался
             return False
 
         # Активировать пайплайн
@@ -130,34 +130,25 @@ class PipelineRule:
 
     # ---------- steps ----------
 
-    # карта legacy-ключей -> путям в пуле для единообразных тумблеров
-    _STEP_FLAGS = {
-        "respawn":  "respawn_enabled",
-        "buff":     "buff_enabled",
-        "tp":       "tp_enabled",
-        "macros":   "macros_enabled",
-        "autofarm": "af_enabled",
-    }
-    _STEP_FLAG_POOL_PATH = {
-        "respawn_enabled":  "features.respawn.enabled",
-        "buff_enabled":     "features.buff.enabled",
-        "tp_enabled":       "features.tp.enabled",
-        "macros_enabled":   "features.macros.enabled",
-        "af_enabled":       "features.autofarm.enabled",
-    }
-
     def _is_step_enabled(self, step: str) -> bool:
-        key = self._STEP_FLAGS.get(step)
-        if not key:
+        """
+        Единообразно читаем тумблеры только из пула.
+        """
+        feature = {
+            "respawn": "respawn",
+            "buff": "buff",
+            "tp": "tp",
+            "macros": "macros",
+            "autofarm": "autofarm",
+        }.get(step)
+        if not feature:
             return True
-        path = self._STEP_FLAG_POOL_PATH.get(key)
-        val = pool_get(self.s, path, self.s.get(key, False))
-        return bool(val)
+        return bool(pool_get(self.s, f"features.{feature}.enabled", False))
 
     def _run_step(self, step: str, snap: Snapshot) -> tuple[bool, bool]:
         step = (step or "").lower().strip()
 
-        # ЕДИНООБРАЗНО: уважаем тумблер шага
+        # Уважаем тумблер шага
         if not self._is_step_enabled(step):
             self._dbg(f"{step}: disabled -> pass")
             return True, True
@@ -188,9 +179,9 @@ class PipelineRule:
             self._dbg("respawn: already alive")
             return True, True
 
-        # опциональное ожидание «ждать возрождения»
-        wait_enabled = bool(self.s.get("respawn_wait_enabled"))
-        wait_seconds = int(self.s.get("respawn_wait_seconds", 0))
+        # опциональное ожидание «ждать возрождения» — из пула
+        wait_enabled = bool(pool_get(self.s, "features.respawn.wait_enabled", False))
+        wait_seconds = int(pool_get(self.s, "features.respawn.wait_seconds", 0))
         if wait_enabled and wait_seconds > 0:
             start = time.time()
             deadline = start + wait_seconds
@@ -210,7 +201,7 @@ class PipelineRule:
         # активная попытка восстановления
         self.report("[RESPAWN] Активная попытка восстановления…")
         try:
-            self._respawn_runner.set_server(self.s.get("server") or "boh")
+            self._respawn_runner.set_server(pool_get(self.s, "config.server", "boh"))
         except Exception:
             pass
 
@@ -229,21 +220,20 @@ class PipelineRule:
         return True, True
 
     def _step_macros(self, snap: Snapshot) -> tuple[bool, bool]:
-        rows = list(self.s.get("macros_rows") or [])
+        rows = list(pool_get(self.s, "features.macros.rows", []) or [])
         if not rows:
-            seq = list(self.s.get("macros_sequence") or ["1"])
-            dur = int(float(self.s.get("macros_duration_s", 0)))
+            seq = list(pool_get(self.s, "features.macros.sequence", ["1"]) or ["1"])
+            dur = int(float(pool_get(self.s, "features.macros.duration_s", 0)))
             rows = [{"key": str(k)[:1], "cast_s": max(0, dur), "repeat_s": 0} for k in seq]
 
         def _status(text: str, ok: Optional[bool] = None):
-            # единый канал статусов
             self.report(f"[MACROS] {text}")
 
         ok = run_macros(
-            server=self.s.get("server") or "boh",
+            server=pool_get(self.s, "config.server", "boh"),
             controller=self.controller,
-            get_window=lambda: self.s.get("window"),
-            get_language=lambda: self.s.get("language") or "rus",
+            get_window=lambda: pool_get(self.s, "window.info", None),
+            get_language=lambda: pool_get(self.s, "config.language", "rus"),
             on_status=_status,
             cfg={"rows": rows},
             should_abort=lambda: False,
@@ -269,16 +259,14 @@ class PipelineRule:
     # ---------- utils ----------
     def _order(self) -> List[str]:
         """
-        Порядок берём из sys_state['pipeline_order'] (UI секция уже его валидирует).
+        Порядок читаем только из пула.
         Респавн держим первым — страховка от случайных перестановок.
         """
-        # при желании можно читать order из пула: pool_get(self.s, "pipeline.order", ...)
-        raw = list(self.s.get("pipeline_order") or [])
+        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "macros"]) or [])
         if not raw:
             raw = ["respawn", "macros"]
         rest = [x for x in raw if x and x.lower() != "respawn"]
-        order = ["respawn"] + rest
-        return order
+        return ["respawn"] + rest
 
     def _make_respawn_engine(self):
         try:
@@ -295,27 +283,31 @@ class PipelineRule:
                 return True
 
         def _on_engine_report(code: str, text: str):
-            # единый канал логов (консоль/HUD у вас уже подписаны на report)
             self.report(f"[RESPAWN] {text}")
+
+        server = pool_get(self.s, "config.server", "boh")
+        click_threshold = float(pool_get(self.s, "features.respawn.click_threshold", 0.70))
+        confirm_timeout_s = float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0))
+        debug = bool(pool_get(self.s, "runtime.debug.respawn_debug", False))
 
         if _create_engine:
             return _create_engine(
-                server=self.s.get("server") or "boh",
+                server=server,
                 controller=self.controller,
                 is_alive_cb=_is_alive,
-                click_threshold=float(self.s.get("respawn_click_threshold", 0.70)),
-                confirm_timeout_s=float(self.s.get("respawn_confirm_timeout_s", 6.0)),
-                debug=bool(self.s.get("respawn_debug", True)),
+                click_threshold=click_threshold,
+                confirm_timeout_s=confirm_timeout_s,
+                debug=debug,
                 on_report=_on_engine_report,
             )
         else:
             return RespawnEngine(
-                server=self.s.get("server") or "boh",
+                server=server,
                 controller=self.controller,
                 is_alive_cb=_is_alive,
-                click_threshold=float(self.s.get("respawn_click_threshold", 0.70)),
-                confirm_timeout_s=float(self.s.get("respawn_confirm_timeout_s", 6.0)),
-                debug=bool(self.s.get("respawn_debug", True)),
+                click_threshold=click_threshold,
+                confirm_timeout_s=confirm_timeout_s,
+                debug=debug,
                 on_report=_on_engine_report,
             )
 
@@ -328,5 +320,5 @@ class PipelineRule:
         pool_merge(self.s, "pipeline", {"active": False, "idx": 0})
 
 
-def make_pipeline_rule(sys_state, ps_adapter, controller, report: Optional[Callable[[str], None]] = None):
-    return PipelineRule(sys_state, ps_adapter, controller, report or (lambda _m: None))
+def make_pipeline_rule(state, ps_adapter, controller, report: Optional[Callable[[str], None]] = None):
+    return PipelineRule(state, ps_adapter, controller, report or (lambda _m: None))

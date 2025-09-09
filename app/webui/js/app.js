@@ -21,7 +21,7 @@
   const setStatus = window.setStatus;
 
   // public sink для Python
-   // Общий «синк» для статусов/данных. Пусть модули дергают его по необходимости.
+  // Общий «синк» для статусов/данных. Пусть модули дергают его по необходимости.
   window.ReviveUI = {
     onStatus: ({ scope, text, ok }) => {
       const id = {
@@ -81,19 +81,9 @@
     (init.tp_methods || []).forEach(m => tpMethodSel.appendChild(create("option", { value: m }, m)));
     tpMethodSel.value = (init.tp_methods && init.tp_methods[0]) || "dashboard";
 
-
     if (init.driver_status) setStatus("#status-driver", init.driver_status.text, init.driver_status.ok);
     setStatus("#status-watcher", init.monitoring ? "Мониторинг: вкл" : "Мониторинг: выкл", init.monitoring ? true : null);
     $("#chkMonitor").checked = !!init.monitoring;
-
-    // ранние статусы
-    try {
-      if (pywebview.api.get_status_snapshot) {
-        const snap = await pywebview.api.get_status_snapshot();
-        if (snap && snap.window) setStatus("#status-window", snap.window.text, snap.window.ok);
-        if (snap && snap.driver && !init.driver_status) setStatus("#status-driver", snap.driver.text, snap.driver.ok);
-      }
-    } catch (_) {}
 
     // account preload
     try {
@@ -129,14 +119,15 @@
     });
 
     $("#btnFind").addEventListener("click", async () => {
-        const res = await pywebview.api.find_window();
-        if (res.found) {
-            console.log(`Окно найдено: ${res.title}, Размеры: ${res.info.width}x${res.info.height}`);
-            setStatus("#status-window", `Окно найдено: ${res.title} (${res.info.width}x${res.info.height})`, true);
-        } else {
-            setStatus("#status-window", "Окно не найдено", false);
-        }
+      const res = await pywebview.api.find_window();
+      if (res.found) {
+        console.log(`Окно найдено: ${res.title}, Размеры: ${res.info.width}x${res.info.height}`);
+        setStatus("#status-window", `Окно найдено: ${res.title} (${res.info.width}x${res.info.height})`, true);
+      } else {
+        setStatus("#status-window", "Окно не найдено", false);
+      }
     });
+
     $("#btnTest").addEventListener("click", async () => { await pywebview.api.test_connect(); });
 
     $("#btnUpdate").addEventListener("click", async () => {
@@ -144,6 +135,15 @@
       if (r && r.update) setStatus("#status-update", `Доступно обновление: ${r.remote}`, null);
       else if (r && r.error) setStatus("#status-update", `Сбой проверки: ${r.error}`, false);
       else setStatus("#status-update", `Последняя версия: ${r.local}`, true);
+    });
+
+    document.getElementById("btnDumpPool")?.addEventListener("click", async ()=>{
+      try {
+        const d = await pywebview.api.pool_dump();
+        const out = document.getElementById("poolOut");
+        if (out) out.textContent = JSON.stringify(d.state || d, null, 2);
+        else alert(JSON.stringify(d.state || d, null, 2));
+      } catch (e) { console.error(e); }
     });
 
     $("#btnAccSave").addEventListener("click", async () => {

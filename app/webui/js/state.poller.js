@@ -24,7 +24,12 @@
           const st = await pywebview.api.get_state_snapshot();
           if (st && typeof st.hp === "number") {
             hpEl.textContent = `${st.hp} %`;
-            cpEl.textContent = `100 %`;
+            // если backend начнёт возвращать реальный cp, просто отобразим его
+            if (typeof st.cp === "number") {
+              cpEl.textContent = `${st.cp} %`;
+            } else {
+              cpEl.textContent = `100 %`;
+            }
             hpEl.style.color = st.hp > 50 ? "#28a745" : (st.hp > 15 ? "#d39e00" : "#e55353");
           } else {
             hpEl.textContent = "-- %";

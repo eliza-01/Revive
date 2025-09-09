@@ -1,14 +1,15 @@
-# core/engines/player_state/service.py
+﻿# core/engines/player_state/service.py
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import threading, time
 
 from core.engines.player_state.runner import run_player_state
-from core.state.pool import pool_merge
+
 
 class PlayerStateService:
     """
-    Фоновый сервис опроса HP. Обновляет состояние через on_update.
+    Фоновый сервис опроса HP.
+    НИЧЕГО не пишет в пул сам по себе — только вызывает колбэки.
     Интерфейс: is_running(), start(poll_interval=0.25), stop()
     """
 
@@ -23,18 +24,16 @@ class PlayerStateService:
         self._get_window = get_window
         self._on_update = on_update
         self._on_status = on_status or (lambda *_: None)
-        self._state = state_ref              # ← держим sys_state
         self._run = False
         self._thr: Optional[threading.Thread] = None
 
     def is_running(self) -> bool:
         return bool(self._run)
 
-    def start(self, poll_interval: float = 0.25):
+    def start(self, poll_interval: float = 1):
         if self._run:
             return
         self._run = True
-        if self._state: pool_merge(self._state, "services.player_state", {"running": True})
 
         def loop():
             try:
@@ -49,15 +48,14 @@ class PlayerStateService:
                             should_abort=lambda: (not self._run),
                         )
                     except Exception:
+                        # глушим исключения цикла опроса и пробуем перезапуститься
                         pass
                     time.sleep(0.05)  # пауза между перезапусками
             finally:
                 self._run = False
-                if self._state: pool_merge(self._state, "services.player_state", {"running": False})
 
         self._thr = threading.Thread(target=loop, daemon=True)
         self._thr.start()
 
     def stop(self):
         self._run = False
-        if self._state: pool_merge(self._state, "services.player_state", {"running": False})

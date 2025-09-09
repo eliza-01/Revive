@@ -1,7 +1,7 @@
-# app/launcher/wiring.py
+﻿# app/launcher/wiring.py
 from __future__ import annotations
-from typing import Dict, Any
-import json, time
+from typing import Dict, Any, Optional
+import json, time, threading
 
 from core.arduino.connection import ReviveController
 from core.servers import get_server_profile, list_servers
@@ -16,90 +16,59 @@ from .sections.tp import TPSection
 from .sections.autofarm import AutofarmSection
 from .sections.pipeline import PipelineSection
 
-
 # оркестратор
 from core.orchestrators.runtime import orchestrator_tick
 from core.orchestrators.pipeline_rule import make_pipeline_rule
 
-# движки
+# движки/сервисы
 from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule
 from core.engines.player_state.service import PlayerStateService
 from core.engines.window_focus.service import WindowFocusService
 from core.engines.macros.service import MacrosRepeatService
 
-from core.state.pool import ensure_pool, pool_merge, pool_set, pool_get
+# пул
+from core.state.pool import ensure_pool, pool_write, pool_get
+
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
-    server = (list_servers() or ["boh"])[0]
+    servers = list_servers() or ["boh"]
+    server = servers[0]
     language = "rus"
     profile = get_server_profile(server)
 
-    import threading
     def schedule(fn, ms):
         t = threading.Timer(max(0.0, ms) / 1000.0, fn)
         t.daemon = True
         t.start()
 
-    sys_state: Dict[str, Any] = {
-        "server": server,
-        "language": language,
-        "profile": profile,
-        "window": None,
-        "account": {"login": "", "password": "", "pin": ""},
-        "_charged": None,
+    # === ЕДИНЫЙ state (никаких sys_st./_state) ===
+    state: Dict[str, Any] = {}
+    ensure_pool(state)
 
-        # респавн дефолты
-        "respawn_enabled": False,
-        "respawn_wait_enabled": False,
-        "respawn_wait_seconds": 30,
-        "respawn_click_threshold": 0.70,
-        "respawn_confirm_timeout_s": 6.0,
+    # базовая инициализация пула
+    pool_write(state, "app", {"version": local_version})
+    pool_write(state, "config", {"server": server, "language": language, "profile": profile, "profiles": servers})
+    pool_write(state, "account", {"login": "", "password": "", "pin": ""})
+    pool_write(state, "window", {"info": None, "found": False, "title": ""})
+    pool_write(state, "services.window_focus", {"running": False})
+    pool_write(state, "services.player_state", {"running": False})
+    pool_write(state, "services.macros_repeat", {"running": False})
 
-        # макросы (новый UI + совместимость со старым)
-        "macros_enabled": False,
-        "macros_repeat_enabled": False,  # ← выключаем повторы по умолчанию
-        "macros_rows": [],           # [{key, cast_s, repeat_s}]
-        # для старого UI, если он ещё активен
-        "macros_run_always": False,
-        "macros_delay_s": 1.0,
-        "macros_duration_s": 2.0,
-        "macros_sequence": ["1"],
-        # пайплайн
-        "pipeline_allowed": ["respawn","buff","macros","tp","autofarm"],
-        "pipeline_order":   ["respawn","macros"],
-
-        "_state": {  # единый пул
-            "player": {"alive": None, "hp_ratio": None, "cp_ratio": None, "ts": 0.0},
-            "focus":  {"has_focus": None, "ts": 0.0},
-        },
-    }
-
-    ensure_pool(sys_state)
-
-    # инициал значения из текущих дефолтов (зеркалим legacy → pool)
-    pool_merge(sys_state, "features.respawn", {
-        "enabled": bool(sys_state.get("respawn_enabled", False))
+    # фичи/пайплайн дефолты (если надо переназначить — секции это сделают)
+    pool_write(state, "features.respawn", {
+        "enabled": False, "wait_enabled": False, "wait_seconds": 30,
+        "click_threshold": 0.70, "confirm_timeout_s": 6.0, "status": "idle",
     })
-    pool_merge(sys_state, "features.macros", {
-        "enabled": bool(sys_state.get("macros_enabled", False)),
-        "repeat_enabled": bool(sys_state.get("macros_repeat_enabled", False)),
-        "rows": list(sys_state.get("macros_rows") or [])
+    pool_write(state, "features.macros", {
+        "enabled": False, "repeat_enabled": False, "rows": [],
+        "run_always": False, "delay_s": 1.0, "duration_s": 2.0, "sequence": ["1"], "status": "idle",
     })
-    pool_merge(sys_state, "features.buff", {
-        "enabled": bool(sys_state.get("buff_enabled", False)),
-        "mode": sys_state.get("buff_method", "")
-    })
-    pool_merge(sys_state, "features.tp", {
-        "enabled": bool(sys_state.get("tp_enabled", False))
-    })
-    pool_merge(sys_state, "features.autofarm", {
-        "enabled": bool(sys_state.get("af_enabled", False))
-    })
-    pool_merge(sys_state, "pipeline", {
-        "allowed": list(sys_state.get("pipeline_allowed") or []),
-        "order": list(sys_state.get("pipeline_order") or [])
-    })
+    pool_write(state, "features.buff", {"enabled": False, "mode": "", "methods": [], "status": "idle"})
+    pool_write(state, "features.tp", {"enabled": False, "status": "idle"})
+    pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
+    pool_write(state, "pipeline", {"allowed": ["respawn", "buff", "macros", "tp", "autofarm"], "order": ["respawn", "macros"],
+                                   "active": False, "idx": 0, "last_step": ""})
 
     # --- HUD ---
     def hud_push(text: str):
@@ -123,151 +92,109 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         finally:
             hud_push(f"Повтор макроса: {msg}")
 
-    # универсальный emit в основной UI
+    # --- UI emit + запись в пул ---
     def ui_emit(scope: str, text: str, ok):
         payload = {"scope": scope, "text": text, "ok": (True if ok is True else False if ok is False else None)}
-        sys_state.setdefault("_last_status", {})[scope] = payload
+        pool_write(state, f"ui_status.{scope}", {"text": text, "ok": payload["ok"]})
         try:
             window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})")
         except Exception:
             pass
-    sys_state["ui_emit"] = ui_emit
+    state["ui_emit"] = ui_emit  # если где-то ожидается
 
     # === Player State service ===
-    sys_state["_ps_last"] = {}   # {'alive': bool|None, 'hp_ratio': float|None, 'ts': float}
-    sys_state["_ps_running"] = False
-
     def _on_ps_update(data: Dict[str, Any]):
         hp = data.get("hp_ratio")
-
-        # ⬇️ Новое: если нет фокуса — не трогаем бэкенд-состояние HP вообще
-        if (sys_state.get("_wf_last") or {}).get("has_focus") is False:
+        # не трогаем vitals, если нет фокуса
+        if pool_get(state, "focus.has_focus") is False:
             return
 
         alive = None if hp is None else bool(hp > 0.001)
-        sys_state["_ps_last"] = {
-            "alive": alive,
-            "hp_ratio": hp,
-            "cp_ratio": data.get("cp_ratio"),
-            "ts": data.get("ts"),
-        }
-        pool_merge(sys_state, "player", {
+        pool_write(state, "player", {
             "alive": alive,
             "hp_ratio": hp,
             "cp_ratio": data.get("cp_ratio"),
         })
 
-        # → HUD vitals: только когда окно в фокусе
+        # HUD vitals
         try:
-            if hud_window:
-                has_focus = bool((sys_state.get("_wf_last") or {}).get("has_focus"))
-                if not has_focus:
-                    return  # не затираем '--' когда OFF
+            if hud_window and pool_get(state, "focus.has_focus"):
                 h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                 cp = data.get("cp_ratio")
                 c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
-                hud_window.evaluate_js(
-                    f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
-                )
+                hud_window.evaluate_js(f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})")
         except Exception as e:
             print(f"[HUD] hp set error: {e}")
 
     ps_service = PlayerStateService(
-        server=lambda: sys_state.get("server"),
-        get_window=lambda: sys_state.get("window"),
+        server=lambda: pool_get(state, "config.server", "boh"),
+        get_window=lambda: pool_get(state, "window.info", None),
         on_update=_on_ps_update,
         on_status=log_ui,
     )
-    ps_service._state = sys_state
-    # зарегистрируем сервисы для оркестратора (может быть использовано другими правилами)
-    sys_state.setdefault("_services", {})["player_state"] = ps_service
-
-    # адаптер для оркестратора
+    # адаптер для оркестратора/секций — сразу читаем из пула
     class _PSAdapter:
         def last(self) -> Dict[str, Any]:
-            return sys_state.get("_ps_last") or {}
-
+            p = pool_get(state, "player", {}) or {}
+            return {"alive": p.get("alive"), "hp_ratio": p.get("hp_ratio"), "cp_ratio": p.get("cp_ratio"), "ts": p.get("ts")}
         def is_alive(self) -> bool:
-            st = self.last()
-            a = st.get("alive")
+            a = pool_get(state, "player.alive", None)
             return bool(a) if a is not None else False
-
         def is_running(self) -> bool:
-            return bool(sys_state.get("_ps_running", False))
-
+            return bool(pool_get(state, "services.player_state.running", False))
     ps_adapter = _PSAdapter()
 
-    # === Window focus service (изолированный) ===
-    sys_state["_wf_last"] = {"has_focus": False, "ts": time.time()}
-    sys_state["_wf_running"] = False
-
+    # === Window focus service ===
     def _on_wf_update(data: Dict[str, Any]):
-        prev = sys_state.get("_wf_last") or {}
-        prev_focus = prev.get("has_focus")
-
+        prev_focus = pool_get(state, "focus.has_focus", None)
         try:
             has_focus = bool(data.get("has_focus"))
-            #в глобальный пул состояний
-            pool_merge(sys_state, "focus", {"has_focus": has_focus})
         except Exception:
             has_focus = False
-        ts = float(data.get("ts") or 0.0)
 
-        sys_state["_wf_last"] = {"has_focus": has_focus, "ts": ts}
-        # ⬇️ Новое: на OFF — сбрасываем мониторинг (только состояние)
+        pool_write(state, "focus", {"has_focus": has_focus})
+
+        # OFF → сброс vitals
         if has_focus is False:
-            sys_state["_ps_last"] = {
-                "alive": None,
-                "hp_ratio": None,
-                "cp_ratio": None,
-                "ts": time.time(),
-            }
-            #в глобальный пул состояний
-            pool_merge(sys_state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
-
-        # HUD: при потере фокуса показать "--"
-        try:
-            if hud_window and has_focus is False:
-                hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
-            # при возврате фокуса сразу восстановим последние HP/CP
-            elif hud_window and has_focus is True and prev_focus is not True:
-                last = sys_state.get("_ps_last") or {}
-                hp = last.get("hp_ratio")
-                cp = last.get("cp_ratio")
-                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
-                c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
-                hud_window.evaluate_js(
-                    f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
-                )
-        except Exception:
-            pass
-
-        # в HUD и UI — только при смене состояния
-        if prev_focus is None or prev_focus != has_focus:
-            txt = f"Фокус окна: {'да' if has_focus else 'нет'}"
-            log_ui(f"[FOCUS] {'ON' if has_focus else 'OFF'}")
+            pool_write(state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
             try:
-                ui_emit("focus", txt, True if has_focus else None)
+                if hud_window:
+                    hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
+            except Exception:
+                pass
+        # ON после OFF → восстанавливаем HUD цифрами из пула
+        elif hud_window and prev_focus is not True:
+            last = pool_get(state, "player", {}) or {}
+            hp = last.get("hp_ratio"); cp = last.get("cp_ratio")
+            h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
+            c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
+            try:
+                hud_window.evaluate_js(f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})")
             except Exception:
                 pass
 
+        # статус в UI при смене
+        if prev_focus is None or prev_focus != has_focus:
+            txt = f"Фокус окна: {'да' if has_focus else 'нет'}"
+            log_ui(f"[FOCUS] {'ON' if has_focus else 'OFF'}")
+            ui_emit("focus", txt, True if has_focus else None)
+
     wf_service = WindowFocusService(
-        get_window=lambda: sys_state.get("window"),
+        get_window=lambda: pool_get(state, "window.info", None),
         on_update=_on_wf_update,
         on_status=None,
     )
-    wf_service._state = sys_state
 
-    # Секции
+    # Секции (UI API)
     sections = [
-        SystemSection(window, local_version, controller, ps_adapter, sys_state, schedule),
-        StateSection(window, ps_service, sys_state),
-        RespawnSection(window, sys_state),
-        BuffSection(window, controller, ps_adapter, sys_state, schedule, checker=None),
-        MacrosSection(window, controller, sys_state),
-        TPSection(window, controller, ps_adapter, sys_state, schedule),
-        AutofarmSection(window, controller, ps_adapter, sys_state, schedule),
-        PipelineSection(window, sys_state),
+        SystemSection(window, local_version, controller, ps_adapter, state, schedule),
+        StateSection(window, ps_service, state),
+        RespawnSection(window, state),
+        BuffSection(window, controller, ps_adapter, state, schedule, checker=None),
+        MacrosSection(window, controller, state),
+        TPSection(window, controller, ps_adapter, state, schedule),
+        AutofarmSection(window, controller, ps_adapter, state, schedule),
+        PipelineSection(window, state),
     ]
 
     exposed: Dict[str, Any] = {}
@@ -279,80 +206,97 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             print(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
-    # Правила оркестратора: СНАЧАЛА фокус/пауза, затем респавн
+    # Правила оркестратора
     rules = [
-        # можно убрать focus_pause_rule, если хотите, пайплайн сам смотрит на фокус
-        make_focus_pause_rule(sys_state, {"grace_seconds": 0.3}),
-        make_pipeline_rule(sys_state, ps_adapter, controller, report=log_ui),
+        make_focus_pause_rule(state, {"grace_seconds": 0.3}),
+        make_pipeline_rule(state, ps_adapter, controller, report=log_ui),
     ]
 
-    _orch_stop = {"stop": False}
-    sys_state["_orch_stop"] = _orch_stop
+    orch_stop = {"stop": False}
 
     def _orch_tick():
-        if _orch_stop["stop"]:
+        if orch_stop["stop"]:
             return
         try:
-            orchestrator_tick(sys_state, ps_adapter, rules)
+            orchestrator_tick(state, ps_adapter, rules)
+            if pool_get(state, "runtime.debug.pool_debug", False):
+                summary = {
+                    "app": {"v": pool_get(state, "app.version"), "srv": pool_get(state, "config.server"),
+                            "lang": pool_get(state, "config.language")},
+                    "window": {"found": pool_get(state, "window.found"), "title": pool_get(state, "window.title", "")},
+                    "focus": pool_get(state, "focus.has_focus"),
+                    "player": {"alive": pool_get(state, "player.alive"), "hp": pool_get(state, "player.hp_ratio")},
+                    "features": {
+                        "respawn": {"en": pool_get(state, "features.respawn.enabled"),
+                                    "wait_en": pool_get(state, "features.respawn.wait_enabled"),
+                                    "wait_s": pool_get(state, "features.respawn.wait_seconds")},
+                        "macros": {"en": pool_get(state, "features.macros.enabled"),
+                                   "rep": pool_get(state, "features.macros.repeat_enabled"),
+                                   "rows": len(pool_get(state, "features.macros.rows", []) or [])},
+                    },
+                    "services": {
+                        "ps": pool_get(state, "services.player_state.running"),
+                        "wf": pool_get(state, "services.window_focus.running"),
+                        "mr": pool_get(state, "services.macros_repeat.running"),
+                    },
+                    "pipeline": {"order": pool_get(state, "pipeline.order"),
+                                 "idx": pool_get(state, "pipeline.idx"),
+                                 "active": pool_get(state, "pipeline.active")},
+                }
+                print("[POOL]", json.dumps(summary, ensure_ascii=False))
         except Exception as e:
             print("[orch] tick error:", e)
         schedule(_orch_tick, 2222)
 
-    # стартуем сервисы
+    # старт сервисов
     wf_service.start(poll_interval=1.0)
+    pool_write(state, "services.window_focus", {"running": True})
+
     ps_service.start(poll_interval=1.0)
+    pool_write(state, "services.player_state", {"running": True})
+
     schedule(_orch_tick, 2222)
 
-    #переходим на общий глобальный пул состояний
-    pool_merge(sys_state, "services.window_focus", {"running": True})
-    pool_merge(sys_state, "services.player_state", {"running": True})
-    pool_merge(sys_state, "services.macros_repeat", {"running": True})
-
-    # --- фоновый сервис повторов макросов ---
+    # --- повторы макросов ---
     macros_repeat_service = MacrosRepeatService(
-        server=lambda: sys_state.get("server") or "boh",
+        server=lambda: pool_get(state, "config.server", "boh"),
         controller=controller,
-        get_window=lambda: sys_state.get("window"),
-        get_language=lambda: sys_state.get("language") or "rus",
-        get_rows=lambda: sys_state.get("macros_rows") or [],
-        is_enabled=lambda: bool(sys_state.get("macros_repeat_enabled", False)),
-        is_alive=lambda: bool((sys_state.get("_ps_last") or {}).get("alive")),
+        get_window=lambda: pool_get(state, "window.info", None),
+        get_language=lambda: pool_get(state, "config.language", "rus"),
+        get_rows=lambda: list(pool_get(state, "features.macros.rows", []) or []),
+        is_enabled=lambda: bool(pool_get(state, "features.macros.repeat_enabled", False)),
+        is_alive=lambda: bool(pool_get(state, "player.alive", False)),
         on_status=log_ui_with_ok,
     )
     macros_repeat_service.start(poll_interval=1.0)
-    sys_state.setdefault("_services", {})["macros_repeat"] = macros_repeat_service
+    pool_write(state, "services.macros_repeat", {"running": True})
 
-    _shutdown_done = False
     def shutdown():
-        nonlocal _shutdown_done
-        if _shutdown_done: return
-        _shutdown_done = True
-        try: _orch_stop["stop"] = True
-        except Exception: pass
+        try:
+            orch_stop["stop"] = True
+        except Exception:
+            pass
         try:
             ps_service.stop()
-            pool_merge(sys_state, "services.player_state", {"running": False})
-        except Exception as e: print(f"[shutdown] ps_service.stop(): {e}")
+        except Exception as e:
+            print(f"[shutdown] ps_service.stop(): {e}")
+        finally:
+            pool_write(state, "services.player_state", {"running": False})
         try:
             wf_service.stop()
-            pool_merge(sys_state, "services.window_focus", {"running": False})
-        except Exception as e: print(f"[shutdown] wf_service.stop(): {e}")
+        except Exception as e:
+            print(f"[shutdown] wf_service.stop(): {e}")
+        finally:
+            pool_write(state, "services.window_focus", {"running": False})
         try:
             controller.close()
         except Exception as e:
             print(f"[shutdown] controller.close(): {e}")
         try:
             macros_repeat_service.stop()
-            pool_merge(sys_state, "services.macros_repeat", {"running": False})
         except Exception as e:
             print(f"[shutdown] macros_repeat_service.stop(): {e}")
-
-    sys_state["respawn_debug"] = True
-    sys_state["pool_debug"] = True  # временно включили дамп пула на каждый тик
-    # HUD прочее
-    def hud_dump():
-        try: return {"ok": True}
-        except Exception as e: return {"error": str(e)}
-    exposed["hud_dump"] = hud_dump
+        finally:
+            pool_write(state, "services.macros_repeat", {"running": False})
 
     return {"sections": sections, "shutdown": shutdown, "exposed": exposed}

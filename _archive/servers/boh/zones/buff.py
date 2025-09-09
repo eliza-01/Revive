@@ -1,4 +1,4 @@
-﻿# core/servers/boh/zones/buffer.py
+﻿# _archive/servers/boh/zones/buff.py
 from typing import Dict, Tuple, List, Union
 
 # Зоны могут быть кортежом (l,t,r,b) в client-координатах
