@@ -252,12 +252,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             orchestrator_tick(sys_state, ps_adapter, rules)
         except Exception as e:
             print("[orch] tick error:", e)
-        schedule(_orch_tick, 200)
+        schedule(_orch_tick, 1000)
 
     # стартуем сервисы
     wf_service.start(poll_interval=1.0)
     ps_service.start(poll_interval=1.0)
-    schedule(_orch_tick, 200)
+    schedule(_orch_tick, 1000)
 
     # --- фоновый сервис повторов макросов ---
     macros_repeat_service = MacrosRepeatService(
