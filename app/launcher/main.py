@@ -5,6 +5,7 @@ import os, sys, json
 import webview
 from .wiring import build_container
 import tempfile, subprocess, ctypes
+import screeninfo
 
 _SPLASH_PS = r"""param($gif)
 Add-Type -Name U32 -Namespace Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
@@ -97,10 +98,19 @@ def launch_gui(local_version: str):
             raise RuntimeError(f"Не найден HUD UI: {hud_path}")
 
         # --- HUD окно (создаём первым, чтобы было поверх главного) ---
+        # -- создается в крайнем правом углу основного монитора --
+        monitors = screeninfo.get_monitors()
+        screen = next((m for m in monitors if getattr(m, "is_primary", False)), monitors[0])
+        hud_width, hud_height = 420, 52
+        hud_x = screen.x + screen.width - hud_width
+        hud_y = screen.y  # самый верх
+
         hud_window = webview.create_window(
             title="Revive HUD",
+            x=hud_x,
+            y=hud_y,
             url=hud_path,
-            width=520,                 # шире
+            width=420,                 # шире
             height=52,                 # компактнее по высоте
             resizable=False,
             frameless=True,
