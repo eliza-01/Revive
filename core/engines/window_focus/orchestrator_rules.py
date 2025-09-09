@@ -1,6 +1,7 @@
 # core/engines/window_focus/orchestrator_rules.py
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
+import time
 
 def make_focus_pause_rule(sys_state: Dict[str, Any], cfg: Optional[Dict[str, Any]] = None):
     """
@@ -41,12 +42,6 @@ class _FocusPauseRule:
                 "macros_enabled":    bool(self.s.get("macros_enabled", False)),
                 "tp_enabled":        bool(self.s.get("tp_enabled", False)),
             }
-            # выключаем все процессы
-            self.s["af_enabled"]      = False
-            self.s["respawn_enabled"] = False
-            self.s["buff_enabled"]    = False
-            self.s["macros_enabled"]  = False
-            self.s["tp_enabled"]      = False
 
             # стоп HP-сенсор
             try:
@@ -54,6 +49,14 @@ class _FocusPauseRule:
                     ps_service.stop()
             except Exception:
                 pass
+
+            # ⬇️ Новое: явный сброс состояния HP в "unknown"
+            self.s["_ps_last"] = {
+                "alive": None,
+                "hp_ratio": None,
+                "cp_ratio": None,
+                "ts": time.time(),
+            }
 
             self.s[self.key] = {"active": True, "saved": saved}
 
@@ -67,8 +70,11 @@ class _FocusPauseRule:
         if paused and (snap.has_focus is True):
             # СНЯТЬ ПАУЗУ
             saved = (self.s.get(self.key) or {}).get("saved", {})
+            # Не затираем изменения, сделанные во время паузы (например, включили тумблер)
+
             for k, v in saved.items():
-                self.s[k] = v
+                cur = bool(self.s.get(k, False))
+                self.s[k] = bool(v) or cur
             self.s[self.key] = {"active": False, "saved": {}}
 
             # перезапуск HP-сенсора

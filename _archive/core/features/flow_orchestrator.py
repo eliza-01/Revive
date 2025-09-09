@@ -188,7 +188,7 @@ class FlowOrchestrator:
     # ---------------- flow steps ----------------
     def _flow_step_buff_if_needed(self):
         if not self.watcher.is_alive():
-            self._log("[buff] skip (dead)")
+            self._log("[buffer] skip (dead)")
             self._buff_was_success = False
             return
 
@@ -198,11 +198,11 @@ class FlowOrchestrator:
 
         if need_buff:
             ok_buff = bool(self._buff_run_once())
-            self._log(f"[buff] auto-after-alive run: {ok_buff}")
+            self._log(f"[buffer] auto-after-alive run: {ok_buff}")
             self._buff_was_success = ok_buff
         else:
             reason = "disabled" if not buff_enabled else "already charged"
-            self._log(f"[buff] skip ({reason})")
+            self._log(f"[buffer] skip ({reason})")
             self._buff_was_success = False
 
     def _flow_step_macros_after_buff(self):
@@ -211,7 +211,7 @@ class FlowOrchestrator:
                 self._log("[macros] skipped (UI disabled)")
                 return
             if not self._buff_was_success and not self._macros_ui_run_always():
-                self._log("[macros] skipped (buff not executed, run_always=False)")
+                self._log("[macros] skipped (buffer not executed, run_always=False)")
                 return
 
             ok_macros = bool(self._macros_run_once())
@@ -222,7 +222,7 @@ class FlowOrchestrator:
             if dur > 0:
                 self._log(f"[macros] waiting {dur:.2f}s for completion window")
                 time.sleep(dur)
-            self._log(f"[macros] after-buff run: {ok_macros}")
+            self._log(f"[macros] after-buffer run: {ok_macros}")
         except Exception as e:
             self._log(f"[macros] error: {e}")
 

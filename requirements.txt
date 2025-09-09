@@ -11,5 +11,6 @@ requests
 mss
 pywin32
 future
+screeninfo
 pywebview #pip install -U pywebview comtypes
 # НЕ ставь: win32gui, win32con, atexit (это либо часть pywin32, либо модуль стандартной библиотеки)

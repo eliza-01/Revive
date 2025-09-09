@@ -14,10 +14,10 @@ class BuffAfterRespawnWorker:
     """
     Выполняет баф по выбранному методу:
       - method='dashboard' -> core.servers.<server>.flows.buff_dashboard
-        (если файла нет — fallback на flows.buff)
+        (если файла нет — fallback на flows.buffer)
       - method='npc'       -> core.servers.<server>.flows.buff_npc
 
-    Зоны/шаблоны берутся из core.servers.<server>.zones.buff
+    Зоны/шаблоны берутся из core.servers.<server>.zones.buffer
 
     В flow можно использовать tpl="{mode_key}" — подставится один из:
       buffer_mode_profile | buffer_mode_mage | buffer_mode_fighter
@@ -63,7 +63,7 @@ class BuffAfterRespawnWorker:
     def _load_flow(self):
         """
         Возвращает список шагов FLOW для выбранного метода.
-        dashboard:  пробуем flows.buff_dashboard, иначе fallback на flows.buff
+        dashboard:  пробуем flows.buff_dashboard, иначе fallback на flows.buffer
         npc:        flows.buff_npc (без fallback)
         """
         try:
@@ -72,29 +72,29 @@ class BuffAfterRespawnWorker:
                     mod = importlib.import_module(f"core.servers.{self.server}.flows.buff_dashboard")
                 except Exception:
                     # бэк-компат: старое имя файла
-                    mod = importlib.import_module(f"core.servers.{self.server}.flows.buff")
+                    mod = importlib.import_module(f"core.servers.{self.server}.flows.buffer")
             else:  # npc
                 mod = importlib.import_module(f"core.servers.{self.server}.flows.buff_npc")
             return getattr(mod, "FLOW", [])
         except Exception as e:
-            self._on_status(f"[buff] load flow error: {e}", False)
+            self._on_status(f"[buffer] load flow error: {e}", False)
             return []
 
     def _load_zones(self):
         try:
-            zm = importlib.import_module(f"core.servers.{self.server}.zones.buff")
+            zm = importlib.import_module(f"core.servers.{self.server}.zones.buffer")
             zones = getattr(zm, "ZONES", {})
             templates = getattr(zm, "TEMPLATES", {})
             return zones, templates
         except Exception as e:
-            self._on_status(f"[buff] zones load error: {e}", False)
+            self._on_status(f"[buffer] zones load error: {e}", False)
             return {}, {}
 
     # --- запуск ---
     def run_once(self) -> bool:
         flow = self._load_flow()
         if not flow:
-            self._on_status("[buff] empty flow (nothing to do)", False)
+            self._on_status("[buffer] empty flow (nothing to do)", False)
             return False
 
         zones, templates = self._load_zones()

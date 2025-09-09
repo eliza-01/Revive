@@ -8,7 +8,7 @@ from _archive.core.features.tp_after_respawn import (
     TP_METHOD_DASHBOARD,
     TP_METHOD_GATEKEEPER,
 )
-from core.servers.l2mad.locations_map import get_categories, get_locations
+from _archive.servers import get_categories, get_locations
 
 
 class TPControls:

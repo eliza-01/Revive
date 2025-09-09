@@ -96,7 +96,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" id="respawnBlock">
       <h3>Респавн</h3>
 
       <div class="row compact wrap">
@@ -116,6 +116,12 @@
 
         <input id="respawnWaitSec" type="number" min="0" step="1" value="120" class="xs ml">
         <span class="hint">сек.</span>
+      </div>
+
+      <!-- порядок действий после смерти -->
+      <div class="row compact mt">
+        <button id="btnPipeline">Установить порядок действий</button>
+        <span class="hint ml">Respawn всегда первый</span>
       </div>
     </section>
 
@@ -156,13 +162,6 @@
           <span class="slider"></span>
           <span class="slabel">Включить</span>
         </label>
-
-        <label class="ml">Режим запуска:</label>
-        <select id="macrosMode" class="sm">
-          <option value="after_death">После смерти</option>
-          <option value="after_buff">После бафа</option>
-          <option value="after_tp">После ТП</option>
-        </select>
       </div>
 
       <!-- заголовок таблицы -->
@@ -302,6 +301,7 @@
   <script src="js/app.js"></script>
   <script src="js/state.poller.js"></script>
   <script src="js/state.ui.js"></script>
+  <script src="js/pipeline.ui.js"></script>
   <script src="js/respawn.ui.js"></script>
   <script src="js/buff.ui.js"></script>
   <script src="js/macros.ui.js"></script>

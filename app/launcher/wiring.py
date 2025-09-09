@@ -4,7 +4,7 @@ from typing import Dict, Any
 import json, time
 
 from core.arduino.connection import ReviveController
-from core.servers.registry import get_server_profile, list_servers
+from core.servers import get_server_profile, list_servers
 
 # секции
 from .sections.system import SystemSection
@@ -14,17 +14,18 @@ from .sections.buff import BuffSection
 from .sections.macros import MacrosSection
 from .sections.tp import TPSection
 from .sections.autofarm import AutofarmSection
+from .sections.pipeline import PipelineSection
+
 
 # оркестратор
 from core.orchestrators.runtime import orchestrator_tick
-from core.engines.respawn.server.boh.orchestrator_rules import make_respawn_rule
-from core.engines.macros.server.boh.orchestrator_rules import make_macros_rule
-from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule  # ← из window_focus
+from core.orchestrators.pipeline_rule import make_pipeline_rule
 
 # движки
+from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule
 from core.engines.player_state.service import PlayerStateService
 from core.engines.window_focus.service import WindowFocusService
-from core.engines.macros.service import MacrosRepeatService  # ← новый сервис
+from core.engines.macros.service import MacrosRepeatService
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
@@ -56,13 +57,15 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         # макросы (новый UI + совместимость со старым)
         "macros_enabled": False,
         "macros_repeat_enabled": False,  # ← выключаем повторы по умолчанию
-        "macros_mode": "manual",     # "manual" | "after_respawn" | "after_buff" | "after_tp" (задел)
         "macros_rows": [],           # [{key, cast_s, repeat_s}]
         # для старого UI, если он ещё активен
         "macros_run_always": False,
         "macros_delay_s": 1.0,
         "macros_duration_s": 2.0,
         "macros_sequence": ["1"],
+        # пайплайн
+        "pipeline_allowed": ["respawn","buff","macros","tp","autofarm"],
+        "pipeline_order":   ["respawn","macros"],
     }
 
     # --- HUD ---
@@ -103,6 +106,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     def _on_ps_update(data: Dict[str, Any]):
         hp = data.get("hp_ratio")
+
+        # ⬇️ Новое: если нет фокуса — не трогаем бэкенд-состояние HP вообще
+        if (sys_state.get("_wf_last") or {}).get("has_focus") is False:
+            return
+
         alive = None if hp is None else bool(hp > 0.001)
         sys_state["_ps_last"] = {
             "alive": alive,
@@ -111,9 +119,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             "ts": data.get("ts"),
         }
 
-        # → HUD vitals
+        # → HUD vitals: только когда окно в фокусе
         try:
             if hud_window:
+                has_focus = bool((sys_state.get("_wf_last") or {}).get("has_focus"))
+                if not has_focus:
+                    return  # не затираем '--' когда OFF
                 h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                 cp = data.get("cp_ratio")
                 c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
@@ -148,11 +159,10 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     ps_adapter = _PSAdapter()
 
     # === Window focus service (изолированный) ===
-    sys_state["_wf_last"] = {"has_focus": None, "ts": 0.0}
+    sys_state["_wf_last"] = {"has_focus": False, "ts": time.time()}
     sys_state["_wf_running"] = False
 
     def _on_wf_update(data: Dict[str, Any]):
-        # сохраняем предыдущее значение, чтобы логировать только на изменения
         prev = sys_state.get("_wf_last") or {}
         prev_focus = prev.get("has_focus")
 
@@ -163,11 +173,28 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         ts = float(data.get("ts") or 0.0)
 
         sys_state["_wf_last"] = {"has_focus": has_focus, "ts": ts}
-        # >>> HUD: при потере фокуса показать "--" вместо HP
+        # ⬇️ Новое: на OFF — сбрасываем мониторинг (только состояние)
+        if has_focus is False:
+            sys_state["_ps_last"] = {
+                "alive": None,
+                "hp_ratio": None,
+                "cp_ratio": None,
+                "ts": time.time(),
+            }
+
+        # HUD: при потере фокуса показать "--"
         try:
             if hud_window and has_focus is False:
+                hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
+            # при возврате фокуса сразу восстановим последние HP/CP
+            elif hud_window and has_focus is True and prev_focus is not True:
+                last = sys_state.get("_ps_last") or {}
+                hp = last.get("hp_ratio")
+                cp = last.get("cp_ratio")
+                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
+                c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
                 hud_window.evaluate_js(
-                    "window.ReviveHUD && window.ReviveHUD.setHP('--','')"
+                    f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
                 )
         except Exception:
             pass
@@ -196,6 +223,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         MacrosSection(window, controller, sys_state),
         TPSection(window, controller, ps_adapter, sys_state, schedule),
         AutofarmSection(window, controller, ps_adapter, sys_state, schedule),
+        PipelineSection(window, sys_state),
     ]
 
     exposed: Dict[str, Any] = {}
@@ -209,9 +237,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     # Правила оркестратора: СНАЧАЛА фокус/пауза, затем респавн
     rules = [
-        make_focus_pause_rule(sys_state, {"grace_seconds": 0.0}),
-        make_respawn_rule(sys_state, ps_adapter, controller, report=log_ui),
-        make_macros_rule(sys_state, controller, report=log_ui),  # ← добавили
+        # можно убрать focus_pause_rule, если хотите, пайплайн сам смотрит на фокус
+        make_focus_pause_rule(sys_state, {"grace_seconds": 0.3}),
+        make_pipeline_rule(sys_state, ps_adapter, controller, report=log_ui),
     ]
 
     _orch_stop = {"stop": False}
@@ -224,12 +252,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             orchestrator_tick(sys_state, ps_adapter, rules)
         except Exception as e:
             print("[orch] tick error:", e)
-        schedule(_orch_tick, 200)
+        schedule(_orch_tick, 1000)
 
     # стартуем сервисы
-    ps_service.start(poll_interval=0.25)
-    wf_service.start(poll_interval=2.0)
-    schedule(_orch_tick, 200)
+    wf_service.start(poll_interval=1.0)
+    ps_service.start(poll_interval=1.0)
+    schedule(_orch_tick, 1000)
 
     # --- фоновый сервис повторов макросов ---
     macros_repeat_service = MacrosRepeatService(
@@ -239,6 +267,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         get_language=lambda: sys_state.get("language") or "rus",
         get_rows=lambda: sys_state.get("macros_rows") or [],
         is_enabled=lambda: bool(sys_state.get("macros_repeat_enabled", False)),
+        is_alive=lambda: bool((sys_state.get("_ps_last") or {}).get("alive")),
         on_status=log_ui_with_ok,
     )
     macros_repeat_service.start(poll_interval=1.0)
@@ -264,6 +293,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             print(f"[shutdown] macros_repeat_service.stop(): {e}")
 
+    sys_state["respawn_debug"] = True
     # HUD прочее
     def hud_dump():
         try: return {"ok": True}

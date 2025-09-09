@@ -1,4 +1,3 @@
-# core/engines/macros/service.py
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any, List
 import threading, time
@@ -9,7 +8,7 @@ from core.engines.macros.runner import run_macros
 class MacrosRepeatService:
     """
     Фоновый сервис повтора макросов по полю repeat_s > 0.
-    Интерфейс: start(), stop(), is_running()
+    Интерфейс: start(), stop(), is_running(), bump_all()
     """
 
     def __init__(
@@ -21,6 +20,8 @@ class MacrosRepeatService:
         get_rows: Callable[[], List[Dict[str, Any]]],
         is_enabled: Callable[[], bool],
         on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
+        *,
+        is_alive: Optional[Callable[[], bool]] = None,  # ⬅️ НОВОЕ
     ):
         self._server = server
         self._controller = controller
@@ -29,10 +30,11 @@ class MacrosRepeatService:
         self._get_rows = get_rows
         self._is_enabled = is_enabled
         self._on_status = on_status or (lambda *_: None)
+        self._is_alive = is_alive or (lambda: True)      # ⬅️ НОВОЕ
 
         self._thr: Optional[threading.Thread] = None
         self._run = False
-        self._last_exec: Dict[int, float] = {}  # key: row id (index), value: last run time
+        self._last_exec: Dict[int, float] = {}  # key: row index, value: last run time
 
     def is_running(self) -> bool:
         return bool(self._run)
@@ -47,10 +49,27 @@ class MacrosRepeatService:
     def stop(self):
         self._run = False
 
+    # ⬇️ НОВОЕ: сдвинуть «отсчёт до повтора» после ручного запуска (пайплайн)
+    def bump_all(self):
+        try:
+            now = time.time()
+            rows = list(self._get_rows() or [])
+            for idx, row in enumerate(rows):
+                repeat_s = max(0.0, float(row.get("repeat_s") or 0))
+                if repeat_s > 0:
+                    self._last_exec[idx] = now
+        except Exception:
+            pass
+
     def _loop(self, poll_interval: float):
         while self._run:
             try:
                 if not self._is_enabled():
+                    time.sleep(poll_interval)
+                    continue
+
+                # ⬇️ НОВОЕ: не запускать повторы, если мёртв
+                if not self._is_alive():
                     time.sleep(poll_interval)
                     continue
 
@@ -59,14 +78,16 @@ class MacrosRepeatService:
                 to_run = []
 
                 for idx, row in enumerate(rows):
-                    repeat_s = max(0, float(row.get("repeat_s") or 0))
+                    repeat_s = max(0.0, float(row.get("repeat_s") or 0))
                     if repeat_s <= 0:
                         continue
-                    last_ts = self._last_exec.get(idx, 0)
+                    last_ts = self._last_exec.get(idx, 0.0)
                     if now - last_ts >= repeat_s:
                         to_run.append((idx, row))
 
                 for idx, row in to_run:
+                    # фиксируем момент запуска ПЕРЕД выполнением,
+                    # чтобы при долгом касте не стартовало повторно
                     self._last_exec[idx] = time.time()
                     self._run_row(row)
 

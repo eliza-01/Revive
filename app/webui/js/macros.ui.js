@@ -125,13 +125,8 @@
       const enabled = !!e.target.checked;
       try {
         pywebview.api.macros_set_enabled(enabled);
-        pywebview.api.macros_set_repeat_enabled(enabled);  // ← добавлено
+        pywebview.api.macros_set_repeat_enabled(enabled);
       } catch(_){}
-    });
-
-    const mode = $("#macrosMode");
-    if (mode) mode.addEventListener("change", e => {
-      try { pywebview.api.macros_set_mode(String(e.target.value || "after_buff")); } catch(_){}
     });
   }
 
