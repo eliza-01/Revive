@@ -1,4 +1,4 @@
-﻿# core/servers/boh/flows/tp_dashboard.py
+﻿# _archive/servers/boh/flows/tp_dashboard.py
 # =========================
 # File: core/servers/l2mad/flows/tp.py
 # L2MAD teleport flow (dashboard). Uses special ops: click_village, click_location.

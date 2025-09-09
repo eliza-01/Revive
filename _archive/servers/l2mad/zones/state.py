@@ -1,4 +1,4 @@
-# core/servers/l2mad/zones/state.py
+﻿# _archive/servers/l2mad/zones/state.py
 from typing import Dict, Tuple, List
 
 Zone = Tuple[int, int, int, int]

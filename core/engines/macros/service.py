@@ -1,3 +1,4 @@
+﻿# core/engines/macros/service.py
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any, List
 import threading, time
@@ -15,13 +16,13 @@ class MacrosRepeatService:
         self,
         server: Callable[[], str],
         controller: Any,
-        get_window: Callable[[], Optional[Dict]],
+        get_window: Callable[[], Optional[Dict[str, Any]]],
         get_language: Callable[[], str],
         get_rows: Callable[[], List[Dict[str, Any]]],
         is_enabled: Callable[[], bool],
         on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
         *,
-        is_alive: Optional[Callable[[], bool]] = None,  # ⬅️ НОВОЕ
+        is_alive: Optional[Callable[[], bool]] = None,  # читается из пула снаружи
     ):
         self._server = server
         self._controller = controller
@@ -30,7 +31,7 @@ class MacrosRepeatService:
         self._get_rows = get_rows
         self._is_enabled = is_enabled
         self._on_status = on_status or (lambda *_: None)
-        self._is_alive = is_alive or (lambda: True)      # ⬅️ НОВОЕ
+        self._is_alive = is_alive or (lambda: True)
 
         self._thr: Optional[threading.Thread] = None
         self._run = False
@@ -49,8 +50,8 @@ class MacrosRepeatService:
     def stop(self):
         self._run = False
 
-    # ⬇️ НОВОЕ: сдвинуть «отсчёт до повтора» после ручного запуска (пайплайн)
     def bump_all(self):
+        """Сдвинуть «отсчёт до повтора» после ручного запуска (пайплайн)."""
         try:
             now = time.time()
             rows = list(self._get_rows() or [])
@@ -68,7 +69,6 @@ class MacrosRepeatService:
                     time.sleep(poll_interval)
                     continue
 
-                # ⬇️ НОВОЕ: не запускать повторы, если мёртв
                 if not self._is_alive():
                     time.sleep(poll_interval)
                     continue

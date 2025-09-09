@@ -1,13 +1,15 @@
-# core/engines/player_state/service.py
+﻿# core/engines/player_state/service.py
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import threading, time
 
 from core.engines.player_state.runner import run_player_state
 
+
 class PlayerStateService:
     """
-    Фоновый сервис опроса HP. Обновляет состояние через on_update.
+    Фоновый сервис опроса HP.
+    НИЧЕГО не пишет в пул сам по себе — только вызывает колбэки.
     Интерфейс: is_running(), start(poll_interval=0.25), stop()
     """
 
@@ -28,7 +30,7 @@ class PlayerStateService:
     def is_running(self) -> bool:
         return bool(self._run)
 
-    def start(self, poll_interval: float = 0.25):
+    def start(self, poll_interval: float = 1):
         if self._run:
             return
         self._run = True
@@ -46,6 +48,7 @@ class PlayerStateService:
                             should_abort=lambda: (not self._run),
                         )
                     except Exception:
+                        # глушим исключения цикла опроса и пробуем перезапуститься
                         pass
                     time.sleep(0.05)  # пауза между перезапусками
             finally:

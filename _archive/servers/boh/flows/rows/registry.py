@@ -1,4 +1,4 @@
-﻿# core/servers/boh/flows/rows/registry.py
+﻿# _archive/servers/boh/flows/rows/registry.py
 from typing import List, Dict, Tuple
 
 # Сопоставление локации списку путей

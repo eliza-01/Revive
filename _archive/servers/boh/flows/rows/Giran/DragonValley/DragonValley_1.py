@@ -1,4 +1,4 @@
-﻿# core/servers/boh/flows/rows/Giran/DragonValley/DragonValley_1.py
+﻿# _archive/servers/boh/flows/rows/Giran/DragonValley/DragonValley_1.py
 FLOW = [
     # примеры шагов; подставь свои шаблоны/клавиши
     {"op": "sleep", "ms": 2000},

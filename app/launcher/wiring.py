@@ -1,7 +1,6 @@
-# app/launcher/wiring.py
-from __future__ import annotations
-from typing import Dict, Any
-import json, time
+﻿from __future__ import annotations
+from typing import Dict, Any, Optional
+import json
 
 from core.arduino.connection import ReviveController
 from core.servers import get_server_profile, list_servers
@@ -16,214 +15,77 @@ from .sections.tp import TPSection
 from .sections.autofarm import AutofarmSection
 from .sections.pipeline import PipelineSection
 
-
 # оркестратор
-from core.orchestrators.runtime import orchestrator_tick
 from core.orchestrators.pipeline_rule import make_pipeline_rule
 
-# движки
+# движки/сервисы (правила)
 from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule
-from core.engines.player_state.service import PlayerStateService
-from core.engines.window_focus.service import WindowFocusService
-from core.engines.macros.service import MacrosRepeatService
+
+# пул
+from core.state.pool import ensure_pool, pool_write, pool_get, dump_pool
+
+# новые хелперы
+from app.launcher.infra.ui_bridge import UIBridge
+from app.launcher.infra.expose import expose_api
+from app.launcher.infra.orchestrator_loop import OrchestratorLoop
+from app.launcher.infra.services import ServicesBundle
+
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
-    server = (list_servers() or ["boh"])[0]
+    servers = list_servers() or ["boh"]
+    server = servers[0]
     language = "rus"
     profile = get_server_profile(server)
 
-    import threading
-    def schedule(fn, ms):
-        t = threading.Timer(max(0.0, ms) / 1000.0, fn)
-        t.daemon = True
-        t.start()
+    # === state / pool ===
+    state: Dict[str, Any] = {}
+    ensure_pool(state)
 
-    sys_state: Dict[str, Any] = {
-        "server": server,
-        "language": language,
-        "profile": profile,
-        "window": None,
-        "account": {"login": "", "password": "", "pin": ""},
-        "_charged": None,
+    # базовая инициализация пула
+    pool_write(state, "app", {"version": local_version})
+    pool_write(state, "config", {"server": server, "language": language, "profile": profile, "profiles": servers})
+    pool_write(state, "account", {"login": "", "password": "", "pin": ""})
+    pool_write(state, "window", {"info": None, "found": False, "title": ""})
+    pool_write(state, "services.window_focus", {"running": False})
+    pool_write(state, "services.player_state", {"running": False})
+    pool_write(state, "services.macros_repeat", {"running": False})
 
-        # респавн дефолты
-        "respawn_enabled": False,
-        "respawn_wait_enabled": False,
-        "respawn_wait_seconds": 30,
-        "respawn_click_threshold": 0.70,
-        "respawn_confirm_timeout_s": 6.0,
+    # фичи/пайплайн дефолты
+    pool_write(state, "features.respawn", {
+        "enabled": False, "wait_enabled": False, "wait_seconds": 30,
+        "click_threshold": 0.70, "confirm_timeout_s": 6.0, "status": "idle",
+    })
+    pool_write(state, "features.macros", {
+        "enabled": False, "repeat_enabled": False, "rows": [],
+        "run_always": False, "delay_s": 1.0, "duration_s": 2.0, "sequence": ["1"], "status": "idle",
+    })
+    pool_write(state, "features.buff", {"enabled": False, "mode": "", "methods": [], "status": "idle"})
+    pool_write(state, "features.tp", {"enabled": False, "status": "idle"})
+    pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
+    pool_write(state, "pipeline", {
+        "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
+        "order": ["respawn", "macros"],
+        "active": False, "idx": 0, "last_step": ""
+    })
 
-        # макросы (новый UI + совместимость со старым)
-        "macros_enabled": False,
-        "macros_repeat_enabled": False,  # ← выключаем повторы по умолчанию
-        "macros_rows": [],           # [{key, cast_s, repeat_s}]
-        # для старого UI, если он ещё активен
-        "macros_run_always": False,
-        "macros_delay_s": 1.0,
-        "macros_duration_s": 2.0,
-        "macros_sequence": ["1"],
-        # пайплайн
-        "pipeline_allowed": ["respawn","buff","macros","tp","autofarm"],
-        "pipeline_order":   ["respawn","macros"],
-    }
+    # === UI-мост ===
+    ui = UIBridge(window, state, hud_window)
 
-    # --- HUD ---
-    def hud_push(text: str):
-        if not hud_window:
-            return
-        try:
-            js = f"window.ReviveHUD && window.ReviveHUD.push({json.dumps(str(text))})"
-            hud_window.evaluate_js(js)
-        except Exception as e:
-            print(f"[HUD] eval error: {e}")
+    # === Сервисы (вынесены) ===
+    services = ServicesBundle(state, window, hud_window, ui, controller)
+    ps_adapter = services.ps_adapter
 
-    def log_ui(msg: str):
-        try:
-            print(msg)
-        finally:
-            hud_push(msg)
-
-    def log_ui_with_ok(msg: str, ok: Optional[bool] = None):
-        try:
-            print(f"[MACROS] {msg}")
-        finally:
-            hud_push(f"Повтор макроса: {msg}")
-
-    # универсальный emit в основной UI
-    def ui_emit(scope: str, text: str, ok):
-        payload = {"scope": scope, "text": text, "ok": (True if ok is True else False if ok is False else None)}
-        sys_state.setdefault("_last_status", {})[scope] = payload
-        try:
-            window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})")
-        except Exception:
-            pass
-    sys_state["ui_emit"] = ui_emit
-
-    # === Player State service ===
-    sys_state["_ps_last"] = {}   # {'alive': bool|None, 'hp_ratio': float|None, 'ts': float}
-    sys_state["_ps_running"] = False
-
-    def _on_ps_update(data: Dict[str, Any]):
-        hp = data.get("hp_ratio")
-
-        # ⬇️ Новое: если нет фокуса — не трогаем бэкенд-состояние HP вообще
-        if (sys_state.get("_wf_last") or {}).get("has_focus") is False:
-            return
-
-        alive = None if hp is None else bool(hp > 0.001)
-        sys_state["_ps_last"] = {
-            "alive": alive,
-            "hp_ratio": hp,
-            "cp_ratio": data.get("cp_ratio"),
-            "ts": data.get("ts"),
-        }
-
-        # → HUD vitals: только когда окно в фокусе
-        try:
-            if hud_window:
-                has_focus = bool((sys_state.get("_wf_last") or {}).get("has_focus"))
-                if not has_focus:
-                    return  # не затираем '--' когда OFF
-                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
-                cp = data.get("cp_ratio")
-                c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
-                hud_window.evaluate_js(
-                    f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
-                )
-        except Exception as e:
-            print(f"[HUD] hp set error: {e}")
-
-    ps_service = PlayerStateService(
-        server=lambda: sys_state.get("server"),
-        get_window=lambda: sys_state.get("window"),
-        on_update=_on_ps_update,
-        on_status=log_ui
-    )
-    # зарегистрируем сервисы для оркестратора (может быть использовано другими правилами)
-    sys_state.setdefault("_services", {})["player_state"] = ps_service
-
-    # адаптер для оркестратора
-    class _PSAdapter:
-        def last(self) -> Dict[str, Any]:
-            return sys_state.get("_ps_last") or {}
-
-        def is_alive(self) -> bool:
-            st = self.last()
-            a = st.get("alive")
-            return bool(a) if a is not None else False
-
-        def is_running(self) -> bool:
-            return bool(sys_state.get("_ps_running", False))
-
-    ps_adapter = _PSAdapter()
-
-    # === Window focus service (изолированный) ===
-    sys_state["_wf_last"] = {"has_focus": False, "ts": time.time()}
-    sys_state["_wf_running"] = False
-
-    def _on_wf_update(data: Dict[str, Any]):
-        prev = sys_state.get("_wf_last") or {}
-        prev_focus = prev.get("has_focus")
-
-        try:
-            has_focus = bool(data.get("has_focus"))
-        except Exception:
-            has_focus = False
-        ts = float(data.get("ts") or 0.0)
-
-        sys_state["_wf_last"] = {"has_focus": has_focus, "ts": ts}
-        # ⬇️ Новое: на OFF — сбрасываем мониторинг (только состояние)
-        if has_focus is False:
-            sys_state["_ps_last"] = {
-                "alive": None,
-                "hp_ratio": None,
-                "cp_ratio": None,
-                "ts": time.time(),
-            }
-
-        # HUD: при потере фокуса показать "--"
-        try:
-            if hud_window and has_focus is False:
-                hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
-            # при возврате фокуса сразу восстановим последние HP/CP
-            elif hud_window and has_focus is True and prev_focus is not True:
-                last = sys_state.get("_ps_last") or {}
-                hp = last.get("hp_ratio")
-                cp = last.get("cp_ratio")
-                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
-                c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
-                hud_window.evaluate_js(
-                    f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
-                )
-        except Exception:
-            pass
-
-        # в HUD и UI — только при смене состояния
-        if prev_focus is None or prev_focus != has_focus:
-            txt = f"Фокус окна: {'да' if has_focus else 'нет'}"
-            log_ui(f"[FOCUS] {'ON' if has_focus else 'OFF'}")
-            try:
-                ui_emit("focus", txt, True if has_focus else None)
-            except Exception:
-                pass
-
-    wf_service = WindowFocusService(
-        get_window=lambda: sys_state.get("window"),
-        on_update=_on_wf_update,
-        on_status=None
-    )
-
-    # Секции
+    # === Секции (UI API) ===
     sections = [
-        SystemSection(window, local_version, controller, ps_adapter, sys_state, schedule),
-        StateSection(window, ps_service, sys_state),
-        RespawnSection(window, sys_state),
-        BuffSection(window, controller, ps_adapter, sys_state, schedule, checker=None),
-        MacrosSection(window, controller, sys_state),
-        TPSection(window, controller, ps_adapter, sys_state, schedule),
-        AutofarmSection(window, controller, ps_adapter, sys_state, schedule),
-        PipelineSection(window, sys_state),
+        SystemSection(window, local_version, controller, ps_adapter, state, ui.schedule),
+        StateSection(window, services.ps_service, state),
+        RespawnSection(window, state),
+        BuffSection(window, controller, ps_adapter, state, ui.schedule, checker=None),
+        MacrosSection(window, controller, state),
+        TPSection(window, controller, ps_adapter, state, ui.schedule),
+        AutofarmSection(window, controller, ps_adapter, state, ui.schedule),
+        PipelineSection(window, state),
     ]
 
     exposed: Dict[str, Any] = {}
@@ -235,69 +97,43 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             print(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
-    # Правила оркестратора: СНАЧАЛА фокус/пауза, затем респавн
-    rules = [
-        # можно убрать focus_pause_rule, если хотите, пайплайн сам смотрит на фокус
-        make_focus_pause_rule(sys_state, {"grace_seconds": 0.3}),
-        make_pipeline_rule(sys_state, ps_adapter, controller, report=log_ui),
-    ]
-
-    _orch_stop = {"stop": False}
-    sys_state["_orch_stop"] = _orch_stop
-
-    def _orch_tick():
-        if _orch_stop["stop"]:
-            return
+    # pool_dump для JS (pywebview.api.pool_dump)
+    def pool_dump_api():
         try:
-            orchestrator_tick(sys_state, ps_adapter, rules)
+            return {"ok": True, "state": dump_pool(state, compact=True)}
         except Exception as e:
-            print("[orch] tick error:", e)
-        schedule(_orch_tick, 1000)
+            return {"ok": False, "error": str(e)}
+    exposed["pool_dump"] = pool_dump_api
 
-    # стартуем сервисы
-    wf_service.start(poll_interval=1.0)
-    ps_service.start(poll_interval=1.0)
-    schedule(_orch_tick, 1000)
+    # отдать API в pywebview
+    try:
+        expose_api(window, exposed)
+    except Exception as e:
+        print("[wiring] expose error:", e)
 
-    # --- фоновый сервис повторов макросов ---
-    macros_repeat_service = MacrosRepeatService(
-        server=lambda: sys_state.get("server") or "boh",
-        controller=controller,
-        get_window=lambda: sys_state.get("window"),
-        get_language=lambda: sys_state.get("language") or "rus",
-        get_rows=lambda: sys_state.get("macros_rows") or [],
-        is_enabled=lambda: bool(sys_state.get("macros_repeat_enabled", False)),
-        is_alive=lambda: bool((sys_state.get("_ps_last") or {}).get("alive")),
-        on_status=log_ui_with_ok,
-    )
-    macros_repeat_service.start(poll_interval=1.0)
-    sys_state.setdefault("_services", {})["macros_repeat"] = macros_repeat_service
+    # === Правила оркестратора ===
+    rules = [
+        make_focus_pause_rule(state, {"grace_seconds": 0.3}),
+        make_pipeline_rule(state, ps_adapter, controller, report=ui.log),
+    ]
+    loop = OrchestratorLoop(state, ps_adapter, rules, ui.schedule, period_ms=2222)
 
-    _shutdown_done = False
+    # старт сервисов + оркестратора
+    services.start()
+    loop.start()
+
     def shutdown():
-        nonlocal _shutdown_done
-        if _shutdown_done: return
-        _shutdown_done = True
-        try: _orch_stop["stop"] = True
-        except Exception: pass
-        try: ps_service.stop()
-        except Exception as e: print(f"[shutdown] ps_service.stop(): {e}")
-        try: wf_service.stop()
-        except Exception as e: print(f"[shutdown] wf_service.stop(): {e}")
+        try:
+            loop.stop()
+        except Exception:
+            pass
+        try:
+            services.stop()
+        except Exception:
+            pass
         try:
             controller.close()
         except Exception as e:
             print(f"[shutdown] controller.close(): {e}")
-        try:
-            macros_repeat_service.stop()
-        except Exception as e:
-            print(f"[shutdown] macros_repeat_service.stop(): {e}")
-
-    sys_state["respawn_debug"] = True
-    # HUD прочее
-    def hud_dump():
-        try: return {"ok": True}
-        except Exception as e: return {"error": str(e)}
-    exposed["hud_dump"] = hud_dump
 
     return {"sections": sections, "shutdown": shutdown, "exposed": exposed}

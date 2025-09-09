@@ -1,122 +1,69 @@
-# app/launcher/sections/buffer.py
+﻿# app/launcher/sections/buff.py
 from __future__ import annotations
-from typing import Any
+from typing import Any, Dict, Optional
 from ..base import BaseSection
+from core.state.pool import pool_write, pool_get
+
+TP_METHOD_DASHBOARD = "dashboard"
+TP_METHOD_GATEKEEPER = "gatekeeper"
 
 class BuffSection(BaseSection):
     """
-    Управляет бафом:
-      - включает/выключает флаг в UI-состоянии
-      - выбирает режим/метод
-      - выполняет разовый баф с верификацией «заряженности» и ограниченными повторами
-    Верификация делается через ChargeChecker, который передаётся из SystemSection.
+    Управление бафом целиком через пул.
+    Здесь только конфиг/кнопки UI. Исполнение шага 'buff' в пайплайне делает правило/движок.
     """
 
-    def __init__(self, window, controller, watcher, sys_state: dict, schedule, checker):
-        super().__init__(window, sys_state)
+    def __init__(self, window, controller, ps_adapter, state: Dict[str, Any], schedule, checker: Optional[Any] = None):
+        super().__init__(window, state)
         self.controller = controller
-        self.watcher = watcher
+        self.ps = ps_adapter
         self.schedule = schedule
-        self.checker = checker     # <- ChargeChecker, уже с зарегистрированными probes
-        self._worker = None
+        self.checker = checker
 
-        # параметры повторов (при необходимости потом вынесем в настройки)
-        self._MAX_RETRIES = 2
-        self._RETRY_DELAY_S = 1.0
+        # ensure defaults exist (ensure_pool уже сделал, но обновим методы от профиля при первом создании)
+        # методы/текущий метод уже проставляются в SystemSection, так что здесь ничего не нужно.
 
-    # --- внутреннее: создание worker-а бафа ---
-    def _ensure_worker(self):
-        from _archive.core.features.buff_after_respawn import BuffAfterRespawnWorker
-        if not self._worker:
-            self._worker = BuffAfterRespawnWorker(
-                controller=self.controller,
-                server=self.s["server"],
-                get_window=lambda: self.s.get("window"),
-                get_language=lambda: self.s["language"],
-                on_status=lambda t, ok=None: self.emit("buffer", t, ok),
-                click_threshold=0.87,
-                debug=True,
-            )
-        # синхронизируем динамику
-        self._worker.server = self.s["server"]
-        try:
-            # режим (profile/mage/fighter)
-            if self.s.get("buff_mode"):
-                self._worker.set_mode(self.s["buff_mode"])
-            # метод бафа (через профиль сервера)
-            if self.s.get("buff_method"):
-                if hasattr(self.s.get("profile"), "set_buff_mode"):
-                    self.s["profile"].set_buff_mode(self.s["buff_method"])
-        except Exception:
-            pass
-        return self._worker
-
-    # --- внутренняя проверка «заряженности» ---
-    def _verify_charged(self) -> bool:
-        try:
-            val = self.checker.force_check()
-            return bool(val is True)
-        except Exception as e:
-            self.emit("buffer", f"[charged] check failed: {e}", None)
-            return False
-
-    # --- API: переключатели/настройки ---
+    # --- setters ---
     def buff_set_enabled(self, enabled: bool):
-        self.s["buff_enabled"] = bool(enabled)
+        pool_write(self.s, "features.buff", {"enabled": bool(enabled)})
+        self.emit("buff", "Баф: вкл" if enabled else "Баф: выкл", True if enabled else None)
 
     def buff_set_mode(self, mode: str):
-        self.s["buff_mode"] = (mode or "profile").lower()
+        methods = set(pool_get(self.s, "features.buff.methods", []) or [])
+        m = (mode or "").strip().lower()
+        if methods and m not in methods:
+            # неизвестный метод — пометим предупреждением, но сохраним как есть (вдруг профиль обновится)
+            self.emit("buff", f"Неизвестный метод бафа: {mode}", None)
+        pool_write(self.s, "features.buff", {"mode": mode or ""})
 
-    def buff_set_method(self, method: str):
-        self.s["buff_method"] = method or ""
-        try:
-            prof = self.s.get("profile")
-            if hasattr(prof, "set_buff_mode"):
-                prof.set_buff_mode(self.s["buff_method"])
-        except Exception:
-            pass
+    # --- getters ---
+    def buff_get_config(self) -> Dict[str, Any]:
+        return {
+            "enabled": bool(pool_get(self.s, "features.buff.enabled", False)),
+            "mode": pool_get(self.s, "features.buff.mode", ""),
+            "methods": list(pool_get(self.s, "features.buff.methods", []) or []),
+        }
 
-    # --- API: выполнение бафа с проверкой зарядки и повторами ---
+    # --- manual run hook (опционально из UI) ---
     def buff_run_once(self) -> bool:
-        if not self.s.get("window"):
-            self.emit("buffer", "Окно не найдено", False)
+        """
+        Запуск разового бафа из UI. Само применение зависит от движка.
+        Здесь только статус; фактическая реализация шага — в оркестраторе/правиле.
+        """
+        en = bool(pool_get(self.s, "features.buff.enabled", False))
+        if not en:
+            self.emit("buff", "Баф отключён", None)
             return False
+        mode = pool_get(self.s, "features.buff.mode", "")
+        self.emit("buff", f"Запуск бафа (режим: {mode or '—'})", None)
+        # если есть отдельный движок/сервис — вызвать здесь.
+        # пока просто возвращаем True как “акция принята”.
+        return True
 
-        w = self._ensure_worker()
-
-        attempt = 0
-        while True:
-            # 1) нажатие бафа
-            ok = bool(w.run_once())
-            if not ok:
-                self.emit("buffer", "Баф не выполнен", False)
-                return False
-
-            # 2) проверка «заряженности»
-            charged = self._verify_charged()
-            if charged:
-                self.emit("buffer", "Баф выполнен (заряд есть)", True)
-                return True
-
-            # 3) нет зарядки — делаем ограниченные повторы
-            if attempt >= self._MAX_RETRIES:
-                # Баф был нажат, но иконки зарядки не увидели — завершаем нейтральным статусом
-                self.emit("buffer", "Баф выполнен, но заряд не обнаружен после повторов", None)
-                return True
-
-            attempt += 1
-            self.emit("buffer", f"Заряд не обнаружен, повтор {attempt}/{self._MAX_RETRIES}…", None)
-            try:
-                import time
-                time.sleep(self._RETRY_DELAY_S)
-            except Exception:
-                pass
-
-    # --- экспорт в webview ---
-    def expose(self) -> dict[str, Any]:
+    def expose(self) -> dict:
         return {
             "buff_set_enabled": self.buff_set_enabled,
             "buff_set_mode": self.buff_set_mode,
-            "buff_set_method": self.buff_set_method,
+            "buff_get_config": self.buff_get_config,
             "buff_run_once": self.buff_run_once,
         }

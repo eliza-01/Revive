@@ -1,15 +1,20 @@
-# core/engines/window_focus/service.py
+﻿# core/engines/window_focus/service.py
+#core/engines/window_focus/service.py
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import threading, time
 
 from core.engines.window_focus.runner import run_window_focus
 
+
 class WindowFocusService:
     """
     Фоновый сервис проверки фокуса окна.
     Обновляет состояние через on_update.
     Интерфейс: is_running(), start(poll_interval=2.0), stop()
+
+    ВНИМАНИЕ: сервис сам НЕ пишет ничего в пул.
+    Выставление services.window_focus.running делается снаружи (в wiring).
     """
 
     def __init__(

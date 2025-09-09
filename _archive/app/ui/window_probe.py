@@ -43,9 +43,11 @@ class WindowProbe:
         if self._init_window_info_multi():
             self._emit("[UI] Окно найдено.")
             self._render_status("[✓] Окно найдено")
+            pool_merge(self.s, "window", {"info": win_info, "found": True})
         else:
             self._emit("[UI] Пока нет. Убедись, что клиент запущен.")
             self._render_status("[×] Окно не найдено")
+            pool_merge(self.s, "window", {"info": None, "found": False})
 
     def current_window_info(self) -> Optional[Dict]:
         return self.window_info

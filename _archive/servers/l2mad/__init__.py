@@ -1,1 +1,1 @@
-﻿# core/servers/l2mad/__init__.py
+﻿# _archive/servers/l2mad/__init__.py

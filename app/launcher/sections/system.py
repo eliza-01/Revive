@@ -1,8 +1,8 @@
-# app/launcher/sections/system.py
+﻿# app/launcher/sections/system.py
 from __future__ import annotations
 import threading
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from ..base import BaseSection
 
 from core.arduino.connection import ReviveController
@@ -11,7 +11,8 @@ from core.vision.capture.gdi import find_window, get_window_info
 from core.arduino.connection_test import run_test_command
 from core.updater import get_remote_version, is_newer_version
 
-# отключили архивные зависимости
+from core.state.pool import pool_write, pool_get, ensure_pool
+
 TP_METHOD_DASHBOARD = "dashboard"
 TP_METHOD_GATEKEEPER = "gatekeeper"
 
@@ -22,51 +23,56 @@ def _schedule(fn, ms: int):
 
 class SystemSection(BaseSection):
     """
-    Инициализация контроллера и “бэк-сервисов”.
-    Экспортирует:
-      - get_init_state, set_language, set_server, find_window, test_connect
-      - account_get/account_save
-      - get_state_snapshot, get_status_snapshot
-      - run_update_check
-      - shutdown
-    Остальные разделы (respawn/buffer/macros/tp/autofarm) — отдельные секции.
+    Инициализация контроллера и бэк-сервисов. Весь конфиг/состояние — в пуле.
+    Экспорт: get_init_state, set_language, set_server, find_window, test_connect,
+             account_get/account_save, get_state_snapshot, get_status_snapshot,
+             run_update_check, shutdown
     """
 
     def __init__(self, window, local_version: str, controller: ReviveController,
-                 ps_adapter,  # новый адаптер состояния игрока
-                 sys_state: Dict[str, Any], schedule):
-        super().__init__(window, sys_state)
-        self.s.setdefault("version", local_version)
-        self.s.setdefault("language", "rus")
-        self.s.setdefault("server", (list_servers() or ["boh"])[0])
-        self.s.setdefault("_last_status", {})
+                 ps_adapter, state: Dict[str, Any], schedule):
+        super().__init__(window, state)
+        ensure_pool(self.s)
 
-        # дефолты фич
-        self.s.setdefault("respawn_enabled", True)
-        self.s.setdefault("respawn_wait_enabled", False)
-        self.s.setdefault("respawn_wait_seconds", 120)
-        self.s.setdefault("buff_enabled", False)
-        self.s.setdefault("buff_mode", "profile")
-        self.s.setdefault("buff_method", "")
-        self.s.setdefault("macros_enabled", False)
-        self.s.setdefault("macros_run_always", False)
-        self.s.setdefault("macros_delay_s", 1.0)
-        self.s.setdefault("macros_duration_s", 2.0)
-        self.s.setdefault("macros_sequence", ["1"])
-        self.s.setdefault("tp_enabled", False)
-        self.s.setdefault("tp_method", TP_METHOD_DASHBOARD)
-        self.s.setdefault("tp_category", "")
-        self.s.setdefault("tp_location", "")
-        self.s.setdefault("tp_row_id", "")
+        servers = list_servers() or ["boh"]
+        server = pool_get(self.s, "config.server", servers[0])
+        language = pool_get(self.s, "config.language", "rus")
+        profile = get_server_profile(server)
+
+        # app/config
+        pool_write(self.s, "app", {"version": local_version})
+        pool_write(self.s, "config", {"server": server, "language": language, "profile": profile, "profiles": servers})
+
+        # respawn defaults (если кто-то не выставил раньше)
+        pool_write(self.s, "features.respawn", {
+            "enabled": bool(pool_get(self.s, "features.respawn.enabled", True)),
+            "wait_enabled": bool(pool_get(self.s, "features.respawn.wait_enabled", False)),
+            "wait_seconds": int(pool_get(self.s, "features.respawn.wait_seconds", 120)),
+            "click_threshold": float(pool_get(self.s, "features.respawn.click_threshold", 0.70)),
+            "confirm_timeout_s": float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0)),
+        })
+
+        # buff methods from profile
+        try:
+            methods = list(getattr(profile, "buff_supported_methods", lambda: [])())
+            cur = getattr(profile, "get_buff_mode", lambda: "")()
+            if cur not in methods:
+                cur = methods[0] if methods else ""
+        except Exception:
+            methods, cur = [], ""
+        pool_write(self.s, "features.buff", {"methods": methods, "mode": cur})
+
+        # pipeline defaults
+        pool_write(self.s, "pipeline", {
+            "allowed": list(pool_get(self.s, "pipeline.allowed", ["respawn","buff","macros","tp","autofarm"])),
+            "order": list(pool_get(self.s, "pipeline.order", ["respawn","macros"])),
+        })
 
         self.controller = controller
         self.ps = ps_adapter
         self.schedule = schedule
 
-        # — server profile —
-        self._apply_profile(self.s["server"])
-
-        # — Arduino ping status —
+        # Arduino ping status
         try:
             self.controller.send("ping")
             ok = (self.controller.read() == "pong")
@@ -74,58 +80,60 @@ class SystemSection(BaseSection):
         except Exception as e:
             self.emit("driver", f"[×] Ошибка связи с Arduino: {e}", False)
 
-        # — автопоиск окна + периодическая проверка апдейта —
+        # авто-поиск окна + периодическая проверка апдейта
         _schedule(self._autofind_tick, 10)
         _schedule(self._periodic_update_check, 2_000)
 
-        # — аккаунт (in-memory) —
-        self.s.setdefault("account", {"login": "", "password": "", "pin": ""})
+        # account init
+        if not pool_get(self.s, "account.login", None):
+            pool_write(self.s, "account", {"login": "", "password": "", "pin": ""})
 
-    # ---------- profile helpers ----------
+    # ---------- helpers ----------
     def _apply_profile(self, server: str):
-        self.s["server"] = (server or "l2mad").lower()
-        self.s["profile"] = get_server_profile(self.s["server"])
-        # методы бафа (UI init)
+        server = (server or "boh").lower()
+        profile = get_server_profile(server)
+        pool_write(self.s, "config", {"server": server, "profile": profile})
+
         try:
-            methods = list(getattr(self.s["profile"], "buff_supported_methods", lambda: [])())
-            cur = getattr(self.s["profile"], "get_buff_mode", lambda: "")()
+            methods = list(getattr(profile, "buff_supported_methods", lambda: [])())
+            cur = getattr(profile, "get_buff_mode", lambda: "")()
             if cur not in methods:
                 cur = methods[0] if methods else ""
-            self.s["buff_method"] = cur
-            self.s["buff_methods"] = methods
         except Exception:
-            self.s["buff_method"] = ""
-            self.s["buff_methods"] = []
+            methods, cur = [], ""
+        pool_write(self.s, "features.buff", {"methods": methods, "mode": cur})
 
     # ---------- auto-find window ----------
     def _autofind_tick(self):
-        if self.s.get("_autofind_stop") or self.s.get("window_found"):
+        if self.s.get("_autofind_stop") or pool_get(self.s, "window.found", False):
             return
         self.find_window()
-        if not self.s.get("window_found"):
+        if not pool_get(self.s, "window.found", False):
             _schedule(self._autofind_tick, 3000)
 
     # ---------- update check ----------
     def _periodic_update_check(self):
         try:
+            local_v = pool_get(self.s, "app.version", "")
             rv = get_remote_version()
-            if is_newer_version(rv, self.s["version"]):
-                self.emit("update", f"Доступно обновление: {rv}", None)
-            else:
-                self.emit("update", f"Установлена последняя версия: {self.s['version']}", True)
+            newer = is_newer_version(rv, local_v)
+            pool_write(self.s, "app.update", {"available": bool(newer), "remote": rv})
+            self.emit("update",
+                      f"Доступно обновление: {rv}" if newer else f"Установлена последняя версия: {local_v}",
+                      None if newer else True)
         except Exception:
             self.emit("update", "Сбой проверки актуальности версии", False)
         finally:
             _schedule(self._periodic_update_check, 600_000)
 
-    # ---------- API: init / language / server ----------
+    # ---------- API ----------
     def get_init_state(self) -> Dict[str, Any]:
         servers = list_servers() or ["boh"]
-        if self.s["server"] not in servers:
-            self._apply_profile(servers[0])
+        cur_server = pool_get(self.s, "config.server", servers[0])
 
         # повторный ping при первом заходе
-        if "driver" not in self.s["_last_status"]:
+        last = pool_get(self.s, "ui_status", {})
+        if not last or not (last.get("driver") and last["driver"].get("text")):
             try:
                 self.controller.send("ping")
                 ok = (self.controller.read() == "pong")
@@ -134,64 +142,61 @@ class SystemSection(BaseSection):
                 self.emit("driver", f"[×] Ошибка связи с Arduino: {e}", False)
 
         return {
-            "version": self.s["version"],
-            "language": self.s["language"],
-            "server": self.s["server"],
+            "version": pool_get(self.s, "app.version", ""),
+            "language": pool_get(self.s, "config.language", "rus"),
+            "server": cur_server,
             "servers": servers,
-            "window_found": bool(self.s.get("window_found")),
-            "monitoring": bool(self.ps.is_running() if hasattr(self.ps, "is_running") else self.s.get("_ps_running", False)),
-            "buff_methods": self.s.get("buff_methods") or [],
-            "buff_current": self.s.get("buff_method") or "",
+            "window_found": bool(pool_get(self.s, "window.found", False)),
+            "monitoring": bool(self.ps.is_running() if hasattr(self.ps, "is_running") else False),
+            "buff_methods": pool_get(self.s, "features.buff.methods", []),
+            "buff_current": pool_get(self.s, "features.buff.mode", ""),
             "tp_methods": [TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER],
-            "driver_status": self.s["_last_status"].get("driver", {"text": "Состояние связи: неизвестно", "ok": None}),
-            # ⬇️ конфиг респавна для UI
+            "driver_status": pool_get(self.s, "ui_status.driver", {"text": "Состояние связи: неизвестно", "ok": None}),
             "respawn": {
-                "enabled": bool(self.s.get("respawn_enabled", False)),
-                "wait_enabled": bool(self.s.get("respawn_wait_enabled", False)),
-                "wait_seconds": int(self.s.get("respawn_wait_seconds", 120)),
+                "enabled": bool(pool_get(self.s, "features.respawn.enabled", False)),
+                "wait_enabled": bool(pool_get(self.s, "features.respawn.wait_enabled", False)),
+                "wait_seconds": int(pool_get(self.s, "features.respawn.wait_seconds", 120)),
             },
         }
 
     def set_language(self, lang: str):
-        self.s["language"] = (lang or "rus").lower()
-        try: self.ps.set_language(self.s["language"])
-        except Exception: pass
+        lang = (lang or "rus").lower()
+        pool_write(self.s, "config", {"language": lang})
+        try:
+            self.ps.set_language(lang)
+        except Exception:
+            pass
 
     def set_server(self, server: str):
         self._apply_profile(server)
-        try: self.ps.set_server(self.s["server"])
-        except Exception: pass
-        # обновить список методов бафа на UI
-        methods = self.s.get("buff_methods") or []
-        cur = self.s.get("buff_method") or ""
+        try:
+            self.ps.set_server(pool_get(self.s, "config.server", "boh"))
+        except Exception:
+            pass
+        # ui: обновить методы бафа
+        methods = pool_get(self.s, "features.buff.methods", [])
+        cur = pool_get(self.s, "features.buff.mode", "")
         try:
             self.window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(methods)}, {json.dumps(cur)})")
         except Exception:
             pass
 
-    # ---------- API: window / test ----------
     def find_window(self) -> Dict[str, Any]:
         titles = ["Lineage", "Lineage II", "L2MAD", "L2", "BOHPTS"]
         for t in titles:
             hwnd = find_window(t)
             if hwnd:
                 win_info = get_window_info(hwnd, client=True) or {}
-                # гарантируем наличие hwnd — это критично для window_focus
                 try:
                     win_info["hwnd"] = int(hwnd)
                 except Exception:
                     pass
                 if isinstance(win_info, dict) and all(k in win_info for k in ("x", "y", "width", "height")):
-                    self.s["window"] = win_info
-                    self.s["window_found"] = True
+                    pool_write(self.s, "window", {"info": win_info, "found": True, "title": t})
                     self.emit("window", "[✓] Окно найдено", True)
                     return {"found": True, "title": t, "info": win_info}
-
-        self.s["window"] = None
-        self.s["window_found"] = False
+        pool_write(self.s, "window", {"info": None, "found": False, "title": ""})
         self.emit("window", "[×] Окно не найдено", False)
-        print("[window dump] None")
-        self.emit("window", "dump: None", None)
         return {"found": False}
 
     def test_connect(self) -> str:
@@ -199,27 +204,20 @@ class SystemSection(BaseSection):
         run_test_command(self.controller, label_proxy)
         return "ok"
 
-    # ---------- API: account ----------
     def account_get(self) -> Dict[str, str]:
-        return dict(self.s.get("account") or {"login":"", "password":"", "pin":""})
+        return dict(pool_get(self.s, "account", {"login": "", "password": "", "pin": ""}))
 
     def account_save(self, data: Dict[str, str]):
-        self.s["account"] = {
+        pool_write(self.s, "account", {
             "login": data.get("login",""),
             "password": data.get("password",""),
             "pin": data.get("pin",""),
-        }
+        })
 
-    # ---------- API: status / snapshot / update ----------
     def get_status_snapshot(self) -> Dict[str, Dict[str, Any]]:
-        return dict(self.s.get("_last_status") or {})
+        return dict(pool_get(self.s, "ui_status", {}) or {})
 
     def get_state_snapshot(self) -> Dict[str, Any]:
-        """
-        ВАЖНО: ps.last() возвращает dict, а не объект.
-        Предыдущая версия читала через getattr(...) и из-за этого
-        отдавала hp=0 → мигание в UI (перезапись корректного on_update).
-        """
         try:
             st = self.ps.last() or {}
             hp_ratio = st.get("hp_ratio")
@@ -232,16 +230,16 @@ class SystemSection(BaseSection):
         except Exception:
             return {"hp": None, "cp": None, "alive": None}
 
-    # ---------- API: update ----------
     def run_update_check(self) -> Dict[str, Any]:
         try:
-            rv = get_remote_version()
-            newer = is_newer_version(rv, self.s["version"])
-            return {"remote": rv, "local": self.s["version"], "update": bool(newer)}
+            remote = get_remote_version()
+            local = pool_get(self.s, "app.version", "")
+            newer = is_newer_version(remote, local)
+            pool_write(self.s, "app.update", {"available": bool(newer), "remote": remote})
+            return {"remote": remote, "local": local, "update": bool(newer)}
         except Exception as e:
             return {"error": str(e)}
 
-    # ---------- shutdown ----------
     def shutdown(self) -> None:
         try:
             self.s["_autofind_stop"] = True
@@ -254,16 +252,7 @@ class SystemSection(BaseSection):
         except Exception:
             pass
 
-    # ---------- utils ----------
-    def emit(self, scope: str, text: str, ok):
-        payload = {"scope": scope, "text": text, "ok": (True if ok is True else False if ok is False else None)}
-        self.s["_last_status"][scope] = payload
-        js = f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})"
-        try: self.window.evaluate_js(js)
-        except Exception: pass
-
     def expose(self) -> dict:
-        # методы, которые отдаём в webview
         return {
             "get_init_state": self.get_init_state,
             "set_language": self.set_language,

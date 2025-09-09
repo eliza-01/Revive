@@ -1,33 +1,26 @@
-﻿from __future__ import annotations
+﻿# app/launcher/sections/macros.py
+from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from ..base import BaseSection
 from core.engines.macros.runner import run_macros
-
+from core.state.pool import pool_write, pool_get
 
 class MacrosSection(BaseSection):
     """
     UI-API для макросов.
-    Поддерживает новый формат rows [{key, cast_s, repeat_s}] и старые поля для совместимости.
+    Поддерживает новый формат rows [{key, cast_s, repeat_s}] и хранит всё в пуле.
     """
 
-    def __init__(self, window, controller, sys_state):
-        super().__init__(window, sys_state)
+    def __init__(self, window, controller, state):
+        super().__init__(window, state)
         self.controller = controller
-
-        # Дефолты (новый формат)
-        self.s.setdefault("macros_enabled", False)
-        self.s.setdefault("macros_rows", [])         # [{key, cast_s, repeat_s}]
-
-        # Совместимость со старым UI
-        self.s.setdefault("macros_run_always", False)
-        self.s.setdefault("macros_delay_s", 1.0)
-        self.s.setdefault("macros_duration_s", 2.0)
-        self.s.setdefault("macros_sequence", ["1"])
 
     # ---- setters (новый UI) ----
     def macros_set_enabled(self, enabled: bool):
-        self.s["macros_enabled"] = bool(enabled)
-        self.s["macros_repeat_enabled"] = bool(enabled)
+        pool_write(self.s, "features.macros", {
+            "enabled": bool(enabled),
+            "repeat_enabled": bool(enabled),
+        })
         self.emit("macros", "Макросы: вкл" if enabled else "Макросы: выкл", True if enabled else None)
 
     def macros_set_rows(self, rows):
@@ -48,34 +41,31 @@ class MacrosSection(BaseSection):
                 norm.append({"key": k, "cast_s": cast_s, "repeat_s": repeat_s})
         except Exception:
             norm = [{"key": "1", "cast_s": 0, "repeat_s": 0}]
-        self.s["macros_rows"] = norm
+        pool_write(self.s, "features.macros", {"rows": list(norm)})
 
     # ---- совместимость (старый UI вызывает эти методы) ----
     def macros_set_run_always(self, enabled: bool):
-        self.s["macros_run_always"] = bool(enabled)
+        pool_write(self.s, "features.macros", {"run_always": bool(enabled)})
 
     def macros_set_delay(self, seconds: float):
-        self.s["macros_delay_s"] = max(0.0, float(seconds or 0))
+        pool_write(self.s, "features.macros", {"delay_s": max(0.0, float(seconds or 0))})
 
     def macros_set_duration(self, seconds: float):
-        self.s["macros_duration_s"] = max(0.0, float(seconds or 0))
+        pool_write(self.s, "features.macros", {"duration_s": max(0.0, float(seconds or 0))})
 
     def macros_set_sequence(self, seq):
-        self.s["macros_sequence"] = [c[:1] for c in (seq or []) if (c and c[0] in "0123456789")] or ["1"]
+        seq_norm = [c[:1] for c in (seq or []) if (c and c[0] in "0123456789")] or ["1"]
+        pool_write(self.s, "features.macros", {"sequence": seq_norm})
 
     # ---- выполнение ----
     def _rows_effective(self) -> List[Dict[str, Any]]:
-        """
-        Возвращает актуальный список строк для выполнения.
-        Если новые rows пусты — формируем из старых полей.
-        """
-        rows = list(self.s.get("macros_rows") or [])
+        rows = list(pool_get(self.s, "features.macros.rows", []) or [])
         if rows:
             return rows
 
-        # Фолбэк на legacy-настройки
-        seq = list(self.s.get("macros_sequence") or [])
-        dur = int(float(self.s.get("macros_duration_s", 0)))
+        # фолбэк на простые настройки — тоже из пула
+        seq = list(pool_get(self.s, "features.macros.sequence", []) or [])
+        dur = int(float(pool_get(self.s, "features.macros.duration_s", 0)))
         if not seq:
             seq = ["1"]
         return [{"key": str(k)[:1], "cast_s": max(0, dur), "repeat_s": 0} for k in seq]
@@ -84,28 +74,25 @@ class MacrosSection(BaseSection):
         rows = self._rows_effective()
 
         def _status(text: str, ok: Optional[bool] = None):
-            # Это уйдёт в UI (и в лог статусов), HUD покажет, если запущено из правила-оркестратора
             self.emit("macros", text, ok)
 
         ok = run_macros(
-            server=self.s.get("server") or "boh",
+            server=pool_get(self.s, "app.server", "boh"),
             controller=self.controller,
-            get_window=lambda: self.s.get("window"),
-            get_language=lambda: self.s.get("language") or "rus",
+            get_window=lambda: pool_get(self.s, "window.info", None),
+            get_language=lambda: pool_get(self.s, "app.language", "rus"),
             on_status=_status,
             cfg={"rows": rows},
             should_abort=lambda: False,
         )
-        # финальный тост уже отправлен в on_status внутри движка; возвращаем флаг
         return bool(ok)
 
     # ---- экспорт в pywebview ----
     def expose(self) -> dict:
-        # оставляем старые методы для обратной совместимости
         return {
             # новый интерфейс
             "macros_set_enabled": self.macros_set_enabled,
-            "macros_set_repeat_enabled": lambda enabled: self.s.__setitem__("macros_repeat_enabled", bool(enabled)),
+            "macros_set_repeat_enabled": lambda enabled: pool_write(self.s, "features.macros", {"repeat_enabled": bool(enabled)}),
             "macros_set_rows": self.macros_set_rows,
             "macros_run_once": self.macros_run_once,
 

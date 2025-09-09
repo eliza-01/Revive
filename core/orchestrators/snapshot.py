@@ -1,51 +1,77 @@
 # core/orchestrators/snapshot.py
-from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 import time
 
+from core.state.pool import pool_get
+
+
 @dataclass
 class Snapshot:
-    """Единый снимок состояния для оркестратора."""
     has_window: bool
-    alive: Optional[bool]              # True=жив, False=мертв, None=неизвестно
-    hp_ratio: Optional[float]          # 0.0–1.0 или None
+    alive: Optional[bool]
+    hp_ratio: Optional[float]
+    has_focus: Optional[bool]
+    focus_unfocused_for_s: Optional[float]
+
+    # единообразные флаги фич
     respawn_enabled: bool
+    buff_enabled: bool
+    tp_enabled: bool
+    macros_enabled: bool
     autofarm_enabled: bool
-    has_focus: Optional[bool]          # True=есть фокус, False=нет, None=неизвестно
-    focus_unfocused_for_s: Optional[float]  # сколько секунд окно без фокуса (если известно)
-    extras: Dict[str, Any] = None
 
-def build_snapshot(sys_state: Dict[str, Any], _ps_adapter) -> Snapshot:
-    """
-    Источник правды:
-      - player_state (hp/alive)
-      - window_focus (фокус окна)
-    """
-    win = sys_state.get("window")
-    has_window = bool(win and win.get("width") and win.get("height"))
+    extras: Dict[str, Any] = field(default_factory=dict)
 
-    st = _ps_adapter.last() or {}
-    alive = st.get("alive", None)
+
+def build_snapshot(state: Dict[str, Any], _ps_adapter=None) -> Snapshot:
+    """
+    Единый builder снапшота ИСКЛЮЧИТЕЛЬНО из пула (_state).
+    Параметр _ps_adapter оставлен для совместимости сигнатуры, но не используется.
+    """
+    # --- window ---
+    win_info = pool_get(state, "window.info", None)
+    win_found = bool(pool_get(state, "window.found", False))
+    has_window = bool(
+        win_found
+        and isinstance(win_info, dict)
+        and "width" in win_info
+        and "height" in win_info
+    )
+
+    # --- player ---
+    alive = pool_get(state, "player.alive", None)
+    hp_ratio = pool_get(state, "player.hp_ratio", None)
     try:
-        hp_ratio = float(st.get("hp_ratio")) if st.get("hp_ratio") is not None else None
+        hp_ratio = float(hp_ratio) if hp_ratio is not None else None
     except Exception:
         hp_ratio = None
 
-    wf_last = sys_state.get("_wf_last") or {}
-    has_focus = wf_last.get("has_focus", None)
-    ts = float(wf_last.get("ts") or 0.0)
-    unfocused_for = None
-    if has_focus is False and ts > 0:
-        unfocused_for = max(0.0, time.time() - ts)
+    # --- focus ---
+    has_focus = pool_get(state, "focus.has_focus", None)
+    focus_ts = float(pool_get(state, "focus.ts", 0.0) or 0.0)
+    unfocused_for = (
+        max(0.0, time.time() - focus_ts)
+        if (has_focus is False and focus_ts > 0.0)
+        else None
+    )
+
+    # --- features flags (только из пула) ---
+    respawn_enabled = bool(pool_get(state, "features.respawn.enabled", False))
+    macros_enabled = bool(pool_get(state, "features.macros.enabled", False))
+    buff_enabled = bool(pool_get(state, "features.buff.enabled", False))
+    tp_enabled = bool(pool_get(state, "features.tp.enabled", False))
+    autofarm_enabled = bool(pool_get(state, "features.autofarm.enabled", False))
 
     return Snapshot(
         has_window=has_window,
+        has_focus=has_focus,
         alive=alive,
         hp_ratio=hp_ratio,
-        respawn_enabled=bool(sys_state.get("respawn_enabled")),
-        autofarm_enabled=bool(sys_state.get("af_enabled")),
-        has_focus=has_focus,
         focus_unfocused_for_s=unfocused_for,
-        extras={}
+        respawn_enabled=respawn_enabled,
+        buff_enabled=buff_enabled,
+        tp_enabled=tp_enabled,
+        macros_enabled=macros_enabled,
+        autofarm_enabled=autofarm_enabled,
     )

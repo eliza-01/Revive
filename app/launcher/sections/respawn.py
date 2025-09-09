@@ -1,45 +1,47 @@
-# app/launcher/sections/respawn.py
+﻿# app/launcher/sections/respawn.py
 from __future__ import annotations
+from typing import Dict
 from ..base import BaseSection
+from core.state.pool import pool_write, pool_get
 
 class RespawnSection(BaseSection):
     """
-    Только управление настройками респавна:
+    Управление настройками респавна:
       - включение/выключение авто-респавна
       - "ждать возрождения" и таймаут ожидания (сек)
+    Примечание: в respawn_get_wait_config поле 'enabled' — это именно wait_enabled (как в старом API).
     """
-    def __init__(self, window, sys_state):
-        super().__init__(window, sys_state)
-        # дефолты, если не заданы
-        self.s.setdefault("respawn_enabled", False)
-        self.s.setdefault("respawn_wait_enabled", False)
-        self.s.setdefault("respawn_wait_seconds", 120)
+
+    def __init__(self, window, state):
+        super().__init__(window, state)
+        # дефолты уже в пуле (ensure_pool); тут ничего дополнительно не пишем
 
     # --- helpers ---
     def _cfg(self) -> dict:
         return {
-            "enabled": bool(self.s.get("respawn_wait_enabled", False)),
-            "seconds": int(self.s.get("respawn_wait_seconds", 120)),
-            "respawn_enabled": bool(self.s.get("respawn_enabled", False)),
+            "enabled": bool(pool_get(self.s, "features.respawn.wait_enabled", False)),
+            "seconds": int(pool_get(self.s, "features.respawn.wait_seconds", 120)),
+            "respawn_enabled": bool(pool_get(self.s, "features.respawn.enabled", False)),
         }
 
     # --- API: setters ---
     def respawn_set_enabled(self, enabled: bool):
-        self.s["respawn_enabled"] = bool(enabled)
-        self.emit("respawn", "Авто-респавн: вкл" if enabled else "Авто-респавн: выкл",
-                  True if enabled else None)
+        val = bool(enabled)
+        pool_write(self.s, "features.respawn", {"enabled": val})
+        self.emit("respawn", f"Авто-респавн: {'вкл' if val else 'выкл'}", True if val else None)
 
     def respawn_set_wait_enabled(self, enabled: bool):
-        self.s["respawn_wait_enabled"] = bool(enabled)
-        self.emit("respawn", "Ждать возрождения: да" if enabled else "Ждать возрождения: нет", None)
+        val = bool(enabled)
+        pool_write(self.s, "features.respawn", {"wait_enabled": val})
+        self.emit("respawn", f"Ждать возрождения: {'да' if val else 'нет'}", None)
 
     def respawn_set_wait_seconds(self, seconds: int):
         try:
             val = max(0, int(seconds or 0))
         except Exception:
             val = 0
-        self.s["respawn_wait_seconds"] = val
-        self.emit("respawn", f"Таймаут ожидания возрождения: {val} сек.", None)
+        pool_write(self.s, "features.respawn", {"wait_seconds": val})
+        self.emit("respawn", f"Таймаут ожидания: {val} сек.", None)
 
     # --- API: getters ---
     def respawn_get_wait_config(self) -> dict:

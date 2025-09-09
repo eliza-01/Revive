@@ -1,4 +1,4 @@
-# core/servers/l2mad/templates/resolver.py
+﻿# _archive/servers/l2mad/templates/resolver.py
 """
 L2MAD template resolver.
 
