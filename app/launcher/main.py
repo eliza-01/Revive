@@ -98,7 +98,7 @@ def launch_gui(local_version: str):
             raise RuntimeError(f"Не найден HUD UI: {hud_path}")
 
         # --- HUD окно (создаём первым, чтобы было поверх главного) ---
-        # -- создается в крайнем правом углу основного монитора --
+        # --  создается в крайнем правом углу основного монитора  --
         monitors = screeninfo.get_monitors()
         screen = next((m for m in monitors if getattr(m, "is_primary", False)), monitors[0])
         hud_width, hud_height = 420, 52
