@@ -252,15 +252,6 @@ class SystemSection(BaseSection):
         except Exception:
             pass
 
-    # ---- utils ----
-    def emit(self, scope: str, text: str, ok: Optional[bool]):
-        payload = {"scope": scope, "text": text, "ok": (True if ok is True else False if ok is False else None)}
-        try:
-            self.window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})")
-        except Exception:
-            pass
-        pool_write(self.s, f"ui_status.{scope}", {"text": text, "ok": payload["ok"]})
-
     def expose(self) -> dict:
         return {
             "get_init_state": self.get_init_state,
