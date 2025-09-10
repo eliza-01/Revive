@@ -83,6 +83,8 @@
     return wrap;
   }
 
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
   function readRows() {
     const cont = $("#macrosRows");
     if (!cont) return [];
@@ -95,8 +97,6 @@
     });
     return rows;
   }
-
-  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 
   function pushRowsToBackend(){
     try {
@@ -124,8 +124,9 @@
     if (chk) chk.addEventListener("change", e => {
       const enabled = !!e.target.checked;
       try {
-        // ВАЖНО: только один вызов. Он синхронизирует enabled + repeat_enabled в пуле.
+        // ВАЖНО: новый бэкенд разделяет флаги; включаем оба.
         pywebview.api.macros_set_enabled(enabled);
+        pywebview.api.macros_set_repeat_enabled(enabled);
       } catch(_){}
     });
   }
@@ -135,6 +136,8 @@
       const cont = $("#macrosRows");
       if (cont) {
         cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
+        // синхронизируем пул сразу после первичной отрисовки
+        pushRowsToBackend();
       }
       wire();
     }

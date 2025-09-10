@@ -9,6 +9,7 @@ from core.engines.macros.runner import run_macros
 class MacrosRepeatService:
     """
     Фоновый сервис повтора макросов по полю repeat_s > 0.
+    Единственный внешний фактор — смерть/оживление.
     Интерфейс: start(), stop(), is_running(), bump_all()
     """
 
@@ -22,7 +23,7 @@ class MacrosRepeatService:
         is_enabled: Callable[[], bool],
         on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
         *,
-        is_alive: Optional[Callable[[], bool]] = None,  # читается из пула снаружи
+        is_alive: Optional[Callable[[], bool]] = None,  # читает alive из пула/адаптера
     ):
         self._server = server
         self._controller = controller
@@ -35,7 +36,8 @@ class MacrosRepeatService:
 
         self._thr: Optional[threading.Thread] = None
         self._run = False
-        self._last_exec: Dict[int, float] = {}  # key: row index, value: last run time
+        self._last_exec: Dict[int, float] = {}   # key: row index, value: last run time
+        self._was_alive: Optional[bool] = None   # для детекта перехода death -> alive
 
     def is_running(self) -> bool:
         return bool(self._run)
@@ -51,7 +53,7 @@ class MacrosRepeatService:
         self._run = False
 
     def bump_all(self):
-        """Сдвинуть «отсчёт до повтора» после ручного запуска (пайплайн)."""
+        """Сдвинуть «отсчёт до повтора» на 'сейчас' (используется после респавна/ручного прогона)."""
         try:
             now = time.time()
             rows = list(self._get_rows() or [])
@@ -69,7 +71,20 @@ class MacrosRepeatService:
                     time.sleep(poll_interval)
                     continue
 
-                if not self._is_alive():
+                alive = bool(self._is_alive())
+
+                # инициализация/детект перехода death -> alive
+                if self._was_alive is None:
+                    self._was_alive = alive
+                elif self._was_alive is False and alive is True:
+                    # РЕСПАВН: сбрасываем таймеры, чтобы не было «двойного макроса»
+                    self.bump_all()
+                    self._on_status("Сброс таймеров повторов после респавна", None)
+                    self._was_alive = True
+                else:
+                    self._was_alive = alive
+
+                if not alive:
                     time.sleep(poll_interval)
                     continue
 

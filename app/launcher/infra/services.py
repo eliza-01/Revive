@@ -1,3 +1,4 @@
+﻿# app/launcher/infra/services.py
 from __future__ import annotations
 from typing import Any, Dict, Optional
 import json

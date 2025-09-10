@@ -5,12 +5,7 @@ import time
 
 
 def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    ЕДИНЫЙ пул состояния живёт прямо в корневом dict `state`.
-    Никаких sys_state/_state — только `state`.
-    """
     st = state
-
     # ---- Конфиг/мета ----
     st.setdefault("app", {
         "version": "",
@@ -26,10 +21,11 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     })
     st.setdefault("account", {"login": "", "password": "", "pin": "", "ts": 0.0})
 
-    # ---- Окно/фокус/игрок ----
+    # ---- Окно/фокус/игрок/ui_guard ----
     st.setdefault("window", {"info": None, "found": False, "title": "", "ts": 0.0})
     st.setdefault("focus", {"has_focus": None, "ts": 0.0})
     st.setdefault("player", {"alive": None, "hp_ratio": None, "cp_ratio": None, "ts": 0.0})
+    st.setdefault("ui_guard", {"enabled": False, "tracker": "empty", "ts": 0.0})
 
     # ---- Фичи ----
     st.setdefault("features", {
@@ -44,8 +40,6 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         "macros": {
             "enabled": False, "repeat_enabled": False, "rows": [],
-            # опционально простые поля
-            "run_always": False, "delay_s": 1.0, "duration_s": 2.0, "sequence": ["1"],
             "status": "idle", "ts": 0.0,
         },
         "tp": {
@@ -82,6 +76,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         }
     })
     return st
+
 
 
 def _walk(d: Dict[str, Any], path: Iterable[str]) -> Dict[str, Any]:
