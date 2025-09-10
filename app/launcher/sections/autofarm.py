@@ -36,7 +36,7 @@ class AutofarmSection(BaseSection):
         if pool_get(self.s, "features.autofarm.mode", None) is None:
             pool_write(self.s, "features.autofarm", {
                 "enabled": bool(pool_get(self.s, "features.autofarm.enabled", False)),
-                "mode": "after_tp",            # 'after_tp' | 'manual'
+                "mode": "auto",            # 'auto' | 'manual'
                 "profession": "",
                 "skills": [],                  # [{key, slug, cast_ms}]
                 "zone": "",
@@ -86,7 +86,7 @@ class AutofarmSection(BaseSection):
     # ---------- НАСТРОЙКИ ОТ UI ----------
 
     def autofarm_set_mode(self, mode: str):
-        pool_write(self.s, "features.autofarm", {"mode": (mode or "after_tp").lower()})
+        pool_write(self.s, "features.autofarm", {"mode": (mode or "auto").lower()})
 
     def autofarm_save(self, ui_state: Dict[str, Any]):
         """

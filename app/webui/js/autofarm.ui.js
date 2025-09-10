@@ -49,7 +49,7 @@
   const AF_KEYS = ["1","2","3","4","5","6","7","8","9","0"];
   const state = {
     enabled: false,
-    mode: "after_tp",
+    mode: "auto",
     profession: "",
     skills: [],     // [{key, slug, cast_ms}]
     monsters: [],   // [slug,...]
@@ -349,12 +349,12 @@
       const a = api();
       try {
         if (a.autofarm_set_mode && a.autofarm_set_enabled) {
-          await a.autofarm_set_mode(mode || "after_tp");
+          await a.autofarm_set_mode(mode || "auto");
           await a.autofarm_set_enabled(true);
           return true;
         }
         if (a.af_start) {
-          await a.af_start(mode || "after_tp");
+          await a.af_start(mode || "auto");
           return true;
         }
       } catch (e) { console.error("[AF] start error:", e); }
@@ -381,7 +381,7 @@
           return;
         }
         try {
-          await pywebview.api.autofarm_set_mode(state.mode || "after_tp");
+          await pywebview.api.autofarm_set_mode(state.mode || "auto");
           await pywebview.api.autofarm_set_enabled(true);
           if (st) { st.textContent = "Настроено"; st.classList.add("ok"); st.classList.remove("warn"); }
         } catch (e) {

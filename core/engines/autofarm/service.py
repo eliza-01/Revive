@@ -24,7 +24,7 @@ class AutoFarmService:
         self._log = log or (lambda *a, **k: None)
 
         self.enabled = False
-        self.mode = "after_tp"
+        self.mode = "auto"
         self._armed = False
         self._cfg: Dict[str, Any] = {}
         self._poll = RepeaterThread(self._tick, 0.5)
@@ -45,15 +45,11 @@ class AutoFarmService:
 
     def arm(self):
         """Вооружить автозапуск (после post-TP)."""
-        if self.enabled and self.mode == "after_tp":
+        if self.enabled and self.mode == "auto":
             self._armed = True
             self._idle_since = 0.0
             if not self._poll.is_running():
                 self._poll.start()
-
-    def notify_after_tp(self):
-        """Совместимость со старым кодом: не используется (arm() дергается из post-TP)."""
-        return
 
     def _spawn_worker(self, cfg: Dict[str, Any]):
         """Запускаем движок в отдельном потоке, с возможностью отмены."""
@@ -114,7 +110,7 @@ class AutoFarmService:
         if self.mode == "manual":
             self._spawn_worker(self._cfg)
         else:
-            # after_tp: ждём явного arm() после ТП/маршрута
+            # auto: ждём явного arm() после ТП/маршрута
             self._armed = False
             self._idle_since = 0.0
 
@@ -122,8 +118,8 @@ class AutoFarmService:
             self._poll.start()
 
     def set_mode(self, mode: str):
-        self.mode = (mode or "after_tp").lower()
-        if self.mode == "after_tp":
+        self.mode = (mode or "auto").lower()
+        if self.mode == "auto":
             self._armed = False
             self._idle_since = 0.0
 
