@@ -133,6 +133,9 @@ void processCommand(String cmd) {
     Keyboard.release(KEY_LEFT_ALT);
     Keyboard.release(KEY_LEFT_SHIFT);
 
+  } else if (cmd == "alt") {
+    Keyboard.press(KEY_LEFT_ALT); delay(80); Keyboard.release(KEY_LEFT_ALT);
+
   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {

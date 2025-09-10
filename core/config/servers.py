@@ -1,4 +1,4 @@
-﻿# core/servers.py
+﻿# core/config/servers.py
 from __future__ import annotations
 from typing import List
 
@@ -19,7 +19,8 @@ class ServerProfile:
         return [TP_METHOD_DASHBOARD]
 
     def buff_supported_methods(self) -> List[str]:
-        return [BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC]
+        # return [BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC]
+        return [BUFF_METHOD_DASHBOARD]
 
     def supports_buffing(self) -> bool:
         return True

@@ -21,10 +21,11 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     })
     st.setdefault("account", {"login": "", "password": "", "pin": "", "ts": 0.0})
 
-    # ---- Окно/фокус/игрок ----
+    # ---- Окно/фокус/игрок/ui_guard ----
     st.setdefault("window", {"info": None, "found": False, "title": "", "ts": 0.0})
     st.setdefault("focus", {"has_focus": None, "ts": 0.0})
     st.setdefault("player", {"alive": None, "hp_ratio": None, "cp_ratio": None, "ts": 0.0})
+    st.setdefault("ui_guard", {"enabled": False, "tracker": "empty", "ts": 0.0})
 
     # ---- Фичи ----
     st.setdefault("features", {

@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/orchestrators/pipeline_rule.py
+from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import time
 import importlib
