@@ -1,4 +1,4 @@
-﻿# core/engines/window_focus/orchestrator_rules.py
+﻿# core/engines/window_focus/rules.py
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 import time

@@ -86,26 +86,22 @@ class AutofarmSection(BaseSection):
     # ---------- НАСТРОЙКИ ОТ UI ----------
 
     def autofarm_set_mode(self, mode: str):
-        pool_write(self.s, "features.autofarm", {"mode": (mode or "auto").lower()})
+        m = (mode or "auto").lower()
+        pool_write(self.s, "features.autofarm", {"mode": m})
+        pool_write(self.s, "features.autofarm.config", {"mode": m})
 
     def autofarm_save(self, ui_state: Dict[str, Any]):
-        """
-        Принимает от UI:
-          {
-            profession: str,
-            skills: [{key, slug, cast_ms}],
-            zone: str,
-            monsters: [full-slug,...]
-          }
-        Не включает/выключает фарм — только сохраняет.
-        """
         ui_state = dict(ui_state or {})
-        pool_write(self.s, "features.autofarm", {
+        payload = {
             "profession": ui_state.get("profession", "") or "",
             "skills": list(ui_state.get("skills") or []),
             "zone": ui_state.get("zone", "") or "",
             "monsters": list(ui_state.get("monsters") or []),
-        })
+        }
+        # верхний уровень
+        pool_write(self.s, "features.autofarm", payload)
+        # зеркало для совместимости
+        pool_write(self.s, "features.autofarm", {"config": dict(payload)})
         return {"ok": True}
 
     # ---------- СТАРТ/СТОП ----------
@@ -138,7 +134,7 @@ class AutofarmSection(BaseSection):
                         controller=self.controller,
                         get_window=lambda: pool_get(self.s, "window.info", None),
                         get_language=lambda: pool_get(self.s, "config.language", "rus"),
-                        on_status=lambda msg, ok=None: self._emit_af(msg, ok),
+                        on_status=lambda msg, ok=None: ui.log(msg),
                         cfg=self._build_cfg(),
                         should_abort=lambda: (not self._enabled()),
                     )

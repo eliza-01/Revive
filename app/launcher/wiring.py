@@ -29,7 +29,7 @@ from .sections.pipeline import PipelineSection
 from core.orchestrators.pipeline_rule import make_pipeline_rule
 
 # движки/сервисы (правила)
-from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule
+from core.engines.window_focus.rules import make_focus_pause_rule
 
 # пул
 from core.state.pool import ensure_pool, pool_get, pool_write, dump_pool
@@ -71,6 +71,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     pool_write(state, "services.window_focus", {"running": False})
     pool_write(state, "services.player_state", {"running": False})
     pool_write(state, "services.macros_repeat", {"running": False})
+    pool_write(state, "services.autofarm", {"running": False})
 
     # фичи/пайплайн дефолты
     pool_write(state, "features.respawn", {

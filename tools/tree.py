@@ -8,7 +8,7 @@ import datetime
 
 IGNORED_DIRS = {"venv", ".idea", "_tmp", "__pycache__", ".git", "build", "dist", "documents", "collected", "features", "servers", "tools", "assets", "l2mad"}
 IGNORED_FILES = {".gitignore", "build.bat", "release.bat", "requirements.build.txt", "Revive.spec", "revive.log"}
-IGNORED_EXTENSIONS = {""}
+IGNORED_EXTENSIONS = {".png"}
 
 def list_dir(path: str):
     try:

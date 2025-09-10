@@ -225,7 +225,27 @@ class PipelineRule:
         if step == "tp":
             return self._step_tp(snap)
         if step == "autofarm":
-            return self._step_autofarm(snap)
+            fn = self._call_server_rule("autofarm")
+            if callable(fn):
+                try:
+                    ok, adv = fn(
+                        state=self.s,
+                        ps_adapter=self.ps,
+                        controller=self.controller,
+                        report=self.report,
+                        snap=snap,
+                        helpers={
+                            "get_window": lambda: pool_get(self.s, "window.info", None),
+                            "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                        },
+                    )
+                    return bool(ok), bool(adv)
+                except Exception as e:
+                    self._dbg(f"autofarm rules error: {e}")
+                    self.report("[AUTOFARM] ошибка server rules — пропуск шага")
+                    return True, True
+            self.report("[AUTOFARM] rules.py не найден для сервера — пропуск шага")
+            return True, True
 
         self._dbg(f"unknown step: {step}")
         self.report(f"[PIPE] неизвестный шаг: {step} — пропуск")

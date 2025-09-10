@@ -46,13 +46,24 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": False, "method": "dashboard", "category": "", "location": "", "row_id": "",
             "status": "idle", "ts": 0.0,
         },
-        "autofarm": {"enabled": False, "status": "idle", "ts": 0.0},
+        "autofarm": {
+          "enabled": False,
+          "mode": "manual",           # "auto" | "manual"
+          "status": "idle",
+          "config": {
+            "profession": "",
+            "skills": [{"key":"1","slug":"", "cast_ms":1100}],
+            "zone": "",
+            "monsters": []
+          },
+          "ts": 0.0
+        }
     })
 
     # ---- Пайплайн ----
     st.setdefault("pipeline", {
         "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
-        "order": ["respawn", "macros"],
+        "order": ["respawn", "macros", "autofarm"],
         "active": False, "idx": 0, "last_step": "", "ts": 0.0,
     })
 

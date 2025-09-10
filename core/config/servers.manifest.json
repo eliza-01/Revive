@@ -24,7 +24,7 @@
             "section": true
           },
           "tp": {
-            "section": true,
+            "section": false,
             "methods": ["dashboard"]
           },
           "autofarm": {

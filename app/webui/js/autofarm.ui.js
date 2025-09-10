@@ -6,6 +6,30 @@
   // Единая точка истины для языка L2 из селекта #l2Lang
   const getL2Lang = () => (document.getElementById("l2Lang")?.value) || "eng";
 
+  // ---- автосейв в пул ----
+  async function saveNow() {
+    const a = api();
+    const payload = {
+      profession: state.profession || "",
+      skills: (state.skills || []).map(s => ({
+        key: s.key || "1",
+        slug: s.slug || "",
+        cast_ms: Math.max(0, Number(s.cast_ms) || 0)
+      })),
+      zone: state.zone || "",
+      monsters: (state.monsters || []).slice()
+    };
+    try {
+      if (a.autofarm_save)        await a.autofarm_save(payload);
+      else if (a.af_save_settings)await a.af_save_settings(payload);
+      else if (a.af_set_config)   await a.af_set_config(payload);
+    } catch (e) { console.warn("[AF] autosave error:", e); }
+  }
+  const saveDebounced = (() => {
+    let t;
+    return () => { clearTimeout(t); t = setTimeout(saveNow, 250); };
+  })();
+
   async function fetchProfessions() {
     try {
       const a = api();
@@ -98,6 +122,7 @@
         ico.src = s.icon || "";
         lab.textContent = s.name || s.slug;
         menu.classList.add("hidden");
+        saveDebounced();
       });
       menu.appendChild(it);
     });
@@ -121,7 +146,7 @@
     const keySel = document.createElement("select");
     AF_KEYS.forEach(k => keySel.appendChild(new Option(k, k)));
     keySel.value = item.key || "1";
-    keySel.addEventListener("change", () => { item.key = keySel.value; });
+    keySel.addEventListener("change", () => { item.key = keySel.value; saveDebounced(); });
     row.appendChild(keySel);
 
     row.appendChild(buildSkillCombo(skillsList, item));
@@ -129,7 +154,10 @@
     const cast = document.createElement("input");
     cast.type = "number"; cast.min = "1"; cast.step = "1"; cast.className = "xs";
     cast.value = item.cast_ms ?? 1100;
-    cast.addEventListener("change", () => { item.cast_ms = Math.max(1, parseInt(cast.value || "0", 10)); });
+    cast.addEventListener("change", () => {
+      item.cast_ms = Math.max(1, parseInt(cast.value || "0", 10));
+      saveDebounced();
+    });
     row.appendChild(cast);
 
     return row;
@@ -180,6 +208,7 @@
       cb.addEventListener("change", () => {
         if (cb.checked) { if (!state.monsters.includes(slug)) state.monsters.push(slug); }
         else { state.monsters = state.monsters.filter(x => x !== slug); }
+        saveDebounced();
       });
 
       const span = document.createElement("span");
@@ -277,7 +306,10 @@
     const infoClose = $("afZoneInfoClose");
 
     // режим
-    if (mode) mode.addEventListener("change", ()=> state.mode = mode.value);
+    if (mode) mode.addEventListener("change", async () => {
+      state.mode = mode.value;
+      try { await api().autofarm_set_mode(state.mode || "auto"); } catch(e){ console.warn(e); }
+    });
 
     // открыть настройки
     if (btn) btn.addEventListener("click", async () => {
@@ -311,12 +343,8 @@
         zone: state.zone,
         monsters: state.monsters
       };
-      try {
-        const a = api();
-        if (a.autofarm_save)        await a.autofarm_save(payload);
-        else if (a.af_save_settings)await a.af_save_settings(payload);
-        else if (a.af_set_config)   await a.af_set_config(payload);
-      } catch (e) { console.warn("[AF] save settings error:", e); }
+      if (!v.ok) return;
+      await saveNow();
       showModal("afModal", false);
     });
 
@@ -325,14 +353,17 @@
       state.profession = prof.value || "";
       state.skills = [{ key:"1", slug:"", cast_ms:1100 }];
       await renderSkillsBlock();
+      saveDebounced();
     });
     if (add) add.addEventListener("click", async ()=> {
       state.skills.push({ key:"1", slug:"", cast_ms:1100 });
       await renderSkillsBlock();
+      saveDebounced();
     });
     if (del) del.addEventListener("click", async ()=> {
       if (state.skills.length > 1) state.skills.pop();
       await renderSkillsBlock();
+      saveDebounced();
     });
 
     // зона/монстры
@@ -340,6 +371,7 @@
       state.zone = zone.value || "";
       state.monsters = [];
       await renderMonsters();
+      saveDebounced();
     });
     if (infoBtn)   infoBtn.addEventListener("click", openZoneInfo);
     if (infoClose) infoClose.addEventListener("click", ()=> showModal("afZoneInfoModal", false));

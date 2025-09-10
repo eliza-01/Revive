@@ -1,151 +1,167 @@
 ﻿# core/engines/autofarm/service.py
 from __future__ import annotations
-import time
-import threading
-from typing import Dict, Any, Optional
+from typing import Callable, Optional, Dict, Any
+import threading, time
 
-from _archive.core.runtime import RepeaterThread
-from _archive.core.runtime.dashboard_guard import DASHBOARD_GUARD
 from core.engines.autofarm.runner import run_autofarm
 
-
 class AutoFarmService:
-    def __init__(self, controller, get_server, get_language, get_window, is_alive,
-                 schedule=None, on_status=lambda *_: None,
-                 is_dashboard_busy=lambda: DASHBOARD_GUARD.is_busy(), log=None, **_):
-        self.controller = controller
-        self.get_server = get_server
-        self.get_language = get_language
-        self.get_window = get_window
-        self.is_alive = is_alive
-        self.schedule = schedule or (lambda fn, ms: None)
-        self.on_status = on_status
-        self.is_dashboard_busy = is_dashboard_busy
-        self._log = log or (lambda *a, **k: None)
+    """
+    Долгоживущий цикл фарма.
+    API: start(), stop(), is_running(), cancel_cycle(), run_once_now()
+    """
 
-        self.enabled = False
-        self.mode = "auto"
-        self._armed = False
-        self._cfg: Dict[str, Any] = {}
-        self._poll = RepeaterThread(self._tick, 0.5)
+    def __init__(
+        self,
+        server: Callable[[], str],
+        controller: Any,
+        get_window: Callable[[], Optional[Dict[str, Any]]],
+        get_language: Callable[[], str],
+        get_cfg: Callable[[], Dict[str, Any]],        # features.autofarm или features.autofarm.config
+        is_enabled: Callable[[], bool],               # features.autofarm.enabled
+        is_alive: Callable[[], bool] = lambda: True,  # player.alive
+        on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
+    ):
+        self._server = server
+        self._controller = controller
+        self._get_window = get_window
+        self._get_language = get_language
+        self._get_cfg = get_cfg
+        self._is_enabled = is_enabled
+        self._is_alive = is_alive
+        self._on_status = on_status or (lambda *_: None)
 
-        # управление жизненным циклом воркера
-        self._worker: Optional[threading.Thread] = None
-        self._cancel_evt = threading.Event()
-        self._running = False
-        self._lock = threading.Lock()
+        self._thr: Optional[threading.Thread] = None
+        self._run = False
+        self._cancel = False
+        self._kick = threading.Event()   # ← триггер для auto-режима
+        self._poll = 1.0
+        self._last_sig = None          # отпечаток конфигурации для режима manual
 
-    # публично полезно (для UI)
     def is_running(self) -> bool:
-        return self._running
+        return bool(self._run)
 
-    # should_abort для движка
-    def _should_abort(self) -> bool:
-        return self._cancel_evt.is_set()
-
-    def arm(self):
-        """Вооружить автозапуск (после post-TP)."""
-        if self.enabled and self.mode == "auto":
-            self._armed = True
-            self._idle_since = 0.0
-            if not self._poll.is_running():
-                self._poll.start()
-
-    def _spawn_worker(self, cfg: Dict[str, Any]):
-        """Запускаем движок в отдельном потоке, с возможностью отмены."""
-        with self._lock:
-            if self._worker and self._worker.is_alive():
-                return  # уже запущено
-            self._cancel_evt.clear()
-            self._worker = threading.Thread(target=self._runner, args=(cfg,), daemon=True)
-            self._worker.start()
-
-    def _runner(self, cfg: Dict[str, Any]):
-        server = (self.get_server() or "l2mad").lower()
-        self._running = True
-        try:
-            ok = bool(run_autofarm(
-                server=server,
-                controller=self.controller,
-                get_window=self.get_window,
-                get_language=self.get_language,
-                on_status=self.on_status,
-                cfg=cfg or {},
-                should_abort=self._should_abort,
-            ))
-            # run_autofarm сам публикует статусы; этот финальный — мягкий резюме
-            if ok:
-                self.on_status("Автофарм завершён", True)
-            else:
-                self.on_status("Автофарм остановлен/ошибка", None)
-        except Exception as e:
-            self.on_status(f"[af] start error: {e}", False)
-        finally:
-            self._running = False
-            self._cancel_evt.clear()
-
-    def start(self, cfg: Dict[str, Any]) -> bool:
-        """Совместимость: теперь это триггер запуска воркера."""
-        self._spawn_worker(cfg)
-        return True
-
-    def _stop_worker(self):
-        with self._lock:
-            self._cancel_evt.set()
-            w = self._worker
-        if w and w.is_alive():
-            w.join(timeout=2.0)
-
-    def set_enabled(self, v: bool, cfg: Optional[Dict[str, Any]] = None):
-        self.enabled = bool(v)
-        if cfg is not None:
-            self._cfg = dict(cfg)
-
-        if not self.enabled:
-            self._armed = False
-            self._idle_since = 0.0
-            self._stop_worker()  # ← глушим движок немедленно
+    def start(self, poll_interval: float = 0.5):
+        if self._run:
             return
+        self._run = True
+        self._cancel = False
+        self._poll = float(max(0.1, poll_interval))
+        self._thr = threading.Thread(target=self._loop, args=(self._poll,), daemon=True)
+        self._thr.start()
 
-        if self.mode == "manual":
-            self._spawn_worker(self._cfg)
+    def stop(self):
+        self._run = False
+
+    def cancel_cycle(self):
+        """Прервать текущий заход run_autofarm."""
+        self._cancel = True
+
+    def run_once_now(self):
+        """В auto: просто даём пинок сервису; в manual: запускаем цикл немедленно."""
+        if not self._is_enabled() or not self._is_alive():
+            return
+        cfg = self._normalize_cfg(self._get_cfg() or {})
+        mode = (cfg.get("mode") or "auto").lower()
+        if mode == "auto":
+            self._kick.set()        # ← сервис сам выполнит ОДИН цикл
         else:
-            # auto: ждём явного arm() после ТП/маршрута
-            self._armed = False
-            self._idle_since = 0.0
+            self._run_once()        # ← manual: запускаем сразу
 
-        if not self._poll.is_running():
-            self._poll.start()
+    def _loop(self, poll_interval: float):
+        while self._run:
+            if not self._is_enabled() or not self._is_alive():
+                time.sleep(self._poll); continue
 
-    def set_mode(self, mode: str):
-        self.mode = (mode or "auto").lower()
-        if self.mode == "auto":
-            self._armed = False
-            self._idle_since = 0.0
+            cfg  = self._normalize_cfg(self._get_cfg() or {})
+            mode = (cfg.get("mode") or "auto").lower()
 
-    _idle_since = 0.0
-    def _tick(self):
-        # не стартуем новый воркер, если уже идёт
-        if not (self.enabled and self._armed):
-            return
-        if self._running:
-            return
-        if not self.is_alive():
-            self._idle_since = 0.0
-            return
-        if self.is_dashboard_busy():
-            self._idle_since = 0.0
-            return
-        now = time.time()
-        if self._idle_since == 0.0:
-            self._idle_since = now
-            return
-        if (now - self._idle_since) >= 1.5:
-            self._armed = False
-            self._spawn_worker(self._cfg)
+            if mode == "manual":
+                # крутится постоянно, пока включён
+                self._run_once()
+                time.sleep(self._poll)
+                continue
 
-    # --- шими для совместимости ---
-    def register_pre_step(self, *_, **__):  return None
-    def unregister_pre_step(self, *_, **__):  return None
-    def register_post_step(self, *_, **__):  return None
-    def unregister_post_step(self, *_, **__):  return None
+            # mode == "auto": ждём явного пинка от пайплайна
+            fired = self._kick.wait(timeout=self._poll)
+            if not fired:
+                continue
+            self._kick.clear()
+            if self._is_enabled() and self._is_alive():
+                self._run_once()
+
+    def _run_once(self):
+        self._cancel = False
+        cfg = self._normalize_cfg(self._get_cfg() or {})
+        ok = run_autofarm(
+            server=self._server(),
+            controller=self._controller,
+            get_window=self._get_window,
+            get_language=self._get_language,
+            on_status=self._on_status,
+            cfg=cfg,
+            should_abort=lambda: (not self._is_enabled()) or self._cancel,
+        )
+        self._on_status("Автофарм цикл завершён", ok)
+
+    def _cfg_signature(self, cfg: Dict[str, Any]) -> tuple:
+        try:
+            mode = (cfg.get("mode") or "auto")
+            zone = (cfg.get("zone") or "")
+            skills = tuple(
+                (str((s or {}).get("key", "1"))[:1],
+                 (s or {}).get("slug", "") or "",
+                 int(float((s or {}).get("cast_ms", 0))))
+                for s in (cfg.get("skills") or [])
+            )
+            monsters = tuple(sorted(cfg.get("monsters") or []))
+            return (mode, zone, skills, monsters)
+        except Exception:
+            return ("auto", "", (), ())
+
+    def _wait_until_changed_or_disabled(self, baseline_sig: tuple):
+        # ждём, пока настройки/режим изменятся ИЛИ сервис выключат/умрёт игрок
+        while self._run and self._is_enabled() and self._is_alive():
+            try:
+                cur = self._normalize_cfg(self._get_cfg() or {})
+                if self._cfg_signature(cur) != baseline_sig:
+                    break
+            except Exception:
+                pass
+            time.sleep(self._poll)
+
+    @staticmethod
+    def _normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Принимает либо весь узел features.autofarm, либо только features.autofarm.config.
+        Сначала берём config как базу, потом ПЕРЕЗАТИРАЕМ непустыми верхнеуровневыми полями.
+        """
+        base = dict(raw.get("config") or {})
+        top = {k: raw.get(k) for k in ("profession", "skills", "zone", "monsters", "mode") if k in raw}
+
+        cfg = dict(base)
+        for k, v in top.items():
+            if v not in (None, "", [], {}):
+                cfg[k] = v
+
+        # дефолты
+        cfg.setdefault("mode", "auto")
+        cfg.setdefault("profession", "")
+        cfg.setdefault("skills", [])
+        cfg.setdefault("zone", "")
+        cfg.setdefault("monsters", [])
+
+        # лёгкая нормализация
+        try:
+            skills = []
+            for s in cfg.get("skills") or []:
+                skills.append({
+                    "key": str((s or {}).get("key", "1"))[:1] or "1",
+                    "slug": (s or {}).get("slug", "") or "",
+                    "cast_ms": max(0, int(float((s or {}).get("cast_ms", 0))))
+                })
+            cfg["skills"] = skills
+        except Exception:
+            cfg["skills"] = []
+
+        return cfg
