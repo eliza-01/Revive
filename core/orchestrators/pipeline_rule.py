@@ -1,5 +1,4 @@
-﻿# core/orchestrators/pipeline_rule.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import time
 import importlib
@@ -148,16 +147,20 @@ class PipelineRule:
     def _call_server_rule(self, engine: str, func: str = "run_step"):
         """
         Возвращает callable из core.engines.<engine>.server.<server>.rules.<func> или None.
+        Сервер берём ТОЛЬКО из пула (config.server).
         """
-        server = (pool_get(self.s, "config.server", "boh") or "boh").lower()
-        mod_name = f"core.engines.{engine}.server.{server}.rules"
+        server = pool_get(self.s, "config.server", None)
+        if not server:
+            self._dbg(f"{engine}: server is not set in pool (config.server)")
+            return None
+        mod_name = f"core.engines.{engine}.server.{str(server).lower()}.rules"
         try:
             mod = importlib.import_module(mod_name)
             fn = getattr(mod, func, None)
             if callable(fn):
                 return fn
-        except Exception:
-            pass
+        except Exception as e:
+            self._dbg(f"{engine}: import error for {mod_name}: {e}")
         return None
 
     def _run_step(self, step: str, snap: Snapshot) -> tuple[bool, bool]:
@@ -190,7 +193,6 @@ class PipelineRule:
                     self._dbg(f"respawn rules error: {e}")
                     self.report("[RESPAWN] ошибка server rules — пропуск шага")
                     return True, True
-            # нет правил — не блокируем пайплайн
             self.report("[RESPAWN] rules.py не найден для сервера — пропуск шага")
             return True, True
 
@@ -261,27 +263,24 @@ class PipelineRule:
         """
         Динамически загружает модуль движка респавна:
         core.engines.respawn.server.<server>.engine
-        Фолбэк: core.engines.respawn.server.boh.engine (если серверный модуль не найден).
+        Сервер берём ТОЛЬКО из пула. Без фолбэков.
         """
-        server = (server or "boh").lower()
+        server = (server or "").strip().lower()
+        if not server:
+            raise RuntimeError("config.server is not set")
         module_name = f"core.engines.respawn.server.{server}.engine"
-        try:
-            return importlib.import_module(module_name)
-        except Exception:
-            # мягкий фолбэк
-            try:
-                return importlib.import_module("core.engines.respawn.server.boh.engine")
-            except Exception as e:
-                raise ImportError(f"Respawn engine module not found for '{server}' and fallback 'boh': {e}") from e
+        return importlib.import_module(module_name)
 
     def _make_respawn_engine(self):
-        mod = self._load_respawn_module(pool_get(self.s, "config.server", "boh"))
+        server = pool_get(self.s, "config.server", None)
+        if not server:
+            raise RuntimeError("config.server is not set")
+        mod = self._load_respawn_module(server)
 
         create_engine = getattr(mod, "create_engine", None)
         RespawnEngine = getattr(mod, "RespawnEngine", None)
 
         # общие параметры из пула
-        server = pool_get(self.s, "config.server", "boh")
         click_threshold = float(pool_get(self.s, "features.respawn.click_threshold", 0.70))
         confirm_timeout_s = float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0))
         debug = bool(pool_get(self.s, "runtime.debug.respawn_debug", False))
@@ -317,7 +316,6 @@ class PipelineRule:
                 on_report=_on_engine_report,
             )
         else:
-            # крайний случай — явно падаем, чтобы было видно проблему с серверным модулем
             raise RuntimeError("Respawn engine class/factory not found in loaded module")
 
     def _finish(self):

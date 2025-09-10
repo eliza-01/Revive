@@ -1,5 +1,4 @@
-﻿# core/engines/respawn/server/boh/rules.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 import time
 
@@ -17,13 +16,8 @@ def run_step(
     helpers: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, bool]:
     """
-    Правило шага RESPawn для сервера 'boh'.
+    Правило шага RESPawn для текущего сервера.
     Контракт: вернуть (ok, advance).
-
-    helpers:
-      - respawn_runner: готовый RespawnRunner
-      - get_window: () -> dict | None
-      - get_language: () -> str
     """
     helpers = helpers or {}
 
@@ -35,6 +29,7 @@ def run_step(
     # если уже жив — шаг успешен и идём дальше
     if snap.alive is True:
         _dbg(state, "respawn: already alive")
+        _reset_macros_after_respawn(state)
         return True, True
 
     # опциональное ожидание «ждать возрождения»
@@ -49,6 +44,7 @@ def run_step(
             if st.get("alive"):
                 report("[RESPAWN] Поднялись (ожидание)")
                 _dbg(state, "respawn/wait: alive -> success")
+                _reset_macros_after_respawn(state)
                 return True, True
             sec = int(time.time() - start)
             if sec != tick:
@@ -61,16 +57,29 @@ def run_step(
     runner = helpers.get("respawn_runner")
     if runner is not None:
         try:
-            runner.set_server(pool_get(state, "config.server", "boh"))
+            server = pool_get(state, "config.server", None)
+            if server:
+                runner.set_server(server)
         except Exception:
             pass
         ok = bool(runner.run(timeout_ms=14_000))
         _dbg(state, f"respawn: result ok={ok}")
+        if ok:
+            _reset_macros_after_respawn(state)
         return (ok, ok)
 
-    # если по какой-то причине нет runner — безопасно не блокируем пайплайн
     report("[RESPAWN] internal: runner missing")
     return False, True
+
+
+def _reset_macros_after_respawn(state: Dict[str, Any]) -> None:
+    """После респавна: сброс таймеров повторов, чтобы не было «двойного макроса»."""
+    try:
+        svc = (state.get("_services") or {}).get("macros_repeat")
+        if hasattr(svc, "bump_all"):
+            svc.bump_all()
+    except Exception:
+        pass
 
 
 def _dbg(state: Dict[str, Any], msg: str):
