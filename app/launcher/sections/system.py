@@ -1,32 +1,39 @@
-﻿# app/launcher/sections/system.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import threading
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from ..base import BaseSection
 
 from core.arduino.connection import ReviveController
-from core.config.servers import get_server_profile, list_servers
 from core.vision.capture.gdi import find_window, get_window_info
 from core.arduino.connection_test import run_test_command
 from core.updater import get_remote_version, is_newer_version
 
+# новая конфигурация через manifest
+from core.config.servers import (
+    list_servers,
+    get_languages,
+    get_section_flags,
+    get_buff_methods,
+    get_buff_modes,
+    get_tp_methods,
+)
+
 from core.state.pool import pool_write, pool_get, ensure_pool
 
-TP_METHOD_DASHBOARD = "dashboard"
-TP_METHOD_GATEKEEPER = "gatekeeper"
 
 def _schedule(fn, ms: int):
     t = threading.Timer(max(0.0, ms) / 1000.0, fn)
     t.daemon = True
     t.start()
 
+
 class SystemSection(BaseSection):
     """
     Инициализация контроллера и бэк-сервисов. Весь конфиг/состояние — в пуле.
-    Экспорт: get_init_state, set_language, set_server, find_window, test_connect,
-             account_get/account_save, get_state_snapshot, get_status_snapshot,
-             run_update_check, shutdown
+    Экспорт: get_init_state, set_program_language, set_language, set_server,
+             find_window, test_connect, account_get/account_save,
+             get_state_snapshot, get_status_snapshot, run_update_check, shutdown
     """
 
     def __init__(self, window, local_version: str, controller: ReviveController,
@@ -34,14 +41,23 @@ class SystemSection(BaseSection):
         super().__init__(window, state)
         ensure_pool(self.s)
 
-        servers = list_servers() or ["boh"]
+        # servers & initial server
+        servers = list_servers()
+        if not servers:
+            raise RuntimeError("No servers in manifest")
         server = pool_get(self.s, "config.server", servers[0])
-        language = pool_get(self.s, "config.language", "rus")
-        profile = get_server_profile(server)
+
+        # L2 languages for server
+        l2_langs = get_languages(server)
+        language = pool_get(self.s, "config.language", l2_langs[0] if l2_langs else "rus")
 
         # app/config
-        pool_write(self.s, "app", {"version": local_version})
-        pool_write(self.s, "config", {"server": server, "language": language, "profile": profile, "profiles": servers})
+        pool_write(self.s, "app", {"version": local_version, "lang": pool_get(self.s, "app.lang", "ru")})
+        pool_write(self.s, "config", {
+            "server": server,
+            "language": language,          # язык интерфейса L2
+            "profiles": servers
+        })
 
         # respawn defaults (если кто-то не выставил раньше)
         pool_write(self.s, "features.respawn", {
@@ -52,21 +68,18 @@ class SystemSection(BaseSection):
             "confirm_timeout_s": float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0)),
         })
 
-        # buff methods from profile
-        try:
-            methods = list(getattr(profile, "buff_supported_methods", lambda: [])())
-            cur = getattr(profile, "get_buff_mode", lambda: "")()
-            if cur not in methods:
-                cur = methods[0] if methods else ""
-        except Exception:
-            methods, cur = [], ""
-        pool_write(self.s, "features.buff", {"methods": methods, "mode": cur})
+        # buff/tp methods from manifest
+        buff_methods = get_buff_methods(server)
+        buff_modes   = get_buff_modes(server)
+        tp_methods   = get_tp_methods(server)
+        cur_mode = pool_get(self.s, "features.buff.mode", (buff_modes[0] if buff_modes else ""))
+        if cur_mode and cur_mode not in buff_modes:
+            cur_mode = (buff_modes[0] if buff_modes else "")
+        pool_write(self.s, "features.buff", {"methods": buff_methods, "mode": cur_mode})
+        pool_write(self.s, "features.tp", {"methods": tp_methods})
 
-        # pipeline defaults
-        pool_write(self.s, "pipeline", {
-            "allowed": list(pool_get(self.s, "pipeline.allowed", ["respawn","buff","macros","tp","autofarm"])),
-            "order": list(pool_get(self.s, "pipeline.order", ["respawn","macros"])),
-        })
+        # sections visibility for current server
+        pool_write(self.s, "ui.sections", get_section_flags(server))
 
         self.controller = controller
         self.ps = ps_adapter
@@ -89,19 +102,44 @@ class SystemSection(BaseSection):
             pool_write(self.s, "account", {"login": "", "password": "", "pin": ""})
 
     # ---------- helpers ----------
-    def _apply_profile(self, server: str):
-        server = (server or "boh").lower()
-        profile = get_server_profile(server)
-        pool_write(self.s, "config", {"server": server, "profile": profile})
+    def _apply_server(self, server: str):
+        server = (server or "").lower()
+        # обновляем сервер и зависящие настройки
+        pool_write(self.s, "config", {"server": server})
 
-        try:
-            methods = list(getattr(profile, "buff_supported_methods", lambda: [])())
-            cur = getattr(profile, "get_buff_mode", lambda: "")()
-            if cur not in methods:
-                cur = methods[0] if methods else ""
-        except Exception:
-            methods, cur = [], ""
-        pool_write(self.s, "features.buff", {"methods": methods, "mode": cur})
+        l2_langs = get_languages(server)
+        # если текущий язык L2 не входит — переключим на первый из разрешённых
+        cur_lang = pool_get(self.s, "config.language", None)
+        if not l2_langs:
+            pool_write(self.s, "config", {"language": "rus"})
+        elif cur_lang not in l2_langs:
+            pool_write(self.s, "config", {"language": l2_langs[0]})
+
+        # buff/tp
+        buff_methods = get_buff_methods(server)
+        buff_modes   = get_buff_modes(server)
+        tp_methods   = get_tp_methods(server)
+
+        cur_mode = pool_get(self.s, "features.buff.mode", "")
+        if cur_mode not in buff_modes:
+            cur_mode = (buff_modes[0] if buff_modes else "")
+        pool_write(self.s, "features.buff", {"methods": buff_methods, "mode": cur_mode})
+        pool_write(self.s, "features.tp", {"methods": tp_methods})
+
+        # sections
+        pool_write(self.s, "ui.sections", get_section_flags(server))
+
+        # Сбросить пользовательские настройки, как просили (макросы/флаги)
+        pool_write(self.s, "features.macros", {
+            "enabled": False, "repeat_enabled": False, "rows": [],
+            "run_always": False, "delay_s": 1.0, "duration_s": 2.0,
+            "sequence": ["1"], "status": "idle",
+        })
+        pool_write(self.s, "features.respawn", {
+            **pool_get(self.s, "features.respawn", {}),
+            "enabled": False, "wait_enabled": False,
+        })
+        pool_write(self.s, "features.autofarm", {"enabled": False, "status": "idle"})
 
     # ---------- auto-find window ----------
     def _autofind_tick(self):
@@ -128,7 +166,7 @@ class SystemSection(BaseSection):
 
     # ---------- API ----------
     def get_init_state(self) -> Dict[str, Any]:
-        servers = list_servers() or ["boh"]
+        servers = list_servers()
         cur_server = pool_get(self.s, "config.server", servers[0])
 
         # повторный ping при первом заходе
@@ -141,16 +179,27 @@ class SystemSection(BaseSection):
             except Exception as e:
                 self.emit("driver", f"[×] Ошибка связи с Arduino: {e}", False)
 
+        # данные для UI из манифеста
+        l2_langs = get_languages(cur_server)
+        tp_methods = get_tp_methods(cur_server)
+        buff_methods = get_buff_methods(cur_server)
+        sections = get_section_flags(cur_server)
+
         return {
             "version": pool_get(self.s, "app.version", ""),
-            "language": pool_get(self.s, "config.language", "rus"),
+            "app_language": pool_get(self.s, "app.lang", "ru"),  # язык программы (ru/en)
+            "language": pool_get(self.s, "config.language", (l2_langs[0] if l2_langs else "rus")),  # язык L2
+            "system_languages": l2_langs,  # доступные языки L2 для сервера
             "server": cur_server,
             "servers": servers,
+            "sections": sections,          # видимость секций
             "window_found": bool(pool_get(self.s, "window.found", False)),
             "monitoring": bool(self.ps.is_running() if hasattr(self.ps, "is_running") else False),
-            "buff_methods": pool_get(self.s, "features.buff.methods", []),
+
+            "buff_methods": buff_methods,
             "buff_current": pool_get(self.s, "features.buff.mode", ""),
-            "tp_methods": [TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER],
+            "tp_methods": tp_methods,
+
             "driver_status": pool_get(self.s, "ui_status.driver", {"text": "Состояние связи: неизвестно", "ok": None}),
             "respawn": {
                 "enabled": bool(pool_get(self.s, "features.respawn.enabled", False)),
@@ -159,7 +208,13 @@ class SystemSection(BaseSection):
             },
         }
 
+    def set_program_language(self, lang: str):
+        # локальная настройка UI приложения (не язык L2)
+        lang = (lang or "ru").lower()
+        pool_write(self.s, "app", {"lang": lang})
+
     def set_language(self, lang: str):
+        # язык интерфейса L2
         lang = (lang or "rus").lower()
         pool_write(self.s, "config", {"language": lang})
         try:
@@ -168,16 +223,18 @@ class SystemSection(BaseSection):
             pass
 
     def set_server(self, server: str):
-        self._apply_profile(server)
+        self._apply_server(server)
         try:
-            self.ps.set_server(pool_get(self.s, "config.server", "boh"))
+            self.ps.set_server(pool_get(self.s, "config.server", server))
         except Exception:
             pass
-        # ui: обновить методы бафа
+        # ui: обновить методы бафа через событие
         methods = pool_get(self.s, "features.buff.methods", [])
         cur = pool_get(self.s, "features.buff.mode", "")
         try:
-            self.window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(methods)}, {json.dumps(cur)})")
+            self.window.evaluate_js(
+                f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(methods)}, {json.dumps(cur)})"
+            )
         except Exception:
             pass
 
@@ -255,7 +312,8 @@ class SystemSection(BaseSection):
     def expose(self) -> dict:
         return {
             "get_init_state": self.get_init_state,
-            "set_language": self.set_language,
+            "set_program_language": self.set_program_language,  # язык программы (ru/en)
+            "set_language": self.set_language,                  # язык интерфейса L2 (rus/eng)
             "set_server": self.set_server,
             "find_window": self.find_window,
             "test_connect": self.test_connect,

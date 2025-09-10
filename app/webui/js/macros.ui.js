@@ -3,6 +3,7 @@
   const $ = (sel) => document.querySelector(sel);
 
   const KEYS = ["1","2","3","4","5","6","7","8","9","0"];
+  let ac = null; // AbortController для дедупликации обработчиков
 
   function create(tag, attrs = {}, text = "") {
     const el = document.createElement(tag);
@@ -17,7 +18,7 @@
     const sel = create("select", { class: "key", "data-scope": "macros-key" });
     KEYS.forEach(k => sel.appendChild(create("option", { value: k }, k)));
     sel.value = (val && KEYS.includes(String(val))) ? String(val) : "1";
-    sel.addEventListener("change", pushRowsToBackend);
+    sel.addEventListener("change", pushRowsToBackend, { signal: ac?.signal });
     return sel;
   }
 
@@ -27,12 +28,15 @@
     inp.max = String(max);
     inp.step = String(step);
     if (placeholder) inp.placeholder = placeholder;
-    inp.addEventListener("change", ()=>{
+
+    const onChange = () => {
       const v = parseFloat(inp.value || "0");
       const clamped = isFinite(v) ? Math.max(min, Math.min(max, v)) : 0;
       inp.value = String(clamped);
       pushRowsToBackend();
-    });
+    };
+
+    inp.addEventListener("change", onChange, { signal: ac?.signal });
     return inp;
   }
 
@@ -49,7 +53,7 @@
       cont.removeChild(wrap);
       ensureAtLeastOneRow();
       pushRowsToBackend();
-    });
+    }, { signal: ac?.signal });
     colDel.appendChild(btnDel);
 
     // col2: выбор кнопки
@@ -102,44 +106,73 @@
     try {
       const rows = readRows();
       pywebview.api.macros_set_rows(rows);
-    } catch(_){}
+    } catch(_) {}
   }
 
   function ensureAtLeastOneRow() {
     const cont = $("#macrosRows");
     if (!cont) return;
-    if (!cont.children.length) cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
+    if (cont.querySelectorAll(".macros-row").length === 0) {
+      cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
+    }
   }
 
   function wire() {
+    // Снимаем все старые обработчики этого модуля перед перевешиванием
+    if (ac) ac.abort();
+    ac = new AbortController();
+    const signal = ac.signal;
+
     const add = $("#btnAddRow");
     if (add) add.addEventListener("click", () => {
       const cont = $("#macrosRows");
       if (!cont) return;
       cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
       pushRowsToBackend();
-    });
+    }, { signal });
 
     const chk = $("#chkMacros");
     if (chk) chk.addEventListener("change", e => {
       const enabled = !!e.target.checked;
       try {
-        // ВАЖНО: новый бэкенд разделяет флаги; включаем оба.
         pywebview.api.macros_set_enabled(enabled);
         pywebview.api.macros_set_repeat_enabled(enabled);
-      } catch(_){}
-    });
+      } catch(_) {}
+    }, { signal });
   }
 
   window.UIMacros = {
     init() {
+      // Отрисовываем дефолтную строку ТОЛЬКО если контейнер пуст
       const cont = $("#macrosRows");
-      if (cont) {
+      if (cont && cont.querySelectorAll(".macros-row").length === 0) {
         cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
-        // синхронизируем пул сразу после первичной отрисовки
+        // синхронизируем пул после первичной отрисовки
         pushRowsToBackend();
       }
       wire();
+    },
+
+    // <<< НОВОЕ: полный сброс раздела >>>
+    reset() {
+      try {
+        // сбрасываем флаги на бэкенде
+        pywebview.api.macros_set_enabled(false);
+        pywebview.api.macros_set_repeat_enabled(false);
+        pywebview.api.macros_set_rows([]);
+      } catch(_) {}
+
+      // сбрасываем UI
+      const cont = $("#macrosRows");
+      if (cont) {
+        cont.innerHTML = "";
+        cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
+      }
+      const chk = $("#chkMacros");
+      if (chk) chk.checked = false;
+
+      // синхронизируем в пул новую (дефолтную) строку
+      pushRowsToBackend();
     }
   };
 })();

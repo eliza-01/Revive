@@ -1,10 +1,18 @@
-﻿# app/launcher/wiring.py
-from __future__ import annotations
-from typing import Dict, Any, Optional
-import json
+﻿from __future__ import annotations
+from typing import Dict, Any
+import importlib
 
 from core.arduino.connection import ReviveController
-from core.config.servers import get_server_profile, list_servers
+
+# новая конфигурация через manifest
+from core.config.servers import (
+    list_servers,
+    get_languages,
+    get_section_flags,
+    get_buff_methods,
+    get_buff_modes,
+    get_tp_methods,
+)
 
 # секции
 from .sections.system import SystemSection
@@ -32,15 +40,18 @@ from app.launcher.infra.orchestrator_loop import OrchestratorLoop
 from app.launcher.infra.services import ServicesBundle
 
 
-import importlib
-from core.engines.ui_guard.runner import UIGuardRunner
-
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
-    servers = list_servers() or ["boh"]
+
+    # === servers / langs from manifest ===
+    servers = list_servers()
+    if not servers:
+        raise RuntimeError("No servers in manifest")
     server = servers[0]
-    language = "rus"
-    profile = get_server_profile(server)
+
+    # L2 UI language — первый из списка для сервера
+    l2_langs = get_languages(server)
+    l2_lang = l2_langs[0]
 
     # === state / pool ===
     state: Dict[str, Any] = {}
@@ -48,7 +59,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     # базовая инициализация пула
     pool_write(state, "app", {"version": local_version})
-    pool_write(state, "config", {"server": server, "language": language, "profile": profile, "profiles": servers})
+    # profile больше не используем — только server + languages
+    pool_write(state, "config", {
+        "server": server,
+        "language": l2_lang,      # язык интерфейса L2
+        "profiles": servers       # доступные сервера
+    })
     pool_write(state, "account", {"login": "", "password": "", "pin": ""})
     pool_write(state, "window", {"info": None, "found": False, "title": ""})
     pool_write(state, "services.window_focus", {"running": False})
@@ -64,8 +80,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         "enabled": False, "repeat_enabled": False, "rows": [],
         "run_always": False, "delay_s": 1.0, "duration_s": 2.0, "sequence": ["1"], "status": "idle",
     })
-    pool_write(state, "features.buff", {"enabled": False, "mode": "", "methods": [], "status": "idle"})
-    pool_write(state, "features.tp", {"enabled": False, "status": "idle"})
+    # buff/tp методы из манифеста
+    buff_methods = get_buff_methods(server)
+    buff_modes   = get_buff_modes(server)
+    tp_methods   = get_tp_methods(server)
+    pool_write(state, "features.buff", {"enabled": False, "mode": (buff_modes[0] if buff_modes else ""), "methods": buff_methods, "status": "idle"})
+    pool_write(state, "features.tp", {"enabled": False, "status": "idle", "methods": tp_methods})
     pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
     pool_write(state, "pipeline", {
         "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
@@ -73,63 +93,15 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         "active": False, "idx": 0, "last_step": ""
     })
 
+    # для UI: какие секции показывать для текущего сервера
+    pool_write(state, "ui.sections", get_section_flags(server))
+
     # === UI-мост ===
     ui = UIBridge(window, state, hud_window)
 
     # === Сервисы (вынесены) ===
     services = ServicesBundle(state, window, hud_window, ui, controller)
     ps_adapter = services.ps_adapter
-
-    # # --- Включаем ui_guard по умолчанию ---
-    # pool_write(state, "ui_guard", {"enabled": True, "tracker": "empty"})
-    # # --- Инициализируем ui_guard runner + тикер 2 сек ---
-    # def _make_ui_guard_engine():
-    #     srv = (pool_get(state, "config.server", "boh") or "boh").lower()
-    #     debug = bool(pool_get(state, "runtime.debug.pool_debug", False))
-    #     mod = importlib.import_module(f"core.engines.ui_guard.server.{srv}.engine")
-    #     create = getattr(mod, "create_engine", None)
-    #     Engine = getattr(mod, "UIGuardEngine", None)
-    #     if callable(create):
-    #         return create(server=srv, controller=controller, debug=debug, on_report=ui.log)
-    #     elif Engine is not None:
-    #         return Engine(server=srv, controller=controller, debug=debug, on_report=ui.log)
-    #     raise RuntimeError("UIGuard engine not found")
-    #
-    # ui_guard_runner = UIGuardRunner(
-    #     engine=_make_ui_guard_engine(),
-    #     get_window=lambda: pool_get(state, "window.info", None),
-    #     get_language=lambda: pool_get(state, "config.language", "rus"),
-    #     report=ui.log,
-    #     is_focused=lambda: bool(pool_get(state, "focus.has_focus", False)),  # ← важно
-    # )
-    #
-    # def _ui_guard_tick():
-    #     try:
-    #         if not pool_get(state, "ui_guard.enabled", True):
-    #             return
-    #         if not pool_get(state, "window.found", False):
-    #             # ждём, пока SystemSection/find_window заполнит window.info
-    #             return
-    #
-    #         res = ui_guard_runner.run_once()
-    #
-    #         # Обновляем трекер в пуле: нашли — пишем ключ, закрыли все — empty.
-    #         if res.get("found"):
-    #             key = str(res.get("key") or "")
-    #             if key and key != "empty":
-    #                 pool_write(state, "ui_guard", {"tracker": key})
-    #             if res.get("closed"):
-    #                 pool_write(state, "ui_guard", {"tracker": "empty"})
-    #
-    #     except Exception as e:
-    #         ui.log(f"[UI_GUARD] error: {e}")
-    #     finally:
-    #         # Следующий запуск через ~2 сек от завершения текущего
-    #         ui.schedule(_ui_guard_tick, 2000)
-    # #
-    # # стартуем первый тик сразу
-    # _ui_guard_tick()
-
 
     # === Секции (UI API) ===
     sections = [
