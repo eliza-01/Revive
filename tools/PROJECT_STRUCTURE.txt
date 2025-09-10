@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-10 16:52:41
+Generated: 2025-09-10 21:34:01
 
 Revive
 ├── _archive
@@ -29,6 +29,9 @@ Revive
 │   │       └── state_watcher.py
 │   └── __init__.py
 ├── app
+│   ├── api
+│   │   ├── api_router.py
+│   │   └── image_access.py
 │   ├── dep
 │   │   └── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 │   ├── launcher
@@ -58,6 +61,7 @@ Revive
 │   │   │   ├── app.js
 │   │   │   ├── autofarm.ui.js
 │   │   │   ├── buff.ui.js
+│   │   │   ├── extra.buff.profile.js
 │   │   │   ├── hud.js
 │   │   │   ├── macros.ui.js
 │   │   │   ├── pipeline.ui.js

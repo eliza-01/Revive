@@ -1,47 +1,99 @@
 ﻿# core/config/servers.py
 from __future__ import annotations
-from typing import List
+import json
+import os
+from typing import Dict, List, Any
 
-BUFF_METHOD_DASHBOARD = "dashboard"
-BUFF_METHOD_NPC = "npc"
-TP_METHOD_DASHBOARD = "dashboard"
-
-
-class ServerProfile:
-    __slots__ = ("id", "name", "_buff_mode")
-
-    def __init__(self, server_id: str):
-        self.id = server_id
-        self.name = server_id
-        self._buff_mode = BUFF_METHOD_DASHBOARD
-
-    def tp_supported_methods(self) -> List[str]:
-        return [TP_METHOD_DASHBOARD]
-
-    def buff_supported_methods(self) -> List[str]:
-        # return [BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC]
-        return [BUFF_METHOD_DASHBOARD]
-
-    def supports_buffing(self) -> bool:
-        return True
-
-    def set_buff_mode(self, mode: str) -> None:
-        if mode not in self.buff_supported_methods():
-            raise ValueError(f"Unsupported buff mode: {mode}")
-        self._buff_mode = mode
-
-    def get_buff_mode(self) -> str:
-        return self._buff_mode
+# Путь к манифесту рядом с этим файлом
+_MANIFEST_PATH = os.path.join(os.path.dirname(__file__), "servers.manifest.json")
+_manifest_cache: Dict[str, Any] | None = None
 
 
-_REGISTRY: List[str] = ["boh", "l2mad"]
+def _load_manifest() -> Dict[str, Any]:
+    """Читает и кэширует servers.manifest.json без фолбэков."""
+    global _manifest_cache
+    if _manifest_cache is not None:
+        return _manifest_cache
+    with open(_MANIFEST_PATH, "r", encoding="utf-8") as f:
+        _manifest_cache = json.load(f)
+    return _manifest_cache
 
+
+def _current_assembly_blob() -> Dict[str, Any]:
+    m = _load_manifest()
+    cur = m.get("current_assembly")
+    assemblies = m.get("assemblies") or {}
+    if not cur or cur not in assemblies:
+        raise ValueError("Invalid servers.manifest.json: current_assembly not found")
+    return assemblies[cur]
+
+
+def _servers_dict() -> Dict[str, Dict[str, Any]]:
+    asm = _current_assembly_blob()
+    servers = asm.get("servers")
+    if not isinstance(servers, dict):
+        raise ValueError("Invalid servers.manifest.json: 'servers' must be an object")
+    return servers
+
+
+def _server(server_id: str) -> Dict[str, Any]:
+    servers = _servers_dict()
+    if server_id not in servers:
+        raise ValueError(f"Unknown server id: {server_id}")
+    return servers[server_id]
+
+
+# -------------------- Публичный API для приложения --------------------
 
 def list_servers() -> List[str]:
-    return list(_REGISTRY)
+    """Список ID серверов из текущего assembly (порядок — как в манифесте)."""
+    return list(_servers_dict().keys())
 
 
-def get_server_profile(server_id: str) -> ServerProfile:
-    if server_id not in _REGISTRY:
-        raise ValueError(f"Unknown server id: {server_id}")
-    return ServerProfile(server_id)
+def get_languages(server_id: str) -> List[str]:
+    """Доступные языки интерфейса L2 для сервера (system.languages)."""
+    sys = (_server(server_id).get("system") or {})
+    langs = sys.get("languages") or []
+    if not isinstance(langs, list):
+        raise ValueError(f"Invalid languages for server '{server_id}'")
+    return list(langs)
+
+
+def get_section_flags(server_id: str) -> Dict[str, bool]:
+    """
+    Видимость секций по серверу: { section_id: bool }.
+    Берём флаг 'section' из соответствующих разделов в манифесте.
+    """
+    data = _server(server_id)
+    out: Dict[str, bool] = {}
+    for k, v in data.items():
+        if isinstance(v, dict) and "section" in v:
+            out[k] = bool(v["section"])
+    return out
+
+
+def get_buff_methods(server_id: str) -> List[str]:
+    """Список методов бафа (buff.methods)."""
+    buff = (_server(server_id).get("buff") or {})
+    methods = buff.get("methods") or []
+    if not isinstance(methods, list):
+        raise ValueError(f"Invalid buff.methods for server '{server_id}'")
+    return list(methods)
+
+
+def get_buff_modes(server_id: str) -> List[str]:
+    """Список режимов бафа (buff.modes)."""
+    buff = (_server(server_id).get("buff") or {})
+    modes = buff.get("modes") or []
+    if not isinstance(modes, list):
+        raise ValueError(f"Invalid buff.modes for server '{server_id}'")
+    return list(modes)
+
+
+def get_tp_methods(server_id: str) -> List[str]:
+    """Список методов ТП (tp.methods)."""
+    tp = (_server(server_id).get("tp") or {})
+    methods = tp.get("methods") or []
+    if not isinstance(methods, list):
+        raise ValueError(f"Invalid tp.methods for server '{server_id}'")
+    return list(methods)

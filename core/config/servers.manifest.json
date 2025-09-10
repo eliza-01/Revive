@@ -6,41 +6,61 @@
         "boh": {
           "name": "boh",
           "system": {
+            "section": true,
             "languages": ["rus", "eng"]
           },
+          "stream": {
+            "section": true
+          },
           "respawn": {
-            "section": true,
-            "functions": ["auto", "wait_reborn", "to_village"]
+            "section": true
           },
           "buff": {
             "section": true,
-            "methods": ["dashboard", "npc"],
-            "modes": ["profile", "mage", "fighter"],
-            "functions": ["buff_once"]
+            "methods": ["dashboard"],
+            "modes": ["profile", "mage", "fighter"]
           },
           "macros": {
             "section": true
           },
           "tp": {
             "section": true,
-            "methods": ["dashboard", "gatekeeper"],
-            "functions": ["teleport_now"]
+            "methods": ["dashboard"]
           },
           "autofarm": {
             "section": true,
             "methods": ["auto", "manual"]
           }
         },
+
         "l2mad": {
-          "name": "l2mad",
+          "name": "boh",
           "system": {
+            "section": true,
             "languages": ["rus", "eng"]
           },
-          "respawn": { "section": true, "functions": ["auto"] },
-          "buff":    { "section": false },
-          "macros":  { "section": true },
-          "tp":      { "section": false },
-          "autofarm":{ "section": false }
+          "stream": {
+            "section": true
+          },
+          "respawn": {
+            "section": true
+          },
+          "buff": {
+            "section": false,
+            "methods": ["dashboard"],
+            "modes": ["profile", "mage", "fighter"]
+          },
+          "macros": {
+            "section": false
+          },
+          "tp": {
+            "section": false,
+            "methods": ["dashboard"]
+          },
+          "autofarm": {
+            "section": false,
+            "methods": ["auto", "manual"]
+          }
         }
       }
     }

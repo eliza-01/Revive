@@ -6,6 +6,9 @@ import webview
 from .wiring import build_container
 import tempfile, subprocess, ctypes
 import screeninfo
+from app.api.api_router import APIRouter
+
+api = APIRouter()
 
 _SPLASH_PS = r"""param($gif)
 Add-Type -Name U32 -Namespace Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
@@ -160,6 +163,7 @@ def launch_gui(local_version: str):
             height=900,
             resizable=False,
             background_color="#000000",
+            js_api=api
         )
 
         # собрать контейнер и экспортировать методы секций
