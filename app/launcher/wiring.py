@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 import json
 
 from core.arduino.connection import ReviveController
-from core.servers import get_server_profile, list_servers
+from core.config.servers import get_server_profile, list_servers
 
 # секции
 from .sections.system import SystemSection
@@ -23,7 +23,7 @@ from core.orchestrators.pipeline_rule import make_pipeline_rule
 from core.engines.window_focus.orchestrator_rules import make_focus_pause_rule
 
 # пул
-from core.state.pool import ensure_pool, pool_write, pool_get, dump_pool
+from core.state.pool import ensure_pool, pool_write, dump_pool
 
 # новые хелперы
 from app.launcher.infra.ui_bridge import UIBridge
