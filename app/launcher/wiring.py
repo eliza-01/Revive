@@ -107,8 +107,10 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         try:
             if not pool_get(state, "ui_guard.enabled", True):
                 return
+            if not pool_get(state, "window.found", False):
+                # Подождём, пока SystemSection/find_window заполнит window.info
+                return
             res = ui_guard_runner.run_once()
-            # обновляем tracker
             if res.get("found"):
                 pool_write(state, "ui_guard", {"tracker": res.get("key", "")})
                 if res.get("closed"):
