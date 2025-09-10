@@ -1,3 +1,4 @@
+﻿// app/webui/js/app.js
 (function () {
   const $ = (sel) => document.querySelector(sel);
   const create = (tag, attrs = {}, text = "") => {

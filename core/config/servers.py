@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/config/servers.py
+from __future__ import annotations
 import json
 import os
 from typing import Dict, List, Any

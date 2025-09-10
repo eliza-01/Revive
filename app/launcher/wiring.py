@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# app/launcher/wiring.py
+from __future__ import annotations
 from typing import Dict, Any
 import importlib
 
