@@ -6,16 +6,15 @@ import importlib
 
 from core.orchestrators.snapshot import Snapshot
 from core.engines.respawn.runner import RespawnRunner
-from core.engines.macros.runner import run_macros
 
 from core.state.pool import pool_get, pool_merge
 
 
 class PipelineRule:
     """
-    Единый оркестратор-пайплайн.
-    Порядок шагов читается из пула: pipeline.order.
-    Работает независимо от фокуса (пауза/резюм — отдельным правилом).
+    Универсальный оркестратор-пайплайн.
+    Следит за очередью шагов из пула (pipeline.order) и их завершением.
+    Логику шагов (respawn/macros и др.) делегируем в server-специфичные rules.py.
     """
 
     def __init__(self, state: Dict[str, Any], ps_adapter, controller, report: Callable[[str], None]):
@@ -146,22 +145,82 @@ class PipelineRule:
             return True
         return bool(pool_get(self.s, f"features.{feature}.enabled", False))
 
+    def _call_server_rule(self, engine: str, func: str = "run_step"):
+        """
+        Возвращает callable из core.engines.<engine>.server.<server>.rules.<func> или None.
+        """
+        server = (pool_get(self.s, "config.server", "boh") or "boh").lower()
+        mod_name = f"core.engines.{engine}.server.{server}.rules"
+        try:
+            mod = importlib.import_module(mod_name)
+            fn = getattr(mod, func, None)
+            if callable(fn):
+                return fn
+        except Exception:
+            pass
+        return None
+
     def _run_step(self, step: str, snap: Snapshot) -> tuple[bool, bool]:
         step = (step or "").lower().strip()
 
-        # Уважаем тумблер шага
+        # уважаем тумблер шага
         if not self._is_step_enabled(step):
             self._dbg(f"{step}: disabled -> pass")
             return True, True
 
         if step == "respawn":
-            return self._step_respawn(snap)
+            # делегирование: server rules
+            fn = self._call_server_rule("respawn")
+            if callable(fn):
+                try:
+                    ok, adv = fn(
+                        state=self.s,
+                        ps_adapter=self.ps,
+                        controller=self.controller,
+                        report=self.report,
+                        snap=snap,
+                        helpers={
+                            "respawn_runner": self._respawn_runner,
+                            "get_window": lambda: pool_get(self.s, "window.info", None),
+                            "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                        },
+                    )
+                    return bool(ok), bool(adv)
+                except Exception as e:
+                    self._dbg(f"respawn rules error: {e}")
+                    self.report("[RESPAWN] ошибка server rules — пропуск шага")
+                    return True, True
+            # нет правил — не блокируем пайплайн
+            self.report("[RESPAWN] rules.py не найден для сервера — пропуск шага")
+            return True, True
+
+        if step == "macros":
+            fn = self._call_server_rule("macros")
+            if callable(fn):
+                try:
+                    ok, adv = fn(
+                        state=self.s,
+                        ps_adapter=self.ps,
+                        controller=self.controller,
+                        report=self.report,
+                        snap=snap,
+                        helpers={
+                            "get_window": lambda: pool_get(self.s, "window.info", None),
+                            "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                        },
+                    )
+                    return bool(ok), bool(adv)
+                except Exception as e:
+                    self._dbg(f"macros rules error: {e}")
+                    self.report("[MACROS] ошибка server rules — пропуск шага")
+                    return True, True
+            self.report("[MACROS] rules.py не найден для сервера — пропуск шага")
+            return True, True
+
         if step == "buff":
             return self._step_buff(snap)
         if step == "tp":
             return self._step_tp(snap)
-        if step == "macros":
-            return self._step_macros(snap)
         if step == "autofarm":
             return self._step_autofarm(snap)
 
@@ -169,46 +228,7 @@ class PipelineRule:
         self.report(f"[PIPE] неизвестный шаг: {step} — пропуск")
         return True, True
 
-    def _step_respawn(self, snap: Snapshot) -> tuple[bool, bool]:
-        # не начинать без окна
-        if not snap.has_window:
-            self._dbg("respawn: no window")
-            return False, False
-
-        # если уже жив — шаг успешен и идём дальше
-        if snap.alive is True:
-            self._dbg("respawn: already alive")
-            return True, True
-
-        # опциональное ожидание «ждать возрождения» — из пула
-        wait_enabled = bool(pool_get(self.s, "features.respawn.wait_enabled", False))
-        wait_seconds = int(pool_get(self.s, "features.respawn.wait_seconds", 0))
-        if wait_enabled and wait_seconds > 0:
-            start = time.time()
-            deadline = start + wait_seconds
-            tick = -1
-            while time.time() < deadline:
-                st = self.ps.last() or {}
-                if st.get("alive"):
-                    self.report("[RESPAWN] Поднялись (ожидание)")
-                    self._dbg("respawn/wait: alive -> success")
-                    return True, True
-                sec = int(time.time() - start)
-                if sec != tick:
-                    tick = sec
-                    self.report(f"[RESPAWN] ожидание возрождения… {sec}/{wait_seconds}")
-                time.sleep(1.0)
-
-        # активная попытка восстановления
-        self.report("[RESPAWN] Активная попытка восстановления…")
-        try:
-            self._respawn_runner.set_server(pool_get(self.s, "config.server", "boh"))
-        except Exception:
-            pass
-
-        ok = bool(self._respawn_runner.run(timeout_ms=14_000))
-        self._dbg(f"respawn: result ok={ok}")
-        return (ok, ok)
+    # ---------- simple stubs (вынесем позже) ----------
 
     def _step_buff(self, snap: Snapshot) -> tuple[bool, bool]:
         self.report("[BUFF] выполнен (stub)")
@@ -219,38 +239,6 @@ class PipelineRule:
         self.report("[TP] выполнено (stub)")
         self._dbg("tp: stub ok")
         return True, True
-
-    def _step_macros(self, snap: Snapshot) -> tuple[bool, bool]:
-        rows = list(pool_get(self.s, "features.macros.rows", []) or [])
-        if not rows:
-            seq = list(pool_get(self.s, "features.macros.sequence", ["1"]) or ["1"])
-            dur = int(float(pool_get(self.s, "features.macros.duration_s", 0)))
-            rows = [{"key": str(k)[:1], "cast_s": max(0, dur), "repeat_s": 0} for k in seq]
-
-        def _status(text: str, ok: Optional[bool] = None):
-            self.report(f"[MACROS] {text}")
-
-        ok = run_macros(
-            server=pool_get(self.s, "config.server", "boh"),
-            controller=self.controller,
-            get_window=lambda: pool_get(self.s, "window.info", None),
-            get_language=lambda: pool_get(self.s, "config.language", "rus"),
-            on_status=_status,
-            cfg={"rows": rows},
-            should_abort=lambda: False,
-        )
-        self._dbg(f"macros: result ok={ok}")
-
-        # после успешного «ручного» прогона — сдвигаем таймер повтора (если сервис доступен в контейнере)
-        try:
-            if ok:
-                svc = (self.s.get("_services") or {}).get("macros_repeat")
-                if hasattr(svc, "bump_all"):
-                    svc.bump_all()
-        except Exception:
-            pass
-
-        return (bool(ok), bool(ok))
 
     def _step_autofarm(self, snap: Snapshot) -> tuple[bool, bool]:
         self.report("Автофарм запущен (stub)")
