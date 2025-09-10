@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-10 15:38:39
+Generated: 2025-09-10 16:52:41
 
 Revive
 ├── _archive
@@ -288,34 +288,35 @@ Revive
 │   │   ├── teleport
 │   │   │   └── __init__.py
 │   │   ├── ui_guard
-│   │   │   └── server
-│   │   │       ├── boh
-│   │   │       │   ├── templates
-│   │   │       │   │   ├── rus
-│   │   │       │   │   │   └── interface
-│   │   │       │   │   │       ├── buttons
-│   │   │       │   │   │       │   ├── close_dashboard_button.png
-│   │   │       │   │   │       │   └── default_cross_button.png
-│   │   │       │   │   │       ├── pages
-│   │   │       │   │   │       │   ├── actions_page.png
-│   │   │       │   │   │       │   ├── clan_page.png
-│   │   │       │   │   │       │   ├── dashboard_page.png
-│   │   │       │   │   │       │   ├── inventory_page.png
-│   │   │       │   │   │       │   ├── map_page.png
-│   │   │       │   │   │       │   ├── map_page2.png
-│   │   │       │   │   │       │   ├── menu_page.png
-│   │   │       │   │   │       │   ├── quest_page.png
-│   │   │       │   │   │       │   ├── skills_page.png
-│   │   │       │   │   │       │   └── status_page.png
-│   │   │       │   │   │       └── screens
-│   │   │       │   │   │           ├── choose_character_screen.png
-│   │   │       │   │   │           ├── choose_server_screen.png
-│   │   │       │   │   │           ├── loading_screen.png
-│   │   │       │   │   │           └── login_screen.png
-│   │   │       │   │   └── resolver.py
-│   │   │       │   ├── engine.py
-│   │   │       │   └── ui_guard_data.py
-│   │   │       └── runner.py
+│   │   │   ├── server
+│   │   │   │   └── boh
+│   │   │   │       ├── templates
+│   │   │   │       │   ├── rus
+│   │   │   │       │   │   └── interface
+│   │   │   │       │   │       ├── buttons
+│   │   │   │       │   │       │   ├── close_dashboard_button.png
+│   │   │   │       │   │       │   └── default_cross_button.png
+│   │   │   │       │   │       ├── pages
+│   │   │   │       │   │       │   ├── actions_page.png
+│   │   │   │       │   │       │   ├── clan_page.png
+│   │   │   │       │   │       │   ├── dashboard_page.png
+│   │   │   │       │   │       │   ├── inventory_page.png
+│   │   │   │       │   │       │   ├── map_page.png
+│   │   │   │       │   │       │   ├── map_page2.png
+│   │   │   │       │   │       │   ├── menu_page.png
+│   │   │   │       │   │       │   ├── quest_page.png
+│   │   │   │       │   │       │   ├── skills_page.png
+│   │   │   │       │   │       │   └── status_page.png
+│   │   │   │       │   │       └── screens
+│   │   │   │       │   │           ├── choose_character_screen.png
+│   │   │   │       │   │           ├── choose_server_screen.png
+│   │   │   │       │   │           ├── loading_screen.png
+│   │   │   │       │   │           └── login_screen.png
+│   │   │   │       │   └── resolver.py
+│   │   │   │       ├── engine.py
+│   │   │   │       └── ui_guard_data.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
 │   │   ├── window_focus
 │   │   │   ├── server
 │   │   │   │   ├── common

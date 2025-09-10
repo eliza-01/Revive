@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/ui_guard/server/boh/ui_guard_data.py
+from __future__ import annotations
 from typing import Dict, Tuple
 
 ZoneLTRB = Tuple[int, int, int, int]

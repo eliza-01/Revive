@@ -80,48 +80,55 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     services = ServicesBundle(state, window, hud_window, ui, controller)
     ps_adapter = services.ps_adapter
 
-    # --- Включаем ui_guard по умолчанию ---
-    pool_write(state, "ui_guard", {"enabled": True, "tracker": "empty"})
-
-    # --- Инициализируем ui_guard runner + тикер 2 сек ---
-    def _make_ui_guard_engine():
-        srv = (pool_get(state, "config.server", "boh") or "boh").lower()
-        debug = bool(pool_get(state, "runtime.debug.pool_debug", False))
-        mod = importlib.import_module(f"core.engines.ui_guard.server.{srv}.engine")
-        create = getattr(mod, "create_engine", None)
-        Engine = getattr(mod, "UIGuardEngine", None)
-        if callable(create):
-            return create(server=srv, controller=controller, debug=debug)
-        elif Engine is not None:
-            return Engine(server=srv, controller=controller, debug=debug)
-        raise RuntimeError("UIGuard engine not found")
-
-    ui_guard_runner = UIGuardRunner(
-        engine=_make_ui_guard_engine(),
-        get_window=lambda: pool_get(state, "window.info", None),
-        get_language=lambda: pool_get(state, "config.language", "rus"),
-        report=ui.log,  # ← сюда полетят логи
-    )
-
-    def _ui_guard_tick():
-        try:
-            if not pool_get(state, "ui_guard.enabled", True):
-                return
-            if not pool_get(state, "window.found", False):
-                # Подождём, пока SystemSection/find_window заполнит window.info
-                return
-            res = ui_guard_runner.run_once()
-            if res.get("found"):
-                pool_write(state, "ui_guard", {"tracker": res.get("key", "")})
-                if res.get("closed"):
-                    pool_write(state, "ui_guard", {"tracker": "empty"})
-        except Exception as e:
-            ui.log(f"[UI_GUARD] error: {e}")
-        finally:
-            ui.schedule(_ui_guard_tick, 2000)  # следующий тик
-
-    # стартуем первый тик сразу
-    _ui_guard_tick()
+    # # --- Включаем ui_guard по умолчанию ---
+    # pool_write(state, "ui_guard", {"enabled": True, "tracker": "empty"})
+    # # --- Инициализируем ui_guard runner + тикер 2 сек ---
+    # def _make_ui_guard_engine():
+    #     srv = (pool_get(state, "config.server", "boh") or "boh").lower()
+    #     debug = bool(pool_get(state, "runtime.debug.pool_debug", False))
+    #     mod = importlib.import_module(f"core.engines.ui_guard.server.{srv}.engine")
+    #     create = getattr(mod, "create_engine", None)
+    #     Engine = getattr(mod, "UIGuardEngine", None)
+    #     if callable(create):
+    #         return create(server=srv, controller=controller, debug=debug, on_report=ui.log)
+    #     elif Engine is not None:
+    #         return Engine(server=srv, controller=controller, debug=debug, on_report=ui.log)
+    #     raise RuntimeError("UIGuard engine not found")
+    #
+    # ui_guard_runner = UIGuardRunner(
+    #     engine=_make_ui_guard_engine(),
+    #     get_window=lambda: pool_get(state, "window.info", None),
+    #     get_language=lambda: pool_get(state, "config.language", "rus"),
+    #     report=ui.log,
+    #     is_focused=lambda: bool(pool_get(state, "focus.has_focus", False)),  # ← важно
+    # )
+    #
+    # def _ui_guard_tick():
+    #     try:
+    #         if not pool_get(state, "ui_guard.enabled", True):
+    #             return
+    #         if not pool_get(state, "window.found", False):
+    #             # ждём, пока SystemSection/find_window заполнит window.info
+    #             return
+    #
+    #         res = ui_guard_runner.run_once()
+    #
+    #         # Обновляем трекер в пуле: нашли — пишем ключ, закрыли все — empty.
+    #         if res.get("found"):
+    #             key = str(res.get("key") or "")
+    #             if key and key != "empty":
+    #                 pool_write(state, "ui_guard", {"tracker": key})
+    #             if res.get("closed"):
+    #                 pool_write(state, "ui_guard", {"tracker": "empty"})
+    #
+    #     except Exception as e:
+    #         ui.log(f"[UI_GUARD] error: {e}")
+    #     finally:
+    #         # Следующий запуск через ~2 сек от завершения текущего
+    #         ui.schedule(_ui_guard_tick, 2000)
+    # #
+    # # стартуем первый тик сразу
+    # _ui_guard_tick()
 
 
     # === Секции (UI API) ===
