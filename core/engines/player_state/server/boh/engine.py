@@ -1,4 +1,3 @@
-# core/engines/player_state/server/boh/engine.py
 from __future__ import annotations
 import time
 from typing import Dict, Any, Optional, Callable, Tuple, List
@@ -16,9 +15,11 @@ DEFAULT_HP_COLOR_TOL: int = 5
 # Длина «полной» полосы (в пикселях) — соответствует 100% HP
 DEFAULT_HP_FULL_PX: int = 74
 # Геометрия зоны поиска: ширина x высота.
-# Центр НИЖНЕЙ границы зоны совпадает с центром экрана (клиентской области окна).
+# БЫЛО: нижняя граница зоны совпадала с центром экрана.
+# СТАЛО: нижняя граница смещена ВНИЗ на extra_down пикселей от центра экрана.
 DEFAULT_ZONE_W: int = 120
 DEFAULT_ZONE_H: int = 250
+DEFAULT_ZONE_EXTRA_DOWN: int = 100  # ← добавлено: расширяем вниз от центра
 # Период опроса по умолчанию (сек)
 DEFAULT_POLL_INTERVAL: float = 0.25
 
@@ -41,23 +42,37 @@ def _emit(status_cb: Optional[Callable[[str, Optional[bool]], None]], msg: str, 
         print(f"[player_state/boh] {msg}")
 
 
-def _compute_center_bottom_zone_ltrb(win: Dict, w: int, h: int) -> Tuple[int, int, int, int]:
+def _compute_center_bottom_zone_ltrb(
+    win: Dict, w: int, h: int, extra_down: int = DEFAULT_ZONE_EXTRA_DOWN
+) -> Tuple[int, int, int, int]:
     """
-    Возвращает (l, t, r, b) в клиентских координатах окна:
-    центр нижней границы зоны совпадает с центром окна.
+    Возвращает (l, t, r, b) в клиентских координатах окна.
+
+    Геометрия «РАСШИРИТЬ вниз»:
+      - по X остаёмся по центру;
+      - верх зоны как раньше (centerY - h);
+      - нижнюю границу опускаем на extra_down (centerY + extra_down), не выходя за низ окна;
+      - в итоге фактическая высота = h + extra_down (с учётом клипа по нижней границе).
     """
     ww, wh = int(win.get("width", 0)), int(win.get("height", 0))
-    cx, cy = ww // 2, wh // 2  # центр клиентской области
-    l = int(cx - w // 2)
-    r = int(l + w)
-    b = int(cy)
-    t = int(b - h)
+    cx, cy = ww // 2, wh // 2
 
-    # клайп в границах клиента
-    l = max(0, min(l, ww))
-    t = max(0, min(t, wh))
-    r = max(0, min(r, ww))
-    b = max(0, min(b, wh))
+    # По X центрируем и аккуратно клипуем
+    l = max(0, min(cx - w // 2, ww - w))
+    r = min(ww, l + w)
+
+    # Верх — как было раньше (нижняя граница на centerY)
+    t0 = cy - h
+    # Низ — расширяем вниз от центра
+    b = min(wh, cy + int(extra_down))
+
+    # Клип верха в допустимые координаты
+    t = max(0, min(t0, wh))
+
+    # Гарантия непустой зоны
+    if t >= b:
+        t = max(0, b - 1)
+
     return (l, t, r, b)
 
 
@@ -110,16 +125,20 @@ def _estimate_hp_ratio_from_colorbar(
     zone_h: int,
     full_px: int,
     prev_ratio: float,
+    *,
+    zone_extra_down: int = DEFAULT_ZONE_EXTRA_DOWN,
 ) -> float:
     """
-    1) Захватываем динамическую зону (центр нижней границы — центр экрана).
+    1) Захватываем динамическую зону:
+       - центр по X — центр экрана,
+       - нижняя граница на (центр_экрана_Y + zone_extra_down).
     2) Строим маску по целевому цвету с допуском, слегка склеиваем горизонтально.
     3) Берём максимальный горизонтальный пробег единиц и нормируем к full_px.
     """
     if not win or zone_w <= 0 or zone_h <= 0 or full_px <= 0:
         return prev_ratio
 
-    ltrb = _compute_center_bottom_zone_ltrb(win, zone_w, zone_h)
+    ltrb = _compute_center_bottom_zone_ltrb(win, zone_w, zone_h, zone_extra_down)
     img = capture_window_region_bgr(win, ltrb)
     if img is None or img.size == 0:
         return prev_ratio
@@ -149,16 +168,16 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     color_tol: int = int(cfg.get("hp_color_tol", DEFAULT_HP_COLOR_TOL))
     zone_w: int = int(cfg.get("hp_zone_w", DEFAULT_ZONE_W))
     zone_h: int = int(cfg.get("hp_zone_h", DEFAULT_ZONE_H))
+    zone_extra_down: int = int(cfg.get("hp_zone_extra_down", DEFAULT_ZONE_EXTRA_DOWN))  # ← новое
     full_px: int = int(cfg.get("hp_full_px", DEFAULT_HP_FULL_PX))
     poll_interval: float = float(cfg.get("poll_interval", DEFAULT_POLL_INTERVAL))
 
     prev_ratio = 1.0
-    _emit(on_status, f"[boh] player_state старт (poll={poll_interval}s)", None)
+    _emit(on_status, f"[boh] player_state старт (poll={poll_interval}s, extra_down={zone_extra_down})", None)
 
     try:
         while True:
             if should_abort():
-                # без лишних логов
                 return True
 
             try:
@@ -179,6 +198,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                     zone_h=zone_h,
                     full_px=full_px,
                     prev_ratio=prev_ratio,
+                    zone_extra_down=zone_extra_down,
                 )
                 prev_ratio = hp_ratio
             except Exception:
