@@ -99,7 +99,7 @@ class ServicesBundle:
             elif self.hud_window and prev_focus is not True:
                 last = pool_get(self.state, "player", {}) or {}
                 hp = last.get("hp_ratio"); cp = last.get("cp_ratio")
-                h = "" if hp is None else str(int(max(0, min(1.0, float(h))) * 100))
+                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                 c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
                 try:
                     self.hud_window.evaluate_js(

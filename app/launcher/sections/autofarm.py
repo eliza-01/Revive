@@ -46,25 +46,18 @@ class AutofarmSection(BaseSection):
 
     # ---------- ЗОНЫ (как было) ----------
 
-    def af_list_zones_declared_only(self, lang: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Возвращает список зон, объявленных для текущего сервера (server/<server>/zones.json),
-        с fallback внутри zone_repo (server/common/...).
-        """
-        language = (lang or pool_get(self.s, "app.language", "eng"))
-        server = pool_get(self.s, "app.server", "common")
+    def af_list_zones_declared_only(self, lang: Optional[str] = None) -> list[dict]:
+        language = (lang or pool_get(self.s, "config.language", "eng"))
+        server = pool_get(self.s, "config.server", "boh")
         try:
             return _af_list_zones_declared(server, language)
         except Exception as e:
             print(f"[autofarm] af_list_zones_declared_only error: {e}")
             return []
 
-    def af_zone_info(self, zone_id: str, lang: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Возвращаем как раньше: monsters = FULL-имена (для чекбоксов в UI).
-        """
-        language = (lang or pool_get(self.s, "app.language", "eng"))
-        server = pool_get(self.s, "app.server", "common")
+    def af_zone_info(self, zone_id: str, lang: Optional[str] = None) -> dict:
+        language = (lang or pool_get(self.s, "config.language", "eng"))
+        server = pool_get(self.s, "config.server", "boh")
         try:
             return _af_get_zone_info(server, zone_id, language)
         except Exception as e:
@@ -74,7 +67,7 @@ class AutofarmSection(BaseSection):
     # ---------- ПРОФЫ / СКИЛЛЫ (как было) ----------
 
     def af_get_professions(self, lang: Optional[str] = None):
-        language = (lang or pool_get(self.s, "app.language", "eng"))
+        language = (lang or pool_get(self.s, "config.language", "eng"))
         try:
             return _af_list_profs(language)
         except Exception as e:
@@ -82,8 +75,8 @@ class AutofarmSection(BaseSection):
             return []
 
     def af_get_attack_skills(self, profession: str, lang: Optional[str] = None):
-        language = (lang or pool_get(self.s, "app.language", "eng"))
-        server = pool_get(self.s, "app.server", "common")
+        language = (lang or pool_get(self.s, "config.language", "eng"))
+        server = pool_get(self.s, "config.server", "common")
         try:
             return _af_list_skills(profession, ["attack"], language, server)
         except Exception as e:
@@ -141,10 +134,10 @@ class AutofarmSection(BaseSection):
                 ok = False
                 try:
                     ok = run_autofarm(
-                        server=pool_get(self.s, "app.server", "boh"),
+                        server=pool_get(self.s, "config.server", "boh"),
                         controller=self.controller,
                         get_window=lambda: pool_get(self.s, "window.info", None),
-                        get_language=lambda: pool_get(self.s, "app.language", "rus"),
+                        get_language=lambda: pool_get(self.s, "config.language", "rus"),
                         on_status=lambda msg, ok=None: self._emit_af(msg, ok),
                         cfg=self._build_cfg(),
                         should_abort=lambda: (not self._enabled()),

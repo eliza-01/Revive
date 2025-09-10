@@ -1,6 +1,6 @@
 ﻿# core/engines/autofarm/zone_repo.py
 from __future__ import annotations
-import os, json
+import os, json, base64, mimetypes
 from typing import Dict, Any, List
 from pathlib import Path
 
@@ -50,6 +50,14 @@ def _pick_full_names(z: dict, lang: str) -> List[str]:
             return [str(x) for x in arr if x]
     return []
 
+def _as_data_uri(p: Path) -> str | None:
+    try:
+        mime = mimetypes.guess_type(str(p))[0] or "image/png"
+        b = p.read_bytes()
+        return f"data:{mime};base64," + base64.b64encode(b).decode("ascii")
+    except Exception:
+        return None
+
 def _zone_gallery(server: str, zone_id: str, z: dict) -> List[Dict[str, str]]:
     """
     Картинки (если объявлены) ищем в:
@@ -57,17 +65,25 @@ def _zone_gallery(server: str, zone_id: str, z: dict) -> List[Dict[str, str]]:
     Отдаём file:// URI, как раньше.
     """
     base = Path("core") / "engines" / "autofarm" / "server" / server / "zones" / zone_id
+    base_gallery = base / "gallery"
+
     out: List[Dict[str, str]] = []
     gallery = z.get("gallery") or []
     if not isinstance(gallery, list):
         return out
+
     for name in gallery:
-        p = base / str(name)
-        try:
-            if p.exists():
-                out.append({"name": str(name), "src": p.resolve().as_uri()})
-        except Exception:
-            pass
+        rel = Path(str(name))
+        # пробуем и в корне зоны, и в подкаталоге gallery
+        for p in (base / rel, base_gallery / rel):
+            try:
+                if p.exists():
+                    src = _as_data_uri(p)
+                    if src:
+                        out.append({"name": str(name), "src": src})
+                        break
+            except Exception:
+                continue
     return out
 
 def list_zones_declared(server: str, lang: str = "eng") -> List[Dict[str, Any]]:

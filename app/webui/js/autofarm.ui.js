@@ -3,11 +3,14 @@
   // === API helpers (мягкие фолбэки, без throw) ===
   const api = () => (window.pywebview && window.pywebview.api) ? window.pywebview.api : {};
 
+  // Единая точка истины для языка L2 из селекта #l2Lang
+  const getL2Lang = () => (document.getElementById("l2Lang")?.value) || "eng";
+
   async function fetchProfessions() {
     try {
       const a = api();
       if (typeof a.af_get_professions === "function") {
-        const lang = (document.getElementById("lang")?.value) || "eng";
+        const lang = getL2Lang();
         const list = await a.af_get_professions(lang);
         return Array.isArray(list) ? list : [];
       }
@@ -18,7 +21,7 @@
   async function fetchAttackSkills(prof) {
     try {
       const a = api();
-      const lang = (document.getElementById("lang")?.value) || "eng";
+      const lang = getL2Lang();
       if (typeof a.af_get_attack_skills === "function") {
         return await a.af_get_attack_skills(prof, lang);
       }
@@ -29,7 +32,7 @@
   async function fetchZones() {
     try {
       const a = api();
-      const lang = (document.getElementById("lang")?.value) || "eng";
+      const lang = getL2Lang();
       if (typeof a.af_list_zones_declared_only === "function") {
         const list = await a.af_list_zones_declared_only(lang);
         return Array.isArray(list) ? list : [];
@@ -153,7 +156,7 @@
     const zoneId = ($("afZone") && $("afZone").value) || "";
     if (!zoneId) return;
 
-    const lang = (document.getElementById("lang")?.value) || "eng";
+    const lang = getL2Lang();
 
     let info = null;
     try {
@@ -226,7 +229,7 @@
   async function openZoneInfo() {
     const zoneId = ($("afZone")?.value) || "";
     if (!zoneId) return;
-    const lang = (document.getElementById("lang")?.value) || "eng";
+    const lang = getL2Lang();
 
     let info = { id: zoneId, title: zoneId, about: "", images: [] };
     try {
