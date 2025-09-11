@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/window_focus/rules.py
+from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 import time
 
@@ -108,10 +109,15 @@ class _FocusPauseRule:
         if (not paused) and (snap.is_focused is False):
             # ВКЛЮЧИТЬ ПАУЗУ
             saved = self._save_feature_flags()
-            saved_busy = self._save_feature_busy()  # ← снимаем busy «как есть» на момент паузы
+
+            # ← если успели сохранить снимок busy на событии OFF — используем его, иначе снимаем сейчас
+            prev_saved_busy = pool_get(self.s, "runtime.focus_pause.saved_busy", None)
+            saved_busy = dict(prev_saved_busy) if prev_saved_busy else self._save_feature_busy()
 
             # стоп HP-сенсор
             try:
+                services = self.s.get("_services") or {}
+                ps_service = services.get("player_state")
                 if ps_service and ps_service.is_running():
                     ps_service.stop()
                     pool_write(self.s, "services.player_state", {"running": False})

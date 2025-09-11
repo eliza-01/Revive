@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# app/launcher/infra/services.py
+from __future__ import annotations
 from typing import Any, Dict, Optional
 import json
 
@@ -84,6 +85,18 @@ class ServicesBundle:
                 is_focused = False
 
             pool_write(self.state, "focus", {"is_focused": is_focused})
+
+            # ← ДО любых побочных эффектов: на фронте перехода ON->OFF делаем мгновенный снимок busy
+            if (is_focused is False) and (prev_focus is not False):
+                saved_busy = {
+                    "respawn": bool(pool_get(self.state, "features.respawn.busy", False)),
+                    "buff": bool(pool_get(self.state, "features.buff.busy", False)),
+                    "macros": bool(pool_get(self.state, "features.macros.busy", False)),
+                    "tp": bool(pool_get(self.state, "features.tp.busy", False)),
+                    "autofarm": bool(pool_get(self.state, "features.autofarm.busy", False)),
+                }
+                # сохраняем снимок, чтобы правило паузы не «перезаписало» его уже обнулёнными флагами
+                pool_write(self.state, "runtime.focus_pause", {"saved_busy": dict(saved_busy)})
 
             # OFF → сброс vitals
             if is_focused is False:

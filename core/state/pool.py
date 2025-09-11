@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/state/pool.py
+from __future__ import annotations
 from typing import Any, Dict, Iterable
 import time
 

@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/macros/service.py
+from __future__ import annotations
 from typing import Callable, Optional, Dict, Any, List
 import threading, time
 
