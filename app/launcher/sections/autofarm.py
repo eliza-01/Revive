@@ -1,8 +1,6 @@
 ﻿# app/launcher/sections/autofarm.py
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
-import threading
-import time
 
 from ..base import BaseSection
 
@@ -27,10 +25,6 @@ class AutofarmSection(BaseSection):
         self.controller = controller
         self.watcher = watcher
         self.schedule = schedule
-
-        # внутреннее состояние/поток
-        self._thread: Optional[threading.Thread] = None
-        self._run_lock = threading.Lock()
 
         # мягкие дефолты в пул (если кто-то не заинициалил ранее)
         if pool_get(self.s, "features.autofarm.mode", None) is None:
@@ -115,59 +109,13 @@ class AutofarmSection(BaseSection):
             "profession": pool_get(self.s, "features.autofarm.profession", "") or "",
         }
 
-    def _emit_af(self, text: str, ok: Optional[bool] = None):
-        # Скоуп "autofarm" (можно добавить в UI-мэппинг при желании)
-        self.emit("autofarm", text, ok)
-
-    def _enabled(self) -> bool:
-        return bool(pool_get(self.s, "features.autofarm.enabled", False))
-
-    def _runner_loop(self):
-        """Фоновая нить: пока включено — запускаем движок, если он завершился, даём паузу и можем перезапускать."""
-        self._emit_af("Автофарм запущен", True)
-        try:
-            while self._enabled():
-                ok = False
-                try:
-                    ok = run_autofarm(
-                        server=pool_get(self.s, "config.server", "boh"),
-                        controller=self.controller,
-                        get_window=lambda: pool_get(self.s, "window.info", None),
-                        get_language=lambda: pool_get(self.s, "config.language", "rus"),
-                        on_status=lambda msg, ok=None: ui.log(msg),
-                        cfg=self._build_cfg(),
-                        should_abort=lambda: (not self._enabled()),
-                    )
-                except Exception as e:
-                    self._emit_af(f"[AF] ошибка запуска/работы: {e}", False)
-                    ok = False
-
-                if not self._enabled():
-                    break
-
-                # движок вернулся сам (ок/не ок). Дадим короткую паузу и пойдём на новый круг
-                if ok:
-                    self._emit_af("АФ цикл завершён, поиск новой цели…", True)
-                else:
-                    self._emit_af("АФ перезапуск…", None)
-                time.sleep(0.4)
-        finally:
-            self._emit_af("Автофарм остановлен", None)
-
     def autofarm_set_enabled(self, enabled: bool):
-        enabled = bool(enabled)
-        pool_write(self.s, "features.autofarm", {"enabled": enabled})
-        if enabled:
-            with self._run_lock:
-                if self._thread and self._thread.is_alive():
-                    # уже бежит
-                    return {"ok": True}
-                self._thread = threading.Thread(target=self._runner_loop, daemon=True)
-                self._thread.start()
-            return {"ok": True}
-        else:
-            # мягкая остановка: should_abort вернёт True, поток сам завершится
-            return {"ok": True}
+        """
+        Только выставляем флаг в пуле — фоновой работой занимается AutoFarmService.
+        """
+        pool_write(self.s, "features.autofarm", {"enabled": bool(enabled)})
+
+        return {"ok": True}
 
     # ---------- Экспорт в webview.expose ----------
 

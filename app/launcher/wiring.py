@@ -91,7 +91,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
     pool_write(state, "pipeline", {
         "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
-        "order": ["respawn", "macros"],
+        "order": ["respawn", "macros", "autofarm"],
         "active": False, "idx": 0, "last_step": ""
     })
 
