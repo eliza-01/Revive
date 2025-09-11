@@ -144,8 +144,21 @@ class ServicesBundle:
             get_cfg     = lambda: pool_get(self.state, "features.autofarm", {}),  # ← ВЕСЬ узел, не только .config
             is_enabled  = lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
             is_alive    = lambda: bool(pool_get(self.state, "player.alive", False)),
-            on_status   = self.ui.log_ok,   # принимает (text, ok)
+            on_status   = self.ui.log,      # обычный лог без макросного префикса
         )
+
+        # Делаем сервисы доступными для правил пайплайна (run_step читает state.get("_services"))
+        try:
+            self.state.setdefault("_services", {})
+            self.state["_services"].update({
+                "autofarm": self.autofarm_service,
+                # при желании можно добавить и прочие:
+                "macros_repeat": self.macros_repeat_service,
+                # "player_state": self.ps_service,
+                # "window_focus": self.wf_service,
+            })
+        except Exception:
+            pass
 
     # --- lifecycle ---
     def start(self):

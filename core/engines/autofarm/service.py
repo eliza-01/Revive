@@ -100,7 +100,8 @@ class AutoFarmService:
             get_language=self._get_language,
             on_status=self._on_status,
             cfg=cfg,
-            should_abort=lambda: (not self._is_enabled()) or self._cancel,
+            # стопаем цикл немедленно, если сервис выключен, игрок мёртв или пришёл cancel
+            should_abort=lambda: (not self._is_enabled()) or (not self._is_alive()) or self._cancel,
         )
         self._on_status("Автофарм цикл завершён", ok)
 
