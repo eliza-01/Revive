@@ -129,7 +129,8 @@ class ServicesBundle:
             get_language=lambda: pool_get(self.state, "config.language", "rus"),
             get_rows=lambda: list(pool_get(self.state, "features.macros.rows", []) or []),
             is_enabled=lambda: bool(pool_get(self.state, "features.macros.repeat_enabled", False)),
-            is_alive=lambda: bool(pool_get(self.state, "player.alive", False)),
+            is_alive=lambda: pool_get(self.state, "player.alive", None),
+            is_focused=lambda: bool(pool_get(self.state, "focus.has_focus", False)),
             on_status=self.ui.log_ok,
         )
 
@@ -137,14 +138,15 @@ class ServicesBundle:
 
         # --- AutoFarm service ---
         self.autofarm_service = AutoFarmService(
-            server      = lambda: pool_get(self.state, "config.server", "boh"),
-            controller  = self.controller,
-            get_window  = lambda: pool_get(self.state, "window.info", None),
-            get_language= lambda: pool_get(self.state, "config.language", "rus"),
-            get_cfg     = lambda: pool_get(self.state, "features.autofarm", {}),  # ← ВЕСЬ узел, не только .config
-            is_enabled  = lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
-            is_alive    = lambda: bool(pool_get(self.state, "player.alive", False)),
-            on_status   = self.ui.log,      # обычный лог без макросного префикса
+            server=lambda: pool_get(self.state, "config.server", "boh"),
+            controller=self.controller,
+            get_window=lambda: pool_get(self.state, "window.info", None),
+            get_language=lambda: pool_get(self.state, "config.language", "rus"),
+            get_cfg=lambda: pool_get(self.state, "features.autofarm", {}),  # ВЕСЬ узел, не только .config
+            is_enabled=lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
+            is_alive=lambda: pool_get(self.state, "player.alive", None),
+            has_focus=lambda: bool(pool_get(self.state, "focus.has_focus", False)),
+            on_status=self.ui.log,  # обычный лог (без префикса «Повтор макроса»)
         )
 
         # Делаем сервисы доступными для правил пайплайна (run_step читает state.get("_services"))
