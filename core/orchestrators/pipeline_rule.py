@@ -58,6 +58,15 @@ class PipelineRule:
             self._dbg("skip: already running")
             return False
 
+        # --- ГЕЙТ ПО ФОКУСУ ---
+        # Не запускать и не продвигать пайплайн, пока окно не во фокусе.
+        # Блокируем ТОЛЬКО при явном False (None трактуем как «не знаем»).
+
+        if snap.is_focused is False:
+            self._dbg("skip: no focus — waiting focus=True to progress pipeline")
+            print(f"skip pipeline: no focus")
+            return False
+
         order = self._order()
         if not order:
             self._dbg("skip: empty order")

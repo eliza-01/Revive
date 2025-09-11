@@ -62,7 +62,7 @@ class UIGuardEngine:
         """
         Жмём ВСЕ кресты этой страницы, пока они находятся. Затем подтверждаем исчезновение этой же страницы.
         """
-        btn_name = CLOSE_BUTTONS["dashboard"] if page_key == "dashboard_page" else CLOSE_BUTTONS["default"]
+        btn_name = CLOSE_BUTTONS["dashboard_close_button"] if page_key == "dashboard_page" else CLOSE_BUTTONS["default_close_button"]
         ltrb = compute_zone_ltrb(window, ZONES.get("fullscreen"))
 
         # 1) жмём все найденные крестики, и делаем это до «чистого» экрана от крестов

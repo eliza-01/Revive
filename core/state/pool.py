@@ -32,7 +32,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "respawn": {
             "enabled": False, "wait_enabled": False, "wait_seconds": 120,
             "click_threshold": 0.70, "confirm_timeout_s": 6.0,
-            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+            "status": "idle", "busy": False, "waiting": False, "last_respawn": { "type": "" }, "ts": 0.0,
         },
         "buff": {
             "enabled": False, "mode": "", "methods": [],
