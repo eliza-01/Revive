@@ -30,9 +30,13 @@ class UIBridge:
             print(f"[HUD] eval error: {e}")
 
     # лог + HUD
-    def log(self, msg: str):
+    def log(self, msg: str, ok: Optional[bool] = None):
         try:
-            print(msg)
+            # хотите — отмечайте итог в консоли
+            if ok is None:
+                print(msg)
+            else:
+                print(f"{msg} [{'OK' if ok else 'FAIL'}]")
         finally:
             self.hud_push(msg)
 

@@ -220,7 +220,7 @@
 
         <label class="ml">Режим:</label>
         <select id="afMode" class="sm">
-          <option value="after_tp">После ТП</option>
+          <option value="auto">Авто</option>
           <option value="manual">Ручной запуск</option>
         </select>
 
@@ -236,11 +236,53 @@
             <button id="afClose" class="icon-btn">✕</button>
           </div>
           <div class="modal__body">
-            <!-- ... -->
+            <div class="group">
+              <h4>Профессия и скиллы</h4>
+              <div class="row compact wrap">
+                <label class="mr">Профессия:</label>
+                <select id="afProf" class="md" disabled>
+                  <option>Загрузка…</option>
+                </select>
+              </div>
+
+              <div class="row compact">
+                <div id="afSkillRows" class="w-100"></div>
+              </div>
+
+              <div class="row compact">
+                <button id="afAddSkill" class="icon-btn primary">＋</button>
+                <button id="afDelSkill" class="icon-btn ml">－</button>
+              </div>
+            </div>
+
+            <div class="group">
+              <h4>Локация и цели</h4>
+              <div class="row compact wrap">
+                <label class="mr">Зона:</label>
+                <select id="afZone" class="md" disabled>
+                  <option>Загрузка…</option>
+                </select>
+                <button id="btnAFZoneInfo" class="ml">ℹ️ О зоне</button>
+              </div>
+
+              <div class="row compact">
+                <div id="afMonsters" class="monsters-list w-100"></div>
+              </div>
+            </div>
           </div>
           <div class="modal__ftr">
             <button id="afSave" class="primary">Сохранить</button>
           </div>
+        </div>
+      </div>
+      <!-- «Инфо по зоне» -->
+      <div id="afZoneInfoModal" class="modal hidden">
+        <div class="modal__box">
+          <div class="modal__hdr">
+            <div id="afZoneInfoTitle">Зона</div>
+            <button id="afZoneInfoClose" class="icon-btn">✕</button>
+          </div>
+          <div id="afZoneInfoBody" class="modal__body"></div>
         </div>
       </div>
     </section>

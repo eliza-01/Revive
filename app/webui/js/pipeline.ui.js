@@ -94,19 +94,32 @@
     $("#pipelineDlg")?.remove();
   }
 
-  // кнопка в блоке «Респавн»
-  function wireButton(){
-    const host = document.querySelector("#respawnBlock .actions") || document.querySelector("#respawnBlock");
-    if (!host) return;
+  // в блоке «Респавн»
+  // кнопка «Установить порядок действий» (работает и с уже существующей кнопкой в HTML)
+  function wireButton() {
+    // 1) Если кнопка уже размечена в HTML — просто навесим обработчик (без дублей)
     let btn = document.getElementById("btnPipeline");
-    if (!btn){
-      btn = document.createElement("button");
-      btn.id = "btnPipeline";
-      btn.className = "btn";
-      btn.textContent = "Установить порядок действий";
-      host.appendChild(btn);
-      btn.addEventListener("click", openDialog);
+    if (btn) {
+      if (!btn.dataset.bound) {
+        btn.addEventListener("click", openDialog);
+        btn.dataset.bound = "1";
+      }
+      return;
     }
+
+    // 2) Иначе — создаём кнопку и вставляем в реальный контейнер секции «Респавн»
+    const host =
+      document.querySelector("#sec-respawn .row.compact.mt") ||
+      document.getElementById("sec-respawn");
+    if (!host) return;
+
+    btn = document.createElement("button");
+    btn.id = "btnPipeline";
+    btn.className = "btn";
+    btn.textContent = "Установить порядок действий";
+    btn.addEventListener("click", openDialog);
+    btn.dataset.bound = "1";
+    host.appendChild(btn);
   }
 
   window.UIPipeline = { init(){ wireButton(); } };

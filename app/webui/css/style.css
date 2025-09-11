@@ -215,11 +215,46 @@ select.sm.with-icon{
 .combo-item img { width:18px; height:18px; object-fit:contain; }
 .hidden { display:none !important; }
 
-.monsters {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+/* Autofart options */
+#afMonsters,
+.monsters-list {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: stretch;
 }
+
+/* Карточка монстра остаётся флекс-контейнером; не растягиваем на всю ширину */
+.monster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #2a2e36;
+  border-radius: 8px;
+  flex: 0 1 auto; /* ключевая строка, чтобы элементы шли в ряд и переносились */
+}
+
+/* Фокус для чекбоксов — уже по реальному контейнеру */
+#afMonsters input[type="checkbox"]:focus,
+#afMonsters input[type="checkbox"]:focus-visible,
+#afMonsters input[type="checkbox"]:active,
+.monsters-list input[type="checkbox"]:focus,
+.monsters-list input[type="checkbox"]:focus-visible,
+.monsters-list input[type="checkbox"]:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Контейнер карточки при фокусе — без подсветки рамки */
+.monster:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #2a2e36 !important;
+}
+
+/* (опционально) картинка внутри карточки */
+.monster img { width: 20px; height: 20px; object-fit: contain; }
 .monster {
   display: flex;
   align-items: center;
@@ -229,13 +264,6 @@ select.sm.with-icon{
   border-radius: 8px;
 }
 .monster img { width: 20px; height: 20px; object-fit: contain; }
-/* Autofarm → чекбоксы монстров: без обводки при фокусе/клике */
-.monsters input[type="checkbox"]:focus,
-.monsters input[type="checkbox"]:focus-visible,
-.monsters input[type="checkbox"]:active {
-  outline: none !important;
-  box-shadow: none !important;
-}
 
 /* контейнер карточки монстра тоже не подсвечивать */
 .monster:focus-within {
@@ -258,4 +286,4 @@ select.sm.with-icon{
 .pipe-item.over{outline:2px dashed #5a86ff}
 .btn{padding:6px 10px;border-radius:6px;border:1px solid #3a3f49;background:#2b2f36;color:#fff;cursor:pointer}
 .btn.primary{background:#5a86ff;border-color:#5a86ff}
-.hint{opacity:.75;font-size:12px;margin:0 0 8px}
+.hint{opacity:.75;font-size:12px;margin:0 0 0px}

@@ -7,6 +7,7 @@ from core.state.pool import pool_get, pool_write
 from core.engines.player_state.service import PlayerStateService
 from core.engines.window_focus.service import WindowFocusService
 from core.engines.macros.service import MacrosRepeatService
+from core.engines.autofarm.service import AutoFarmService
 
 
 class PSAdapter:
@@ -99,7 +100,7 @@ class ServicesBundle:
             elif self.hud_window and prev_focus is not True:
                 last = pool_get(self.state, "player", {}) or {}
                 hp = last.get("hp_ratio"); cp = last.get("cp_ratio")
-                h = "" if hp is None else str(int(max(0, min(1.0, float(h))) * 100))
+                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                 c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
                 try:
                     self.hud_window.evaluate_js(
@@ -134,6 +135,31 @@ class ServicesBundle:
 
         self.ps_adapter = PSAdapter(self.state)
 
+        # --- AutoFarm service ---
+        self.autofarm_service = AutoFarmService(
+            server      = lambda: pool_get(self.state, "config.server", "boh"),
+            controller  = self.controller,
+            get_window  = lambda: pool_get(self.state, "window.info", None),
+            get_language= lambda: pool_get(self.state, "config.language", "rus"),
+            get_cfg     = lambda: pool_get(self.state, "features.autofarm", {}),  # ← ВЕСЬ узел, не только .config
+            is_enabled  = lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
+            is_alive    = lambda: bool(pool_get(self.state, "player.alive", False)),
+            on_status   = self.ui.log,      # обычный лог без макросного префикса
+        )
+
+        # Делаем сервисы доступными для правил пайплайна (run_step читает state.get("_services"))
+        try:
+            self.state.setdefault("_services", {})
+            self.state["_services"].update({
+                "autofarm": self.autofarm_service,
+                # при желании можно добавить и прочие:
+                "macros_repeat": self.macros_repeat_service,
+                # "player_state": self.ps_service,
+                # "window_focus": self.wf_service,
+            })
+        except Exception:
+            pass
+
     # --- lifecycle ---
     def start(self):
         self.wf_service.start(poll_interval=1.0)
@@ -144,6 +170,9 @@ class ServicesBundle:
 
         self.macros_repeat_service.start(poll_interval=1.0)
         pool_write(self.state, "services.macros_repeat", {"running": True})
+
+        self.autofarm_service.start(poll_interval=1.0)
+        pool_write(self.state, "services.autofarm", {"running": True})
 
     def stop(self):
         try:
@@ -166,3 +195,10 @@ class ServicesBundle:
             print(f"[shutdown] macros_repeat_service.stop(): {e}")
         finally:
             pool_write(self.state, "services.macros_repeat", {"running": False})
+
+        try:
+            self.autofarm_service.stop()
+        except Exception as e:
+            print(f"[shutdown] autofarm_service.stop(): {e}")
+        finally:
+            pool_write(self.state, "services.autofarm", {"running": False})
