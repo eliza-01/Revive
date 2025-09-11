@@ -23,7 +23,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # ---- Окно/фокус/игрок/ui_guard ----
     st.setdefault("window", {"info": None, "found": False, "title": "", "ts": 0.0})
-    st.setdefault("focus", {"has_focus": None, "ts": 0.0})
+    st.setdefault("focus", {"is_focused": None, "ts": 0.0})
     st.setdefault("player", {"alive": None, "hp_ratio": None, "cp_ratio": None, "ts": 0.0})
     st.setdefault("ui_guard", {"enabled": False, "tracker": "empty", "ts": 0.0})
 
@@ -32,24 +32,24 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "respawn": {
             "enabled": False, "wait_enabled": False, "wait_seconds": 120,
             "click_threshold": 0.70, "confirm_timeout_s": 6.0,
-            "status": "idle", "ts": 0.0,
+            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
         },
         "buff": {
             "enabled": False, "mode": "", "methods": [],
-            "status": "idle", "ts": 0.0,
+            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
         },
         "macros": {
             "enabled": False, "repeat_enabled": False, "rows": [],
-            "status": "idle", "ts": 0.0,
+            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
         },
         "tp": {
             "enabled": False, "method": "dashboard", "category": "", "location": "", "row_id": "",
-            "status": "idle", "ts": 0.0,
+            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
         },
         "autofarm": {
           "enabled": False,
           "mode": "manual",           # "auto" | "manual"
-          "status": "idle",
+          "status": "idle", "busy": False, "waiting": False,
           "config": {
             "profession": "",
             "skills": [{"key":"1","slug":"", "cast_ms":1100}],
@@ -72,6 +72,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "player_state": {"running": False, "ts": 0.0},
         "window_focus": {"running": False, "ts": 0.0},
         "macros_repeat": {"running": False, "ts": 0.0},
+        "autofarm": {"running": False, "ts": 0.0},
     })
 
     # ---- UI-статусы ----

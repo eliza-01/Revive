@@ -5,10 +5,19 @@ import threading, time
 
 from core.engines.autofarm.runner import run_autofarm
 
+
 class AutoFarmService:
     """
     Долгоживущий цикл фарма.
-    API: start(), stop(), is_running(), cancel_cycle(), run_once_now()
+
+    ВАЖНО:
+    - Останавливаемся не из-за vitals==None, а из-за потери фокуса.
+      Факторов три: enabled, focus, alive.
+      * focus=False → пауза цикла (не запускаем и прерываем текущий прогон)
+      * alive=False → тоже прерываем текущий прогон (чтобы «мертвые» не фармили)
+      * enabled=False → сервис в режиме ожидания
+    - В auto-режиме запускаем РОВНО один прогон по событию `_kick` (из пайплайна),
+      если к моменту выполнения есть фокус и включено.
     """
 
     def __init__(
@@ -17,27 +26,34 @@ class AutoFarmService:
         controller: Any,
         get_window: Callable[[], Optional[Dict[str, Any]]],
         get_language: Callable[[], str],
-        get_cfg: Callable[[], Dict[str, Any]],        # features.autofarm или features.autofarm.config
-        is_enabled: Callable[[], bool],               # features.autofarm.enabled
-        is_alive: Callable[[], bool] = lambda: True,  # player.alive
+        get_cfg: Callable[[], Dict[str, Any]],      # features.autofarm (или .config)
+        is_enabled: Callable[[], bool],
+        is_alive: Callable[[], Optional[bool]] = lambda: True,
+        is_focused: Callable[[], bool] = lambda: True,
         on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
+        *,
+        set_busy: Optional[Callable[[bool], None]] = None,  # ← коллбек для features.autofarm.busy
     ):
         self._server = server
         self._controller = controller
         self._get_window = get_window
         self._get_language = get_language
         self._get_cfg = get_cfg
+
         self._is_enabled = is_enabled
         self._is_alive = is_alive
+        self._is_focused = is_focused
+
         self._on_status = on_status or (lambda *_: None)
+        self._set_busy = set_busy or (lambda _b: None)
 
         self._thr: Optional[threading.Thread] = None
         self._run = False
         self._cancel = False
-        self._kick = threading.Event()   # ← триггер для auto-режима
+        self._kick = threading.Event()   # триггер для auto
         self._poll = 1.0
-        self._last_sig = None          # отпечаток конфигурации для режима manual
 
+    # ---------- API ----------
     def is_running(self) -> bool:
         return bool(self._run)
 
@@ -52,100 +68,96 @@ class AutoFarmService:
 
     def stop(self):
         self._run = False
+        try:
+            self._set_busy(False)
+        except Exception:
+            pass
 
     def cancel_cycle(self):
-        """Прервать текущий заход run_autofarm."""
+        """Прервать текущий прогон run_autofarm()."""
         self._cancel = True
 
     def run_once_now(self):
-        """В auto: просто даём пинок сервису; в manual: запускаем цикл немедленно."""
-        if not self._is_enabled() or not self._is_alive():
+        """
+        В auto: ставим триггер на ОДИН прогон;
+        в manual: запускаем сразу, если есть фокус.
+        """
+        if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
             return
+
         cfg = self._normalize_cfg(self._get_cfg() or {})
         mode = (cfg.get("mode") or "auto").lower()
         if mode == "auto":
-            self._kick.set()        # ← сервис сам выполнит ОДИН цикл
+            self._kick.set()
         else:
-            self._run_once()        # ← manual: запускаем сразу
+            self._run_once()
 
+    # ---------- worker ----------
     def _loop(self, poll_interval: float):
         while self._run:
-            if not self._is_enabled() or not self._is_alive():
-                time.sleep(self._poll); continue
+            # Паузим сервис, если отключен/нет фокуса/мертвы
+            if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
+                time.sleep(self._poll)
+                continue
 
-            cfg  = self._normalize_cfg(self._get_cfg() or {})
+            cfg = self._normalize_cfg(self._get_cfg() or {})
             mode = (cfg.get("mode") or "auto").lower()
 
             if mode == "manual":
-                # крутится постоянно, пока включён
+                # manual крутится постоянно, но только при фокусе
                 self._run_once()
                 time.sleep(self._poll)
                 continue
 
-            # mode == "auto": ждём явного пинка от пайплайна
+            # auto: ждём явного «пинка» из пайплайна
             fired = self._kick.wait(timeout=self._poll)
             if not fired:
                 continue
+            # на момент старта прогона перепроверим гейты
+            if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
+                # не сбрасываем событие — пусть сохранится до возврата фокуса
+                continue
+
             self._kick.clear()
-            if self._is_enabled() and self._is_alive():
-                self._run_once()
+            self._run_once()
 
     def _run_once(self):
         self._cancel = False
-        cfg = self._normalize_cfg(self._get_cfg() or {})
-        ok = run_autofarm(
-            server=self._server(),
-            controller=self._controller,
-            get_window=self._get_window,
-            get_language=self._get_language,
-            on_status=self._on_status,
-            cfg=cfg,
-            # стопаем цикл немедленно, если сервис выключен, игрок мёртв или пришёл cancel
-            should_abort=lambda: (not self._is_enabled()) or (not self._is_alive()) or self._cancel,
-        )
-        self._on_status("Автофарм цикл завершён", ok)
-
-    def _cfg_signature(self, cfg: Dict[str, Any]) -> tuple:
+        self._set_busy(True)
         try:
-            mode = (cfg.get("mode") or "auto")
-            zone = (cfg.get("zone") or "")
-            skills = tuple(
-                (str((s or {}).get("key", "1"))[:1],
-                 (s or {}).get("slug", "") or "",
-                 int(float((s or {}).get("cast_ms", 0))))
-                for s in (cfg.get("skills") or [])
+            cfg = self._normalize_cfg(self._get_cfg() or {})
+            ok = run_autofarm(
+                server=self._server(),
+                controller=self._controller,
+                get_window=self._get_window,
+                get_language=self._get_language,
+                on_status=self._on_status,
+                cfg=cfg,
+                should_abort=lambda: (
+                    (not self._is_enabled())
+                    or (not self._is_focused())
+                    or (self._is_alive() is False)
+                    or self._cancel
+                ),
             )
-            monsters = tuple(sorted(cfg.get("monsters") or []))
-            return (mode, zone, skills, monsters)
-        except Exception:
-            return ("auto", "", (), ())
+            self._on_status("Автофарм цикл завершён", bool(ok))
+        finally:
+            self._set_busy(False)
 
-    def _wait_until_changed_or_disabled(self, baseline_sig: tuple):
-        # ждём, пока настройки/режим изменятся ИЛИ сервис выключат/умрёт игрок
-        while self._run and self._is_enabled() and self._is_alive():
-            try:
-                cur = self._normalize_cfg(self._get_cfg() or {})
-                if self._cfg_signature(cur) != baseline_sig:
-                    break
-            except Exception:
-                pass
-            time.sleep(self._poll)
-
+    # ---------- utils ----------
     @staticmethod
     def _normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
         """
         Принимает либо весь узел features.autofarm, либо только features.autofarm.config.
-        Сначала берём config как базу, потом ПЕРЕЗАТИРАЕМ непустыми верхнеуровневыми полями.
+        Сначала берём config как базу, затем поверх непустые верхнеуровневые поля.
         """
         base = dict(raw.get("config") or {})
         top = {k: raw.get(k) for k in ("profession", "skills", "zone", "monsters", "mode") if k in raw}
-
         cfg = dict(base)
         for k, v in top.items():
             if v not in (None, "", [], {}):
                 cfg[k] = v
 
-        # дефолты
         cfg.setdefault("mode", "auto")
         cfg.setdefault("profession", "")
         cfg.setdefault("skills", [])
@@ -159,7 +171,7 @@ class AutoFarmService:
                 skills.append({
                     "key": str((s or {}).get("key", "1"))[:1] or "1",
                     "slug": (s or {}).get("slug", "") or "",
-                    "cast_ms": max(0, int(float((s or {}).get("cast_ms", 0))))
+                    "cast_ms": max(0, int(float((s or {}).get("cast_ms", 0)))),
                 })
             cfg["skills"] = skills
         except Exception:

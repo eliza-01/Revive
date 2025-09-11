@@ -33,11 +33,6 @@ class PSAdapter:
 
 
 class ServicesBundle:
-    """
-    Собирает все фоновые сервисы + даёт ps_adapter.
-    Использует ui (объект с методами: log, log_ok, hud_push, ui_emit, schedule).
-    """
-
     def __init__(self, state: Dict[str, Any], window, hud_window, ui, controller):
         self.state = state
         self.window = window
@@ -45,11 +40,14 @@ class ServicesBundle:
         self.ui = ui
         self.controller = controller
 
+        # PS adapter нужен сразу (используется ниже/снаружи)
+        self.ps_adapter = PSAdapter(self.state)
+
         # --- Player State service ---
         def _on_ps_update(data: Dict[str, Any]):
             hp = data.get("hp_ratio")
             # не трогаем vitals, если нет фокуса
-            if pool_get(self.state, "focus.has_focus") is False:
+            if pool_get(self.state, "focus.is_focused") is False:
                 return
 
             alive = None if hp is None else bool(hp > 0.001)
@@ -61,7 +59,7 @@ class ServicesBundle:
 
             # HUD vitals
             try:
-                if self.hud_window and pool_get(self.state, "focus.has_focus"):
+                if self.hud_window and pool_get(self.state, "focus.is_focused"):
                     h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                     cp = data.get("cp_ratio")
                     c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
@@ -80,16 +78,28 @@ class ServicesBundle:
 
         # --- Window Focus service ---
         def _on_wf_update(data: Dict[str, Any]):
-            prev_focus = pool_get(self.state, "focus.has_focus", None)
+            prev_focus = pool_get(self.state, "focus.is_focused", None)
             try:
-                has_focus = bool(data.get("has_focus"))
+                is_focused = bool(data.get("is_focused"))
             except Exception:
-                has_focus = False
+                is_focused = False
 
-            pool_write(self.state, "focus", {"has_focus": has_focus})
+            pool_write(self.state, "focus", {"is_focused": is_focused})
+
+            # ← ДО любых побочных эффектов: на фронте перехода ON->OFF делаем мгновенный снимок busy
+            if (is_focused is False) and (prev_focus is not False):
+                saved_busy = {
+                    "respawn": bool(pool_get(self.state, "features.respawn.busy", False)),
+                    "buff": bool(pool_get(self.state, "features.buff.busy", False)),
+                    "macros": bool(pool_get(self.state, "features.macros.busy", False)),
+                    "tp": bool(pool_get(self.state, "features.tp.busy", False)),
+                    "autofarm": bool(pool_get(self.state, "features.autofarm.busy", False)),
+                }
+                # сохраняем снимок, чтобы правило паузы не «перезаписало» его уже обнулёнными флагами
+                pool_write(self.state, "runtime.focus_pause", {"saved_busy": dict(saved_busy)})
 
             # OFF → сброс vitals
-            if has_focus is False:
+            if is_focused is False:
                 pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
                 try:
                     if self.hud_window:
@@ -110,10 +120,10 @@ class ServicesBundle:
                     pass
 
             # статус в UI при смене
-            if prev_focus is None or prev_focus != has_focus:
-                txt = f"Фокус окна: {'да' if has_focus else 'нет'}"
-                self.ui.log(f"[FOCUS] {'ON' if has_focus else 'OFF'}")
-                self.ui.ui_emit("focus", txt, True if has_focus else None)
+            if prev_focus is None or prev_focus != is_focused:
+                txt = f"Фокус окна: {'да' if is_focused else 'нет'}"
+                self.ui.log(f"[FOCUS] {'ON' if is_focused else 'OFF'}")
+                self.ui.ui_emit("focus", txt, True if is_focused else None)
 
         self.wf_service = WindowFocusService(
             get_window=lambda: pool_get(self.state, "window.info", None),
@@ -129,32 +139,33 @@ class ServicesBundle:
             get_language=lambda: pool_get(self.state, "config.language", "rus"),
             get_rows=lambda: list(pool_get(self.state, "features.macros.rows", []) or []),
             is_enabled=lambda: bool(pool_get(self.state, "features.macros.repeat_enabled", False)),
-            is_alive=lambda: bool(pool_get(self.state, "player.alive", False)),
+            is_alive=lambda: pool_get(self.state, "player.alive", None),
+            is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
+            set_busy=lambda b: pool_write(self.state, "features.macros", {"busy": bool(b)}),
             on_status=self.ui.log_ok,
         )
 
-        self.ps_adapter = PSAdapter(self.state)
-
         # --- AutoFarm service ---
         self.autofarm_service = AutoFarmService(
-            server      = lambda: pool_get(self.state, "config.server", "boh"),
-            controller  = self.controller,
-            get_window  = lambda: pool_get(self.state, "window.info", None),
-            get_language= lambda: pool_get(self.state, "config.language", "rus"),
-            get_cfg     = lambda: pool_get(self.state, "features.autofarm", {}),  # ← ВЕСЬ узел, не только .config
-            is_enabled  = lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
-            is_alive    = lambda: bool(pool_get(self.state, "player.alive", False)),
-            on_status   = self.ui.log,      # обычный лог без макросного префикса
+            server=lambda: pool_get(self.state, "config.server", "boh"),
+            controller=self.controller,
+            get_window=lambda: pool_get(self.state, "window.info", None),
+            get_language=lambda: pool_get(self.state, "config.language", "rus"),
+            get_cfg=lambda: pool_get(self.state, "features.autofarm", {}),  # ВЕСЬ узел, не только .config
+            is_enabled=lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
+            is_alive=lambda: pool_get(self.state, "player.alive", None),
+            is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
+            set_busy=lambda b: pool_write(self.state, "features.autofarm", {"busy": bool(b)}),
+            on_status=self.ui.log,
         )
 
-        # Делаем сервисы доступными для правил пайплайна (run_step читает state.get("_services"))
+        # Доступ сервисов для правил
         try:
             self.state.setdefault("_services", {})
             self.state["_services"].update({
                 "autofarm": self.autofarm_service,
-                # при желании можно добавить и прочие:
                 "macros_repeat": self.macros_repeat_service,
-                # "player_state": self.ps_service,
+                "player_state": self.ps_service,   # нужно для focus_pause_rule
                 # "window_focus": self.wf_service,
             })
         except Exception:

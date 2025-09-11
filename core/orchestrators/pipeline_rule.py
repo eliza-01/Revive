@@ -7,7 +7,7 @@ import importlib
 from core.orchestrators.snapshot import Snapshot
 from core.engines.respawn.runner import RespawnRunner
 
-from core.state.pool import pool_get, pool_merge
+from core.state.pool import pool_get, pool_merge, pool_write
 
 
 class PipelineRule:
@@ -42,6 +42,12 @@ class PipelineRule:
             except Exception:
                 pass
 
+    def _set_busy(self, feature: str, on: bool):
+        try:
+            pool_write(self.s, f"features.{feature}", {"busy": bool(on)})
+        except Exception:
+            pass
+
     # ---------- lifecycle ----------
     def when(self, snap: Snapshot) -> bool:
         now = time.time()
@@ -68,7 +74,7 @@ class PipelineRule:
         self._dbg(
             "tick: "
             f"win={snap.has_window} "
-            f"focus={snap.has_focus} "
+            f"focus={snap.is_focused} "
             f"alive={snap.alive} is_dead={is_dead} hp={snap.hp_ratio} "
             f"respawn={respawn_on} macros={macros_on} active={self._active} idx={self._idx}"
         )
@@ -131,9 +137,6 @@ class PipelineRule:
     # ---------- steps ----------
 
     def _is_step_enabled(self, step: str) -> bool:
-        """
-        Единообразно читаем тумблеры только из пула.
-        """
         feature = {
             "respawn": "respawn",
             "buff": "buff",
@@ -146,10 +149,6 @@ class PipelineRule:
         return bool(pool_get(self.s, f"features.{feature}.enabled", False))
 
     def _call_server_rule(self, engine: str, func: str = "run_step"):
-        """
-        Возвращает callable из core.engines.<engine>.server.<server>.rules.<func> или None.
-        Сервер берём ТОЛЬКО из пула (config.server).
-        """
         server = pool_get(self.s, "config.server", None)
         if not server:
             self._dbg(f"{engine}: server is not set in pool (config.server)")
@@ -172,59 +171,81 @@ class PipelineRule:
             self._dbg(f"{step}: disabled -> pass")
             return True, True
 
+        # busy для шагов, которыми управляем из оркестратора
+        def _busy_on(feat): self._set_busy(feat, True)
+        def _busy_off(feat): self._set_busy(feat, False)
+
         if step == "respawn":
-            # делегирование: server rules
-            fn = self._call_server_rule("respawn")
-            if callable(fn):
-                try:
-                    ok, adv = fn(
-                        state=self.s,
-                        ps_adapter=self.ps,
-                        controller=self.controller,
-                        report=self.report,
-                        snap=snap,
-                        helpers={
-                            "respawn_runner": self._respawn_runner,
-                            "get_window": lambda: pool_get(self.s, "window.info", None),
-                            "get_language": lambda: pool_get(self.s, "config.language", "rus"),
-                        },
-                    )
-                    return bool(ok), bool(adv)
-                except Exception as e:
-                    self._dbg(f"respawn rules error: {e}")
-                    self.report("[RESPAWN] ошибка server rules — пропуск шага")
-                    return True, True
-            self.report("[RESPAWN] rules.py не найден для сервера — пропуск шага")
-            return True, True
+            _busy_on("respawn")
+            try:
+                fn = self._call_server_rule("respawn")
+                if callable(fn):
+                    try:
+                        ok, adv = fn(
+                            state=self.s,
+                            ps_adapter=self.ps,
+                            controller=self.controller,
+                            report=self.report,
+                            snap=snap,
+                            helpers={
+                                "respawn_runner": self._respawn_runner,
+                                "get_window": lambda: pool_get(self.s, "window.info", None),
+                                "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                            },
+                        )
+                        return bool(ok), bool(adv)
+                    except Exception as e:
+                        self._dbg(f"respawn rules error: {e}")
+                        self.report("[RESPAWN] ошибка server rules — пропуск шага")
+                        return True, True
+                self.report("[RESPAWN] rules.py не найден для сервера — пропуск шага")
+                return True, True
+            finally:
+                _busy_off("respawn")
 
         if step == "macros":
-            fn = self._call_server_rule("macros")
-            if callable(fn):
-                try:
-                    ok, adv = fn(
-                        state=self.s,
-                        ps_adapter=self.ps,
-                        controller=self.controller,
-                        report=self.report,
-                        snap=snap,
-                        helpers={
-                            "get_window": lambda: pool_get(self.s, "window.info", None),
-                            "get_language": lambda: pool_get(self.s, "config.language", "rus"),
-                        },
-                    )
-                    return bool(ok), bool(adv)
-                except Exception as e:
-                    self._dbg(f"macros rules error: {e}")
-                    self.report("[MACROS] ошибка server rules — пропуск шага")
-                    return True, True
-            self.report("[MACROS] rules.py не найден для сервера — пропуск шага")
-            return True, True
+            _busy_on("macros")
+            try:
+                fn = self._call_server_rule("macros")
+                if callable(fn):
+                    try:
+                        ok, adv = fn(
+                            state=self.s,
+                            ps_adapter=self.ps,
+                            controller=self.controller,
+                            report=self.report,
+                            snap=snap,
+                            helpers={
+                                "get_window": lambda: pool_get(self.s, "window.info", None),
+                                "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                            },
+                        )
+                        return bool(ok), bool(adv)
+                    except Exception as e:
+                        self._dbg(f"macros rules error: {e}")
+                        self.report("[MACROS] ошибка server rules — пропуск шага")
+                        return True, True
+                self.report("[MACROS] rules.py не найден для сервера — пропуск шага")
+                return True, True
+            finally:
+                _busy_off("macros")
 
         if step == "buff":
-            return self._step_buff(snap)
+            _busy_on("buff")
+            try:
+                return self._step_buff(snap)
+            finally:
+                _busy_off("buff")
+
         if step == "tp":
-            return self._step_tp(snap)
+            _busy_on("tp")
+            try:
+                return self._step_tp(snap)
+            finally:
+                _busy_off("tp")
+
         if step == "autofarm":
+            # busy автофарма помечает сам сервис, т.к. это долговременный цикл
             fn = self._call_server_rule("autofarm")
             if callable(fn):
                 try:
@@ -263,17 +284,8 @@ class PipelineRule:
         self._dbg("tp: stub ok")
         return True, True
 
-    def _step_autofarm(self, snap: Snapshot) -> tuple[bool, bool]:
-        self.report("Автофарм запущен (stub)")
-        self._dbg("autofarm: stub ok")
-        return True, True
-
     # ---------- utils ----------
     def _order(self) -> List[str]:
-        """
-        Порядок читаем только из пула.
-        Респавн держим первым — страховка от случайных перестановок.
-        """
         raw = list(pool_get(self.s, "pipeline.order", ["respawn", "macros"]) or [])
         if not raw:
             raw = ["respawn", "macros"]
@@ -281,11 +293,6 @@ class PipelineRule:
         return ["respawn"] + rest
 
     def _load_respawn_module(self, server: str):
-        """
-        Динамически загружает модуль движка респавна:
-        core.engines.respawn.server.<server>.engine
-        Сервер берём ТОЛЬКО из пула. Без фолбэков.
-        """
         server = (server or "").strip().lower()
         if not server:
             raise RuntimeError("config.server is not set")
@@ -347,6 +354,5 @@ class PipelineRule:
         self._busy_until = time.time() + 1.0
         pool_merge(self.s, "pipeline", {"active": False, "idx": 0})
 
-
-def make_pipeline_rule(state, ps_adapter, controller, report: Optional[Callable[[str], None]] = None):
-    return PipelineRule(state, ps_adapter, controller, report or (lambda _m: None))
+def make_pipeline_rule(state, ps_adapter, controller, report):
+    return PipelineRule(state, ps_adapter, controller, report)

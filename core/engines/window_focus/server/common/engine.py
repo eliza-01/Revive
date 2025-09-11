@@ -89,7 +89,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     """
     Движок window_focus (пока только фокус окна).
     Каждые poll_interval секунд публикует:
-      on_update({"has_focus": bool, "ts": now})
+      on_update({"is_focused": bool, "ts": now})
     Работает, пока should_abort() не вернёт True.
     """
     get_window = ctx_base.get("get_window")
@@ -130,7 +130,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
             if on_update:
                 try:
-                    on_update({"has_focus": bool(focused), "ts": time.time()})
+                    on_update({"is_focused": bool(focused), "ts": time.time()})
                 except Exception:
                     pass
 
