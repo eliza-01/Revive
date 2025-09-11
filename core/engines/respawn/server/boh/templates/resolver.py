@@ -20,7 +20,7 @@ _LANG_ALIASES = {
 # Разрешённые имена файлов в каталоге языка
 _ALLOWED_FILES = {
     "to_village_button.png",
-    "reborn_window.png",
+    "reborn_banner.png",
     "accept_button.png",
     "decline_button.png",
     # добавишь сюда новые имена — они сразу начнут резолвиться
@@ -45,8 +45,8 @@ def _try_path(lang: str, filename: str) -> Optional[str]:
 def resolve(lang: str, *parts: str) -> Optional[str]:
     """
     Поддерживаем вызовы вида:
-      resolve("rus", "reborn_window.png")                # 1 сегмент
-      resolve("rus", "<lang>", "reborn_window.png")      # 2 сегмента с плейсхолдером
+      resolve("rus", "reborn_banner.png")                # 1 сегмент
+      resolve("rus", "<lang>", "reborn_banner.png")      # 2 сегмента с плейсхолдером
     Выполняем фолбэк по языкам: lang → rus → eng.
     """
     # вытащим имя файла

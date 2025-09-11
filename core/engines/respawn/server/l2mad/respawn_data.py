@@ -18,7 +18,7 @@ ZONES: Dict[str, ZoneDecl] = {
 # Используем маркер "<lang>", который движок заменит на фактический язык.
 TEMPLATES: Dict[str, List[str]] = {
     # приоритет: сначала то, чем реально пользуетесь
-    "reborn_banner": ["<lang>", "reborn_window.png"],
+    "reborn_banner": ["<lang>", "reborn_banner.png"],
     "death_banner":  ["<lang>", "to_village_button.png"],
     "accept_button":  ["<lang>", "accept_button.png"],
     "decline_button":  ["<lang>", "decline_button.png"],

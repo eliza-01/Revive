@@ -10,7 +10,7 @@ _LANG_FALLBACK = "rus"
 # Разрешённые имена файлов в каталоге языка
 _ALLOWED_FILES = {
     "to_village_button.png",
-    "reborn_window.png",
+    "reborn_banner.png",
     "accept_button.png",
     "decline_button.png",
     # добавишь сюда новые имена — они сразу начнут резолвиться

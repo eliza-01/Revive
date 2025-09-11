@@ -10,12 +10,12 @@ ZoneDecl = Union[ZoneLTRB, dict]
 ZONES: Dict[str, ZoneDecl] = {
     # Кнопка/баннер «встать/возродиться».
     # Центр окна 280x200 — поправишь при необходимости.
-    "death_banners": {"fullscreen": True, "width": 280, "height": 200},
+    "death_banners": {"fullscreen": True},
 }
 
 TEMPLATES: Dict[str, List[str]] = {
-    "reborn_banner": ["<lang>", "reborn_window.png"],
     "death_banner":  ["<lang>", "to_village_button.png"],
     "accept_button":  ["<lang>", "accept_button.png"],
-    "decline_button":  ["<lang>", "decline_button.png"],
+    # "decline_button":  ["<lang>", "decline_button.png"],
+    "reborn_banner": ["<lang>", "reborn_banner.png"],
 }

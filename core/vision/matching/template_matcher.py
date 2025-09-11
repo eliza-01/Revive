@@ -21,7 +21,7 @@ def _load_template_abs(path: str) -> Optional[np.ndarray]:
 def _resolve_path(server: str, lang: str, parts: Sequence[str], engine: str) -> Optional[str]:
     import importlib
     try:
-        mod = importlib.import_module(f"engines.{engine}.server.{server}.templates.resolver")
+        mod = importlib.import_module(f"core.engines.{engine}.server.{server}.templates.resolver")
         resolve = getattr(mod, "resolve", None)
         if callable(resolve):
             return resolve(lang, *parts)
