@@ -31,7 +31,7 @@ def orchestrator_tick(state: Dict[str, Any], ps_adapter, rules) -> None:
     respawn_on = bool(pool_get(state, "features.respawn.enabled", False))
     macros_on  = bool(pool_get(state, "features.macros.enabled", False))
     autofarm_on  = bool(pool_get(state, "features.autofarm.enabled", False))
-    print(f"win={snap.has_window} focus={snap.has_focus}")
+    print(f"win={snap.has_window} focus={snap.is_focused}")
     print(f"alive={snap.alive} is_dead={is_dead} hp={snap.hp_ratio}")
     print(f"respawn={respawn_on} macros={macros_on} autofarm={autofarm_on}")
     print("----------------------------------------")

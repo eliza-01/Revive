@@ -19,7 +19,7 @@ def run_window_focus(
     server: str = "common",
     get_window: Callable[[], Optional[Dict]],
     on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
-    on_update: Optional[Callable[[Dict[str, Any]], None]] = None,  # {"has_focus": bool, "ts": float}
+    on_update: Optional[Callable[[Dict[str, Any]], None]] = None,  # {"is_focused": bool, "ts": float}
     cfg: Optional[Dict[str, Any]] = None,
     should_abort: Optional[Callable[[], bool]] = None,
 ) -> bool:
@@ -53,7 +53,7 @@ def run_window_focus(
         "server": server,
         "get_window": get_window,              # важно: динамически читаем окно на каждом тике в движке
         "on_status": _status,
-        "on_update": on_update,                # публикация has_focus наружу
+        "on_update": on_update,                # публикация is_focused наружу
         "should_abort": (should_abort or (lambda: False)),
     }
 

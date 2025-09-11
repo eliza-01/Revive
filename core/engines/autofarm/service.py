@@ -1,5 +1,4 @@
-﻿# core/engines/autofarm/service.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import threading, time
 
@@ -28,9 +27,11 @@ class AutoFarmService:
         get_language: Callable[[], str],
         get_cfg: Callable[[], Dict[str, Any]],      # features.autofarm (или .config)
         is_enabled: Callable[[], bool],
-        is_alive: Callable[[], bool] = lambda: True,
-        has_focus: Callable[[], bool] = lambda: True,
+        is_alive: Callable[[], Optional[bool]] = lambda: True,
+        is_focused: Callable[[], bool] = lambda: True,
         on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
+        *,
+        set_busy: Optional[Callable[[bool], None]] = None,  # ← коллбек для features.autofarm.busy
     ):
         self._server = server
         self._controller = controller
@@ -40,9 +41,10 @@ class AutoFarmService:
 
         self._is_enabled = is_enabled
         self._is_alive = is_alive
-        self._has_focus = has_focus
+        self._is_focused = is_focused
 
         self._on_status = on_status or (lambda *_: None)
+        self._set_busy = set_busy or (lambda _b: None)
 
         self._thr: Optional[threading.Thread] = None
         self._run = False
@@ -65,6 +67,10 @@ class AutoFarmService:
 
     def stop(self):
         self._run = False
+        try:
+            self._set_busy(False)
+        except Exception:
+            pass
 
     def cancel_cycle(self):
         """Прервать текущий прогон run_autofarm()."""
@@ -75,7 +81,7 @@ class AutoFarmService:
         В auto: ставим триггер на ОДИН прогон;
         в manual: запускаем сразу, если есть фокус.
         """
-        if (not self._is_enabled()) or (not self._has_focus()) or (not self._is_alive()):
+        if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
             return
 
         cfg = self._normalize_cfg(self._get_cfg() or {})
@@ -89,7 +95,7 @@ class AutoFarmService:
     def _loop(self, poll_interval: float):
         while self._run:
             # Паузим сервис, если отключен/нет фокуса/мертвы
-            if (not self._is_enabled()) or (not self._has_focus()) or (not self._is_alive()):
+            if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
                 time.sleep(self._poll)
                 continue
 
@@ -107,7 +113,7 @@ class AutoFarmService:
             if not fired:
                 continue
             # на момент старта прогона перепроверим гейты
-            if (not self._is_enabled()) or (not self._has_focus()) or (not self._is_alive()):
+            if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
                 # не сбрасываем событие — пусть сохранится до возврата фокуса
                 continue
 
@@ -116,22 +122,26 @@ class AutoFarmService:
 
     def _run_once(self):
         self._cancel = False
-        cfg = self._normalize_cfg(self._get_cfg() or {})
-        ok = run_autofarm(
-            server=self._server(),
-            controller=self._controller,
-            get_window=self._get_window,
-            get_language=self._get_language,
-            on_status=self._on_status,
-            cfg=cfg,
-            should_abort=lambda: (
-                (not self._is_enabled())
-                or (not self._has_focus())
-                or (not self._is_alive())
-                or self._cancel
-            ),
-        )
-        self._on_status("Автофарм цикл завершён", bool(ok))
+        self._set_busy(True)
+        try:
+            cfg = self._normalize_cfg(self._get_cfg() or {})
+            ok = run_autofarm(
+                server=self._server(),
+                controller=self._controller,
+                get_window=self._get_window,
+                get_language=self._get_language,
+                on_status=self._on_status,
+                cfg=cfg,
+                should_abort=lambda: (
+                    (not self._is_enabled())
+                    or (not self._is_focused())
+                    or (self._is_alive() is False)
+                    or self._cancel
+                ),
+            )
+            self._on_status("Автофарм цикл завершён", bool(ok))
+        finally:
+            self._set_busy(False)
 
     # ---------- utils ----------
     @staticmethod

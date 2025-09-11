@@ -1,5 +1,4 @@
-﻿# core/engines/macros/service.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Callable, Optional, Dict, Any, List
 import threading, time
 
@@ -11,7 +10,7 @@ class MacrosRepeatService:
     Фоновый сервис повтора макросов по полю repeat_s > 0.
     Внешние факторы:
       - включена ли функция повторов (is_enabled)
-      - жив ли персонаж (is_alive)
+      - жив ли персонаж (is_alive: True/False/None)
       - есть ли фокус у окна игры (is_focused)
 
     Интерфейс: start(), stop(), is_running(), bump_all()
@@ -27,10 +26,10 @@ class MacrosRepeatService:
         is_enabled: Callable[[], bool],
         on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
         *,
-        # ВАЖНО: is_alive может вернуть True / False / None.
-        # None означает «неизвестно» (например, фокус потерян и виталы не читаются).
+        # None означает «неизвестно» (например, потерян фокус и виталы не читаем).
         is_alive: Optional[Callable[[], Optional[bool]]] = None,
         is_focused: Optional[Callable[[], bool]] = None,
+        set_busy: Optional[Callable[[bool], None]] = None,   # ← коллбек для features.macros.busy
     ):
         self._server = server
         self._controller = controller
@@ -41,6 +40,7 @@ class MacrosRepeatService:
         self._on_status = on_status or (lambda *_: None)
         self._is_alive = is_alive or (lambda: True)
         self._is_focused = is_focused or (lambda: True)
+        self._set_busy = set_busy or (lambda _b: None)
 
         self._thr: Optional[threading.Thread] = None
         self._run = False
@@ -60,6 +60,10 @@ class MacrosRepeatService:
 
     def stop(self):
         self._run = False
+        try:
+            self._set_busy(False)
+        except Exception:
+            pass
 
     def bump_all(self):
         """Сдвинуть «отсчёт до повтора» на 'сейчас'. Использовать ТОЛЬКО после респавна."""
@@ -77,6 +81,7 @@ class MacrosRepeatService:
         while self._run:
             try:
                 if not self._is_enabled():
+                    self._set_busy(False)
                     time.sleep(poll_interval)
                     continue
 
@@ -102,13 +107,11 @@ class MacrosRepeatService:
                 self._was_focused = focused
 
                 # условия паузы:
-                # - без фокуса → пауза (НО без бампа)
-                # - точно мёртв (alive is False) → пауза
                 if (not focused) or (alive is False):
+                    self._set_busy(False)
                     time.sleep(poll_interval)
                     continue
-                # если alive is None (неизвестно), но фокус есть — продолжаем работать
-                # (не считаем это смертью и не бампаем таймеры)
+                # alive is None и есть фокус → работаем как обычно
 
                 # планирование запусков
                 now = time.time()
@@ -133,13 +136,17 @@ class MacrosRepeatService:
             time.sleep(poll_interval)
 
     def _run_row(self, row: Dict[str, Any]):
-        ok = run_macros(
-            server=self._server(),
-            controller=self._controller,
-            get_window=self._get_window,
-            get_language=self._get_language,
-            on_status=self._on_status,
-            cfg={"rows": [row]},
-            should_abort=lambda: (not self._is_enabled()),
-        )
-        self._on_status(f"Повтор макроса {row.get('key')} завершён", ok)
+        self._set_busy(True)
+        try:
+            ok = run_macros(
+                server=self._server(),
+                controller=self._controller,
+                get_window=self._get_window,
+                get_language=self._get_language,
+                on_status=self._on_status,
+                cfg={"rows": [row]},
+                should_abort=lambda: (not self._is_enabled()),
+            )
+            self._on_status(f"Повтор макроса {row.get('key')} завершён", ok)
+        finally:
+            self._set_busy(False)

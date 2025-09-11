@@ -1,5 +1,4 @@
-﻿# app/launcher/infra/services.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Dict, Optional
 import json
 
@@ -33,11 +32,6 @@ class PSAdapter:
 
 
 class ServicesBundle:
-    """
-    Собирает все фоновые сервисы + даёт ps_adapter.
-    Использует ui (объект с методами: log, log_ok, hud_push, ui_emit, schedule).
-    """
-
     def __init__(self, state: Dict[str, Any], window, hud_window, ui, controller):
         self.state = state
         self.window = window
@@ -45,11 +39,14 @@ class ServicesBundle:
         self.ui = ui
         self.controller = controller
 
+        # PS adapter нужен сразу (используется ниже/снаружи)
+        self.ps_adapter = PSAdapter(self.state)
+
         # --- Player State service ---
         def _on_ps_update(data: Dict[str, Any]):
             hp = data.get("hp_ratio")
             # не трогаем vitals, если нет фокуса
-            if pool_get(self.state, "focus.has_focus") is False:
+            if pool_get(self.state, "focus.is_focused") is False:
                 return
 
             alive = None if hp is None else bool(hp > 0.001)
@@ -61,7 +58,7 @@ class ServicesBundle:
 
             # HUD vitals
             try:
-                if self.hud_window and pool_get(self.state, "focus.has_focus"):
+                if self.hud_window and pool_get(self.state, "focus.is_focused"):
                     h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                     cp = data.get("cp_ratio")
                     c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
@@ -80,16 +77,16 @@ class ServicesBundle:
 
         # --- Window Focus service ---
         def _on_wf_update(data: Dict[str, Any]):
-            prev_focus = pool_get(self.state, "focus.has_focus", None)
+            prev_focus = pool_get(self.state, "focus.is_focused", None)
             try:
-                has_focus = bool(data.get("has_focus"))
+                is_focused = bool(data.get("is_focused"))
             except Exception:
-                has_focus = False
+                is_focused = False
 
-            pool_write(self.state, "focus", {"has_focus": has_focus})
+            pool_write(self.state, "focus", {"is_focused": is_focused})
 
             # OFF → сброс vitals
-            if has_focus is False:
+            if is_focused is False:
                 pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
                 try:
                     if self.hud_window:
@@ -110,10 +107,10 @@ class ServicesBundle:
                     pass
 
             # статус в UI при смене
-            if prev_focus is None or prev_focus != has_focus:
-                txt = f"Фокус окна: {'да' if has_focus else 'нет'}"
-                self.ui.log(f"[FOCUS] {'ON' if has_focus else 'OFF'}")
-                self.ui.ui_emit("focus", txt, True if has_focus else None)
+            if prev_focus is None or prev_focus != is_focused:
+                txt = f"Фокус окна: {'да' if is_focused else 'нет'}"
+                self.ui.log(f"[FOCUS] {'ON' if is_focused else 'OFF'}")
+                self.ui.ui_emit("focus", txt, True if is_focused else None)
 
         self.wf_service = WindowFocusService(
             get_window=lambda: pool_get(self.state, "window.info", None),
@@ -130,11 +127,10 @@ class ServicesBundle:
             get_rows=lambda: list(pool_get(self.state, "features.macros.rows", []) or []),
             is_enabled=lambda: bool(pool_get(self.state, "features.macros.repeat_enabled", False)),
             is_alive=lambda: pool_get(self.state, "player.alive", None),
-            is_focused=lambda: bool(pool_get(self.state, "focus.has_focus", False)),
+            is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
+            set_busy=lambda b: pool_write(self.state, "features.macros", {"busy": bool(b)}),
             on_status=self.ui.log_ok,
         )
-
-        self.ps_adapter = PSAdapter(self.state)
 
         # --- AutoFarm service ---
         self.autofarm_service = AutoFarmService(
@@ -145,18 +141,18 @@ class ServicesBundle:
             get_cfg=lambda: pool_get(self.state, "features.autofarm", {}),  # ВЕСЬ узел, не только .config
             is_enabled=lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
             is_alive=lambda: pool_get(self.state, "player.alive", None),
-            has_focus=lambda: bool(pool_get(self.state, "focus.has_focus", False)),
-            on_status=self.ui.log,  # обычный лог (без префикса «Повтор макроса»)
+            is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
+            set_busy=lambda b: pool_write(self.state, "features.autofarm", {"busy": bool(b)}),
+            on_status=self.ui.log,
         )
 
-        # Делаем сервисы доступными для правил пайплайна (run_step читает state.get("_services"))
+        # Доступ сервисов для правил
         try:
             self.state.setdefault("_services", {})
             self.state["_services"].update({
                 "autofarm": self.autofarm_service,
-                # при желании можно добавить и прочие:
                 "macros_repeat": self.macros_repeat_service,
-                # "player_state": self.ps_service,
+                "player_state": self.ps_service,   # нужно для focus_pause_rule
                 # "window_focus": self.wf_service,
             })
         except Exception:

@@ -11,7 +11,7 @@ class Snapshot:
     has_window: bool
     alive: Optional[bool]
     hp_ratio: Optional[float]
-    has_focus: Optional[bool]
+    is_focused: Optional[bool]
     focus_unfocused_for_s: Optional[float]
 
     # единообразные флаги фич
@@ -48,11 +48,11 @@ def build_snapshot(state: Dict[str, Any], _ps_adapter=None) -> Snapshot:
         hp_ratio = None
 
     # --- focus ---
-    has_focus = pool_get(state, "focus.has_focus", None)
+    is_focused = pool_get(state, "focus.is_focused", None)
     focus_ts = float(pool_get(state, "focus.ts", 0.0) or 0.0)
     unfocused_for = (
         max(0.0, time.time() - focus_ts)
-        if (has_focus is False and focus_ts > 0.0)
+        if (is_focused is False and focus_ts > 0.0)
         else None
     )
 
@@ -65,7 +65,7 @@ def build_snapshot(state: Dict[str, Any], _ps_adapter=None) -> Snapshot:
 
     return Snapshot(
         has_window=has_window,
-        has_focus=has_focus,
+        is_focused=is_focused,
         alive=alive,
         hp_ratio=hp_ratio,
         focus_unfocused_for_s=unfocused_for,
