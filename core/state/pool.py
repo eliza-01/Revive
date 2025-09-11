@@ -72,6 +72,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "player_state": {"running": False, "ts": 0.0},
         "window_focus": {"running": False, "ts": 0.0},
         "macros_repeat": {"running": False, "ts": 0.0},
+        "autofarm": {"running": False, "ts": 0.0},
     })
 
     # ---- UI-статусы ----
