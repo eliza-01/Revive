@@ -24,9 +24,19 @@ PAGES: Dict[str, str] = {
     # добавляй по мере появления ассетов
 }
 
+BLOCKERS: Dict[str, str] = {
+    "wrong_word_popup": "wrong_word_popup.png",
+    "black_loading_screen": "black_loading_screen.png",
+    "disconnect_popup": "disconnect_popup.png",
+}
+
 # Какими кнопками закрываем.
 # Файлы лежат в templates/<lang>/interface/buttons/
 CLOSE_BUTTONS: Dict[str, str] = {
-    "default": "default_cross_button.png",
-    "dashboard": "close_dashboard_button.png",
+    "default_close_button": "default_close_button.png",
+    "dashboard_close_button": "dashboard_close_button.png",
+    "wrong_word_accept_button": "wrong_word_accept_button.png",
+    "disconnect_accept_button": "disconnect_accept_button.png",
+
+
 }
