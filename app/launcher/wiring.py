@@ -104,11 +104,11 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     })
     pool_write(state, "features.tp", {"enabled": False, "status": "idle", "methods": tp_methods})
     pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
-    pool_write(state, "pipeline", {
-        "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
-        "order": ["respawn", "macros", "autofarm"],
-        "active": False, "idx": 0, "last_step": ""
-    })
+    # pool_write(state, "pipeline", {
+    #     "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
+    #     "order": ["respawn", "macros", "autofarm"],
+    #     "active": False, "idx": 0, "last_step": ""
+    # })
 
     # для UI: какие секции показывать для текущего сервера
     pool_write(state, "ui.sections", get_section_flags(server))

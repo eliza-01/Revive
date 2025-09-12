@@ -342,9 +342,9 @@ class PipelineRule:
 
     # ---------- utils ----------
     def _order(self) -> List[str]:
-        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "macros"]) or [])
+        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "autofarm"]) or [])
         if not raw:
-            raw = ["respawn", "macros"]
+            raw = ["respawn", "buff", "macros", "autofarm"]
         rest = [x for x in raw if x and x.lower() != "respawn"]
         return ["respawn"] + rest
 
