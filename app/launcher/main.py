@@ -161,7 +161,10 @@ def launch_gui(local_version: str):
             url=index_path,
             width=820,
             height=900,
-            resizable=False,
+            resizable = False,
+            frameless = True,  # перетаскивание за любое место тела
+            easy_drag = True,
+            on_top = True,  # окно поверх всех после запуска
             background_color="#000000",
             js_api=api
         )
