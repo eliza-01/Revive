@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/player_state/watcher.py
+from __future__ import annotations
 import threading, time
 from typing import Callable, Optional, Dict, Any
 

@@ -1,3 +1,4 @@
+﻿# core/arduino/send_command.py
 from __future__ import annotations
 
 from core.logging import console

@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# app/launcher/sections/system.py
+from __future__ import annotations
 import threading
 import json
 from typing import Any, Dict

@@ -1,3 +1,4 @@
+﻿# core/arduino/serial_port.py
 import time
 import serial
 import serial.tools.list_ports

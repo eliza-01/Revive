@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# app/launcher/infra/ui_bridge.py
+from __future__ import annotations
 from typing import Any, Dict
 import json, threading
 from core.state.pool import pool_get

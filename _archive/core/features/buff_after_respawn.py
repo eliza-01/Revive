@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# _archive/core/features/buff_after_respawn.py
+from __future__ import annotations
 from typing import Callable, Optional, Dict
 import importlib
 

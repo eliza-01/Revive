@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/autofarm/server/boh/rules.py
+from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 
 from core.state.pool import pool_get, pool_merge

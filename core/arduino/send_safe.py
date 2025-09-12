@@ -1,3 +1,4 @@
+﻿# core/arduino/send_safe.py
 from __future__ import annotations
 
 import logging

@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/macros/runner.py
+from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import time
 from core.logging import console

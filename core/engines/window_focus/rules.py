@@ -1,9 +1,9 @@
 ﻿# core/engines/window_focus/rules.py
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
-import time
 
 from core.state.pool import pool_get, pool_write
+from core.logging import console
 
 
 def make_focus_pause_rule(state: Dict[str, Any], cfg: Optional[Dict[str, Any]] = None):
@@ -12,10 +12,10 @@ def make_focus_pause_rule(state: Dict[str, Any], cfg: Optional[Dict[str, Any]] =
     При возврате фокуса — восстановить сохранённые флаги и возобновить то, что было busy.
     Дополнительно: останавливаем/запускаем сервис чтения HP.
 
-    Хранит своё состояние ТОЛЬКО в пуле:
+    Своё состояние хранит ТОЛЬКО в пуле:
       runtime.focus_pause.active: bool
-      runtime.focus_pause.saved:      {respawn,buff,macros,tp,autofarm} -> bool   (enabled-снимок)
-      runtime.focus_pause.saved_busy: {respawn,buff,macros,tp,autofarm} -> bool   (busy-снимок)
+      runtime.focus_pause.saved:      {respawn,buff,macros,tp,autofarm} -> bool
+      runtime.focus_pause.saved_busy: {respawn,buff,macros,tp,autofarm} -> bool
     """
     return _FocusPauseRule(state, cfg or {})
 
@@ -65,7 +65,6 @@ class _FocusPauseRule:
         Ничего не бампим, ничего не включаем насильно — уважаем enabled.
         """
         services = self.s.get("_services") or {}
-        ui_emit = self.s.get("ui_emit")
 
         # Автофарм: если был busy и всё ещё включён — запускаем один цикл
         try:
@@ -73,36 +72,30 @@ class _FocusPauseRule:
                 af = services.get("autofarm")
                 if hasattr(af, "run_once_now"):
                     af.run_once_now()
-                    if callable(ui_emit):
-                        ui_emit("autofarm", "Фокус вернулся — продолжаю автофарм", True)
+                    console.hud("succ", "Фокус вернулся — продолжаю автофарм")
         except Exception:
             pass
 
         # Макросы: сервис сам продолжит по is_focused; по ТЗ не бампим таймеры
         try:
             if saved_busy.get("macros") and pool_get(self.s, "features.macros.repeat_enabled", False):
-                if callable(ui_emit):
-                    ui_emit("macros", "Фокус вернулся — возобновляю повторы", True)
+                console.hud("succ", "Фокус вернулся — возобновляю повторы макросов")
         except Exception:
             pass
 
-        # Buff/TP/Respawn — одношаговые/оркестрируемые: ничего не трогаем здесь.
-        # Ими займётся пайплайн на ближайшем тике, если он активен.
+        # Buff/TP/Respawn — одношаговые; ими займётся пайплайн на ближайшем тике.
 
     # --- rule API ---
     def when(self, snap) -> bool:
         paused = self._is_paused()
-        # активировать паузу: не на паузе и без фокуса ≥ grace
         if (not paused) and (snap.is_focused is False) and (snap.focus_unfocused_for_s or 0) >= self.grace:
             return True
-        # снять паузу: пауза активна и фокус вернулся
         if paused and (snap.is_focused is True):
             return True
         return False
 
     def run(self, snap) -> None:
         paused = self._is_paused()
-        ui_emit: Optional[Callable[[str, str, Optional[bool]], None]] = self.s.get("ui_emit")
         services = self.s.get("_services") or {}
         ps_service = services.get("player_state")
 
@@ -110,14 +103,11 @@ class _FocusPauseRule:
             # ВКЛЮЧИТЬ ПАУЗУ
             saved = self._save_feature_flags()
 
-            # ← если успели сохранить снимок busy на событии OFF — используем его, иначе снимаем сейчас
             prev_saved_busy = pool_get(self.s, "runtime.focus_pause.saved_busy", None)
             saved_busy = dict(prev_saved_busy) if prev_saved_busy else self._save_feature_busy()
 
             # стоп HP-сенсор
             try:
-                services = self.s.get("_services") or {}
-                ps_service = services.get("player_state")
                 if ps_service and ps_service.is_running():
                     ps_service.stop()
                     pool_write(self.s, "services.player_state", {"running": False})
@@ -127,11 +117,7 @@ class _FocusPauseRule:
             self._set_paused(True, saved)
             pool_write(self.s, "runtime.focus_pause", {"saved_busy": dict(saved_busy)})
 
-            try:
-                if callable(ui_emit):
-                    ui_emit("postrow", "Пауза: окно без фокуса — процессы остановлены", None)
-            except Exception:
-                pass
+            console.hud("err", "Пауза: окно без фокуса — процессы остановлены")
             return
 
         if paused and (snap.is_focused is True):
@@ -139,10 +125,9 @@ class _FocusPauseRule:
             saved = pool_get(self.s, "runtime.focus_pause.saved", {}) or {}
             saved_busy = pool_get(self.s, "runtime.focus_pause.saved_busy", {}) or {}
 
-            # восстановить флаги фич
             self._restore_feature_flags(saved)
             self._set_paused(False, {})
-            pool_write(self.s, "runtime.focus_pause", {"saved_busy": {}})  # очистили снимок
+            pool_write(self.s, "runtime.focus_pause", {"saved_busy": {}})
 
             # перезапуск HP-сервиса
             try:
@@ -152,14 +137,9 @@ class _FocusPauseRule:
             except Exception:
                 pass
 
-            # централизованное возобновление того, что было busy
             try:
                 self._resume_were_busy(saved_busy)
             except Exception:
                 pass
 
-            try:
-                if callable(ui_emit):
-                    ui_emit("postrow", "Фокус вернулся — возобновляем процессы", True)
-            except Exception:
-                pass
+            console.hud("succ", "Фокус вернулся — возобновляем процессы")

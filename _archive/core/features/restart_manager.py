@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# _archive/core/features/restart_manager.py
+from __future__ import annotations
 import importlib
 import time
 from typing import Callable, Optional

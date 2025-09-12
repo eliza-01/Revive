@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/arduino/connection.py
+from __future__ import annotations
 from typing import Optional
 
 from core.arduino.safe_serial import SafeSerial

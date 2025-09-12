@@ -1,3 +1,4 @@
+﻿# core/arduino/safe_serial.py
 # Обёртка над pyserial с авто-переподключением и подавлением PermissionError(13)
 from __future__ import annotations
 import time
