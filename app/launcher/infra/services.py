@@ -1,5 +1,4 @@
-﻿# app/launcher/infra/services.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Dict, Optional
 import json
 
@@ -9,6 +8,7 @@ from core.engines.window_focus.service import WindowFocusService
 from core.engines.macros.service import MacrosRepeatService
 from core.engines.autofarm.service import AutoFarmService
 
+from core.logging import console
 
 class PSAdapter:
     """Лёгкий адаптер поверх пула для оркестратора/секций."""
@@ -43,6 +43,23 @@ class ServicesBundle:
         # PS adapter нужен сразу (используется ниже/снаружи)
         self.ps_adapter = PSAdapter(self.state)
 
+        # --- helpers для логов/статусов ---
+        def _status_map(ok: Optional[bool]) -> str:
+            return "succ" if ok is True else "err" if ok is False else "ok"
+
+        def _on_status(msg: str, ok: Optional[bool] = None):
+            # консоль
+            if ok is None:
+                console.log(msg)
+            else:
+                console.log(f"{msg} [{'OK' if ok else 'FAIL'}]")
+            # HUD
+            console.hud(_status_map(ok), msg)
+
+        def _on_status_macros(msg: str, ok: Optional[bool] = None):
+            console.log(f"[MACROS] {msg}")
+            console.hud(_status_map(ok), f"Повтор макроса: {msg}")
+
         # --- Player State service ---
         def _on_ps_update(data: Dict[str, Any]):
             hp = data.get("hp_ratio")
@@ -67,13 +84,13 @@ class ServicesBundle:
                         f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
                     )
             except Exception as e:
-                print(f"[HUD] hp set error: {e}")
+                console.log(f"[HUD] hp set error: {e}")
 
         self.ps_service = PlayerStateService(
             server=lambda: pool_get(self.state, "config.server", "boh"),
             get_window=lambda: pool_get(self.state, "window.info", None),
             on_update=_on_ps_update,
-            on_status=self.ui.log,
+            on_status=_on_status,
         )
 
         # --- Window Focus service ---
@@ -119,11 +136,10 @@ class ServicesBundle:
                 except Exception:
                     pass
 
-            # статус в UI при смене
+            # статус (раньше шёл в UI через ui_emit) — теперь в HUD
             if prev_focus is None or prev_focus != is_focused:
                 txt = f"Фокус окна: {'да' if is_focused else 'нет'}"
-                self.ui.log(f"[FOCUS] {'ON' if is_focused else 'OFF'}")
-                self.ui.ui_emit("focus", txt, True if is_focused else None)
+                console.hud("succ" if is_focused else "err", txt)
 
         self.wf_service = WindowFocusService(
             get_window=lambda: pool_get(self.state, "window.info", None),
@@ -142,7 +158,7 @@ class ServicesBundle:
             is_alive=lambda: pool_get(self.state, "player.alive", None),
             is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
             set_busy=lambda b: pool_write(self.state, "features.macros", {"busy": bool(b)}),
-            on_status=self.ui.log_ok,
+            on_status=_on_status_macros,
         )
 
         # --- AutoFarm service ---
@@ -156,7 +172,7 @@ class ServicesBundle:
             is_alive=lambda: pool_get(self.state, "player.alive", None),
             is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
             set_busy=lambda b: pool_write(self.state, "features.autofarm", {"busy": bool(b)}),
-            on_status=self.ui.log,
+            on_status=_on_status,
         )
 
         # Доступ сервисов для правил
@@ -189,27 +205,27 @@ class ServicesBundle:
         try:
             self.ps_service.stop()
         except Exception as e:
-            print(f"[shutdown] ps_service.stop(): {e}")
+            console.log(f"[shutdown] ps_service.stop(): {e}")
         finally:
             pool_write(self.state, "services.player_state", {"running": False})
 
         try:
             self.wf_service.stop()
         except Exception as e:
-            print(f"[shutdown] wf_service.stop(): {e}")
+            console.log(f"[shutdown] wf_service.stop(): {e}")
         finally:
             pool_write(self.state, "services.window_focus", {"running": False})
 
         try:
             self.macros_repeat_service.stop()
         except Exception as e:
-            print(f"[shutdown] macros_repeat_service.stop(): {e}")
+            console.log(f"[shutdown] macros_repeat_service.stop(): {e}")
         finally:
             pool_write(self.state, "services.macros_repeat", {"running": False})
 
         try:
             self.autofarm_service.stop()
         except Exception as e:
-            print(f"[shutdown] autofarm_service.stop(): {e}")
+            console.log(f"[shutdown] autofarm_service.stop(): {e}")
         finally:
             pool_write(self.state, "services.autofarm", {"running": False})

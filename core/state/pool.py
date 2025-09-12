@@ -8,6 +8,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st = state
     # ---- Конфиг/мета ----
     st.setdefault("app", {
+        "language": "ru",
         "version": "",
         "update": {"available": False, "remote": "", "ts": 0.0},
         "ts": 0.0,
@@ -74,11 +75,6 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "macros_repeat": {"running": False, "ts": 0.0},
         "autofarm": {"running": False, "ts": 0.0},
     })
-
-    # ---- UI-статусы ----
-    ui = st.setdefault("ui_status", {})
-    for scope in ("driver", "window", "watcher", "update", "buff", "macros", "tp", "respawn", "focus"):
-        ui.setdefault(scope, {"text": "", "ok": None, "ts": 0.0})
 
     # ---- Runtime/Debug ----
     st.setdefault("runtime", {

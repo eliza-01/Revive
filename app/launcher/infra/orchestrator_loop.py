@@ -22,7 +22,7 @@ class OrchestratorLoop:
         try:
             orchestrator_tick(self._state, self._ps_adapter, self._rules)
         except Exception as e:
-            print("[orch] tick error:", e)
+            console.log(f"[orchestrator_loop.py] tick error: {e}")
         finally:
             if not self._stopped:
                 self._schedule(self._tick, self._period_ms)

@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 import time
 
 from core.state.pool import pool_get
-
+from core.logging import console
 
 @dataclass
 class Snapshot:

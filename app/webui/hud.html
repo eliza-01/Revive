@@ -27,6 +27,9 @@
     #hudCP{color:#61dafb}
 
     .log{flex:1;min-height:16px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+    .log.ok{color:var(--text)}
+    .log.succ{color:var(--on)}
+    .log.err{color:#ef4444}
     .strong{color:var(--text)}
     .sep{flex:1}
   </style>
@@ -58,15 +61,25 @@
       function setLog(text){
         line.textContent = String(text||"—");
       }
-      function push(text){
+      function push(arg){
+        let status = 'ok';
+        let text = arg;
+
+        if (arg && typeof arg === 'object') {
+          if ('status' in arg) status = String(arg.status || 'ok');
+          text = (arg.text != null ? String(arg.text) : '');
+        }
+
         const t = `[${new Date().toLocaleTimeString()}] ${text}`;
         buf.push(t);
         while (buf.length > MAX) buf.shift();
-        if (/(SUCCESS|FAIL|ERROR|Респавн|Поднялись)/i.test(String(text))) {
-          line.classList.add('strong');
-        } else {
-          line.classList.remove('strong');
-        }
+
+        // цвет по статусу
+        line.classList.remove('ok','succ','err','strong');
+        if (status === 'err')      line.classList.add('err');
+        else if (status === 'succ')line.classList.add('succ');
+        else                       line.classList.add('ok');
+
         setLog(text);
       }
 
