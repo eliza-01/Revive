@@ -1,28 +1,20 @@
 ﻿# core/engines/dashboard/server/boh/templates/resolver.py
-# Жёсткий, предсказуемый резолвер для шаблонов respawn-движка.
-# Теперь поддерживает плейсхолдер "<lang>", алиасы языков и языковые фолбэки.
+# Резолвер для шаблонов dashboard-движка.
+# Поддерживает плейсхолдер "<lang>", алиасы языков и вложенные подпапки.
+# Разрешает только реально существующие файлы под eng/ и rus/.
 
+from __future__ import annotations
 import os
 from typing import List, Optional
 
 _LANG_FALLBACK = "rus"
-
-# Алиасы языков на всякий случай
 _LANG_ALIASES = {
-    "ru": "rus",
-    "rus": "rus",
-    "russian": "rus",
-    "en": "eng",
-    "eng": "eng",
-    "english": "eng",
-}
-
-# Разрешённые имена файлов в каталоге языка
-_ALLOWED_FILES = {
-    # добавишь сюда новые имена — они сразу начнут резолвиться
+    "ru": "rus", "rus": "rus", "russian": "rus",
+    "en": "eng", "eng": "eng", "english": "eng",
 }
 
 def _templates_root() -> str:
+    # .../core/engines/dashboard/server/boh/templates
     return os.path.abspath(os.path.dirname(__file__))
 
 def _norm_lang(lang: str) -> str:
@@ -32,57 +24,67 @@ def _norm_lang(lang: str) -> str:
 def _lang_dir(lang: str) -> str:
     return os.path.join(_templates_root(), _norm_lang(lang))
 
-def _try_path(lang: str, filename: str) -> Optional[str]:
-    if filename not in _ALLOWED_FILES:
+# --- Белый список формируется автоматически по содержимому eng/ и rus/ ---
+_ALLOWED_REL: set[str] = set()
+for _L in ("eng", "rus"):
+    base = os.path.join(_templates_root(), _L)
+    if not os.path.isdir(base):
+        continue
+    for root, _dirs, files in os.walk(base):
+        for fn in files:
+            if not fn.lower().endswith(".png"):
+                continue
+            full = os.path.join(root, fn)
+            rel = os.path.relpath(full, base).replace("\\", "/")
+            _ALLOWED_REL.add(rel)
+
+def _safe_join_lang(lang_dir: str, *parts: str) -> Optional[str]:
+    # Собираем путь под lang_dir, защищаемся от traversal
+    joined = os.path.join(lang_dir, *parts)
+    normd  = os.path.abspath(joined)
+    if not normd.startswith(os.path.abspath(lang_dir) + os.sep):
         return None
-    p = os.path.join(_lang_dir(lang), filename)
-    return p if os.path.isfile(p) else None
+    return normd
 
 def resolve(lang: str, *parts: str) -> Optional[str]:
     """
-    Поддерживаем вызовы вида:
-      resolve("rus", "reborn_banner.png")                # 1 сегмент
-      resolve("rus", "<lang>", "reborn_banner.png")      # 2 сегмента с плейсхолдером
-    Выполняем фолбэк по языкам: lang → rus → eng.
+    Примеры:
+      resolve("rus", "<lang>", "main", "dashboard_init.png")
+      resolve("eng", "<lang>", "buffer", "dashboard_buffer_init.png")
     """
-    # вытащим имя файла
-    filename: Optional[str] = None
     if not parts:
         return None
-    if len(parts) == 1:
-        filename = parts[0]
-    elif len(parts) == 2 and parts[0] in ("<lang>", "lang"):
-        filename = parts[1]
+
+    # поддерживаем как "<lang>", так и уже нормализованный язык первым сегментом
+    if parts[0] in ("<lang>", "lang"):
+        rel_parts = parts[1:]
+    elif parts[0].lower() in ("eng", "rus"):
+        rel_parts = parts[1:]
+        lang = parts[0].lower()
     else:
-        # не поддерживаем вложенные подпапки и лишние сегменты
+        # считаем, что первый сегмент — это подпапка (требуется "<lang>" в TEMPLATES)
+        rel_parts = parts
+
+    # белый список сравниваем по пути относительно lang-директории в POSIX-формате
+    rel_norm = "/".join(rel_parts)
+    if rel_norm not in _ALLOWED_REL:
         return None
 
-    if filename not in _ALLOWED_FILES:
+    base = _lang_dir(lang)
+    p = _safe_join_lang(base, *rel_parts)
+    if not p or not os.path.isfile(p):
         return None
-
-    langs_to_try = []
-    prim = _norm_lang(lang)
-    langs_to_try.append(prim)
-    if "rus" not in langs_to_try:
-        langs_to_try.append("rus")
-    if "eng" not in langs_to_try:
-        langs_to_try.append("eng")
-
-    for L in langs_to_try:
-        p = _try_path(L, filename)
-        if p:
-            return p
-    return None
+    return p
 
 def exists(lang: str, *parts: str) -> bool:
     return resolve(lang, *parts) is not None
 
 def listdir(lang: str, *parts: str) -> List[str]:
-    # Возвращаем только разрешённые файлы, которые реально существуют в нормализованном языке
+    # Возвращаем список разрешённых файлов, реально существующих для языка
     base = _lang_dir(lang)
     out: List[str] = []
-    for name in sorted(_ALLOWED_FILES):
-        p = os.path.join(base, name)
+    for rel in sorted(_ALLOWED_REL):
+        p = os.path.join(base, rel)
         if os.path.isfile(p):
-            out.append(name)
+            out.append(rel)
     return out

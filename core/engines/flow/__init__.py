@@ -1,3 +1,4 @@
+﻿# core/engines/flow/__init__.py
 from .engine import FlowEngine
 from .ops import FlowCtx, FlowOpExecutor, run_flow
 

@@ -1,6 +1,6 @@
 ﻿# _archive/servers/l2mad/flows/buff.py
 # =========================
-# buffer.py — оставь как «шлюз» (бэк-компат)
+# engine.py — оставь как «шлюз» (бэк-компат)
 
 from .buff_dashboard import FLOW  # переиспользуем
 

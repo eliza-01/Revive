@@ -64,7 +64,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     # ---- Пайплайн ----
     st.setdefault("pipeline", {
         "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
-        "order": ["respawn", "macros", "autofarm"],
+        "order": ["respawn", "buff", "macros", "autofarm"],
         "active": False, "idx": 0, "last_step": "", "ts": 0.0,
     })
 

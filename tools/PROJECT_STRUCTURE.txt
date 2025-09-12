@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-13 00:46:15
+Generated: 2025-09-13 01:47:37
 
 Revive
 ├── _archive
@@ -96,6 +96,10 @@ Revive
 │   │   ├── dashboard
 │   │   │   ├── server
 │   │   │   │   ├── boh
+│   │   │   │   │   ├── buffer
+│   │   │   │   │   │   ├── __init__.py
+│   │   │   │   │   │   ├── engine.py
+│   │   │   │   │   │   └── rules.py
 │   │   │   │   │   ├── templates
 │   │   │   │   │   │   ├── eng
 │   │   │   │   │   │   ├── rus
@@ -132,11 +136,8 @@ Revive
 │   │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── buffer.py
 │   │   │   │   │   ├── dashboard_data.py
-│   │   │   │   │   ├── engine.py
-│   │   │   │   │   ├── rules.py
-│   │   │   │   │   └── teleport.py
+│   │   │   │   │   └── engine.py
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
 │   │   │   └── runner.py

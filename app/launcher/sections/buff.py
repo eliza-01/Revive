@@ -20,9 +20,6 @@ class BuffSection(BaseSection):
         self.schedule = schedule
         self.checker = checker
 
-        # ensure defaults exist (ensure_pool уже сделал, но обновим методы от профиля при первом создании)
-        # методы/текущий метод уже проставляются в SystemSection, так что здесь ничего не нужно.
-
     # --- setters ---
     def buff_set_enabled(self, enabled: bool):
         pool_write(self.s, "features.buff", {"enabled": bool(enabled)})
@@ -35,11 +32,19 @@ class BuffSection(BaseSection):
             self.emit("buff", f"Неизвестный режим бафа: {mode}", None)
         pool_write(self.s, "features.buff", {"mode": mode or ""})
 
+    def buff_set_method(self, method: str):
+        methods = set(pool_get(self.s, "features.buff.methods", []) or [])
+        m = (method or "").strip().lower()
+        if methods and m not in methods:
+            self.emit("buff", f"Неизвестный метод бафа: {method}", None)
+        pool_write(self.s, "features.buff", {"method": m})
+
     # --- getters ---
     def buff_get_config(self) -> Dict[str, Any]:
         return {
             "enabled": bool(pool_get(self.s, "features.buff.enabled", False)),
             "mode": pool_get(self.s, "features.buff.mode", ""),
+            "method": pool_get(self.s, "features.buff.method", ""),
             "methods": list(pool_get(self.s, "features.buff.methods", []) or []),
         }
 
@@ -55,14 +60,13 @@ class BuffSection(BaseSection):
             return False
         mode = pool_get(self.s, "features.buff.mode", "")
         self.emit("buff", f"Запуск бафа (режим: {mode or '—'})", None)
-        # если есть отдельный движок/сервис — вызвать здесь.
-        # пока просто возвращаем True как “акция принята”.
         return True
 
     def expose(self) -> dict:
         return {
             "buff_set_enabled": self.buff_set_enabled,
             "buff_set_mode": self.buff_set_mode,
+            "buff_set_method": self.buff_set_method,   # ← добавили
             "buff_get_config": self.buff_get_config,
             "buff_run_once": self.buff_run_once,
         }
