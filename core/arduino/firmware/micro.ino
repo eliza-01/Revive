@@ -136,6 +136,13 @@ void processCommand(String cmd) {
   } else if (cmd == "alt") {
     Keyboard.press(KEY_LEFT_ALT); delay(80); Keyboard.release(KEY_LEFT_ALT);
 
+  } else if (cmd == "altB") {
+    // Alt + B: нажать вместе, отпустить вместе
+    Keyboard.press(KEY_LEFT_ALT);
+    Keyboard.press('b');
+    delay(80);
+    Keyboard.releaseAll();
+
   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
