@@ -71,13 +71,22 @@ class SystemSection(BaseSection):
 
         # buff/tp methods from manifest
         buff_methods = get_buff_methods(server)
-        buff_modes   = get_buff_modes(server)
-        tp_methods   = get_tp_methods(server)
+        buff_modes = get_buff_modes(server)
+        tp_methods = get_tp_methods(server)
         cur_mode = pool_get(self.s, "features.buff.mode", (buff_modes[0] if buff_modes else ""))
         if cur_mode and cur_mode not in buff_modes:
             cur_mode = (buff_modes[0] if buff_modes else "")
-        pool_write(self.s, "features.buff", {"methods": buff_methods, "mode": cur_mode})
+        pool_write(self.s, "features.buff", {"methods": buff_methods, "modes": buff_modes, "mode": cur_mode})
         pool_write(self.s, "features.tp", {"methods": tp_methods})
+        try:
+            self.window.evaluate_js(
+                f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(buff_methods)}, {json.dumps(cur_mode)})"
+            )
+            self.window.evaluate_js(
+                f"window.ReviveUI && window.ReviveUI.onBuffModes({json.dumps(buff_modes)}, {json.dumps(cur_mode)})"
+            )
+        except Exception:
+            pass
 
         # sections visibility for current server
         pool_write(self.s, "ui.sections", get_section_flags(server))
@@ -118,14 +127,24 @@ class SystemSection(BaseSection):
 
         # buff/tp
         buff_methods = get_buff_methods(server)
-        buff_modes   = get_buff_modes(server)
-        tp_methods   = get_tp_methods(server)
+        buff_modes = get_buff_modes(server)
+        tp_methods = get_tp_methods(server)
 
         cur_mode = pool_get(self.s, "features.buff.mode", "")
         if cur_mode not in buff_modes:
             cur_mode = (buff_modes[0] if buff_modes else "")
-        pool_write(self.s, "features.buff", {"methods": buff_methods, "mode": cur_mode})
+        pool_write(self.s, "features.buff", {"methods": buff_methods, "modes": buff_modes, "mode": cur_mode})
         pool_write(self.s, "features.tp", {"methods": tp_methods})
+
+        try:
+            self.window.evaluate_js(
+                f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(buff_methods)}, {json.dumps(cur_mode)})"
+            )
+            self.window.evaluate_js(
+                f"window.ReviveUI && window.ReviveUI.onBuffModes({json.dumps(buff_modes)}, {json.dumps(cur_mode)})"
+            )
+        except Exception:
+            pass
 
         # sections
         pool_write(self.s, "ui.sections", get_section_flags(server))
@@ -182,6 +201,7 @@ class SystemSection(BaseSection):
         l2_langs = get_languages(cur_server)
         tp_methods = get_tp_methods(cur_server)
         buff_methods = get_buff_methods(cur_server)
+        buff_modes = get_buff_modes(cur_server)
         sections = get_section_flags(cur_server)
 
         return {
@@ -196,6 +216,7 @@ class SystemSection(BaseSection):
             "monitoring": bool(self.ps.is_running() if hasattr(self.ps, "is_running") else False),
 
             "buff_methods": buff_methods,
+            "buff_modes": buff_modes,  # ← ДОБАВЛЕНО
             "buff_current": pool_get(self.s, "features.buff.mode", ""),
             "tp_methods": tp_methods,
 
@@ -228,12 +249,17 @@ class SystemSection(BaseSection):
             self.ps.set_server(pool_get(self.s, "config.server", server))
         except Exception:
             pass
-        # ui: обновить методы бафа через событие
+
+        # ui: обновить методы/режимы бафа через событие (повторно — на случай, если фронт не поймал вызовы из _apply_server)
         methods = pool_get(self.s, "features.buff.methods", [])
-        cur = pool_get(self.s, "features.buff.mode", "")
+        modes   = pool_get(self.s, "features.buff.modes", [])
+        cur     = pool_get(self.s, "features.buff.mode", "")
         try:
             self.window.evaluate_js(
                 f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(methods)}, {json.dumps(cur)})"
+            )
+            self.window.evaluate_js(
+                f"window.ReviveUI && window.ReviveUI.onBuffModes({json.dumps(modes)}, {json.dumps(cur)})"
             )
         except Exception:
             pass

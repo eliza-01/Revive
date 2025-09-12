@@ -29,11 +29,10 @@ class BuffSection(BaseSection):
         self.emit("buff", "Баф: вкл" if enabled else "Баф: выкл", True if enabled else None)
 
     def buff_set_mode(self, mode: str):
-        methods = set(pool_get(self.s, "features.buff.methods", []) or [])
+        modes = set(pool_get(self.s, "features.buff.modes", []) or [])
         m = (mode or "").strip().lower()
-        if methods and m not in methods:
-            # неизвестный метод — пометим предупреждением, но сохраним как есть (вдруг профиль обновится)
-            self.emit("buff", f"Неизвестный метод бафа: {mode}", None)
+        if modes and m not in modes:
+            self.emit("buff", f"Неизвестный режим бафа: {mode}", None)
         pool_write(self.s, "features.buff", {"mode": mode or ""})
 
     # --- getters ---

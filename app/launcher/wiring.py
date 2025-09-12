@@ -91,9 +91,15 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     })
     # buff/tp методы из манифеста
     buff_methods = get_buff_methods(server)
-    buff_modes   = get_buff_modes(server)
-    tp_methods   = get_tp_methods(server)
-    pool_write(state, "features.buff", {"enabled": False, "mode": (buff_modes[0] if buff_modes else ""), "methods": buff_methods, "status": "idle"})
+    buff_modes = get_buff_modes(server)
+    tp_methods = get_tp_methods(server)
+    pool_write(state, "features.buff", {
+        "enabled": False,
+        "mode": (buff_modes[0] if buff_modes else ""),
+        "methods": buff_methods,
+        "modes": buff_modes,  # ← ДОБАВЛЕНО
+        "status": "idle"
+    })
     pool_write(state, "features.tp", {"enabled": False, "status": "idle", "methods": tp_methods})
     pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
     pool_write(state, "pipeline", {
