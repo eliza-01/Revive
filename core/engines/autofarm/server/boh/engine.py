@@ -471,7 +471,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 if ctx_base.get("af_unvisible"):
                     ctx_base["af_unvisible"] = False
                     # перебор имён после «цель не видна»
-                    if _fallback_by_names(ex, ctx_base, server, lang, win, cfg):
+                    if _search_by_names(ex, ctx_base, server, lang, win, cfg):
                         _RESTART_STREAK = 0
                         excluded_targets.clear()
                         continue
@@ -480,7 +480,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                     _RESTART_STREAK += 1
         else:
             # перебор имён «в лоб»
-            if _fallback_by_names(ex, ctx_base, server, lang, win, cfg):
+            if _search_by_names(ex, ctx_base, server, lang, win, cfg):
                 _RESTART_STREAK = 0
                 excluded_targets.clear()
                 continue
@@ -488,7 +488,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
         if _RESTART_STREAK >= _RESTART_STREAK_LIMIT:
             try:
-                _send_chat(ex, "/unstuck", wait_ms=2222)
+                _send_chat(ex, "/unstuck", wait_ms=1999)
                 _press_esc(ex)
             except Exception:
                 pass
@@ -499,7 +499,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
         time.sleep(0.3)
 
 
-def _fallback_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lang: str,
+def _search_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lang: str,
                        win: Dict, cfg: Dict[str, Any]) -> bool:
     """Перебор имён зоны (с учётом чёрного списка и UI-фильтра). True если нашли и добили цель."""
     zone_id = (cfg or {}).get("zone") or ""

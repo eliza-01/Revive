@@ -19,11 +19,12 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
         templates={},   # parts напрямую в flow
         extras={},
     )
-    execu = FlowOpExecutor(fctx, on_status=ctx_base["on_status"])
+    # Новая сигнатура: только logger (по умолчанию console.log)
+    execu = FlowOpExecutor(fctx)
+
     flow = [
         {"op": "wait",     "zone": "fullscreen", "tpl": ["interface","autofarm.png"],
-         "timeout_ms": 2000, "thr": 0.87,
-         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "restart"},
+         "timeout_ms": 2000, "thr": 0.87},
         {"op": "click_in", "zone": "fullscreen", "tpl": ["interface","autofarm.png"],
          "timeout_ms": 2000, "thr": 0.87},
     ]
