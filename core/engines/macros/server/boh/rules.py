@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple, List
 from core.state.pool import pool_get
 from core.orchestrators.snapshot import Snapshot
 from core.engines.macros.runner import run_macros
+from core.logging import console
 
 
 def run_step(
@@ -12,21 +13,16 @@ def run_step(
     state: Dict[str, Any],
     ps_adapter,
     controller,
-    report,
     snap: Snapshot,
     helpers: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, bool]:
     """
-    Правило шага MACROS для текущего сервера.
-    Контракт: вернуть (ok, advance).
+    Правило шага MACROS для текущего сервера. Контракт: (ok, advance).
     """
     rows = _get_rows_from_pool(state)
     if not rows:
-        report("[MACROS] Нет макросов для выполнения")
+        console.hud("err", "[MACROS] Нет макросов для выполнения")
         return False, True
-
-    def _status(text: str, ok: Optional[bool] = None):
-        report(f"[MACROS] {text}")
 
     srv = pool_get(state, "config.server", None) or ""
     ok = run_macros(
@@ -34,7 +30,6 @@ def run_step(
         controller=controller,
         get_window=lambda: pool_get(state, "window.info", None),
         get_language=lambda: pool_get(state, "config.language", "rus"),
-        on_status=_status,
         cfg={"rows": rows},
         should_abort=lambda: False,
     )
@@ -61,6 +56,4 @@ def _get_rows_from_pool(state: Dict[str, Any]) -> List[Dict[str, Any]]:
             repeat_s = int(float((r or {}).get("repeat_s", 0)))
             out.append({"key": key, "cast_s": max(0, cast_s), "repeat_s": max(0, repeat_s)})
         return out
-
-    # совместимость с sequence+duration_s не нужна — требований нет
     return []

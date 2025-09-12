@@ -1,14 +1,7 @@
-﻿# core/engines/macros/server/boh/engine.py
- # core/engines/macros/server/boh/engine.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import time
 from typing import Any, Dict, Optional, Callable, List
-
-def _emit(cb: Optional[Callable[[str, Optional[bool]], None]], text: str, ok: Optional[bool] = None):
-    try:
-        (cb or (lambda *_: None))(text, ok)
-    except Exception:
-        pass
+from core.logging import console
 
 def _norm_rows(rows: Any) -> List[Dict[str, int | str]]:
     out: List[Dict[str, int | str]] = []
@@ -29,50 +22,42 @@ def _norm_rows(rows: Any) -> List[Dict[str, int | str]]:
 def start(ctx: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     """
     Одноразовый прогон списка макросов (без расписаний).
-    cfg:
-      rows: [{key:'1'..'0', cast_s:int<=99, repeat_s:int<=9999}, ...]
-    Статусы:
-      "Макрос используется (i/N)"
-      "Макросы выполнены"
+    cfg: rows: [{key, cast_s, repeat_s}, ...]
     """
     controller = ctx.get("controller")
-    on_status: Callable[[str, Optional[bool]], None] = ctx.get("on_status") or (lambda *_: None)
     should_abort: Callable[[], bool] = ctx.get("should_abort") or (lambda: False)
 
     rows = _norm_rows(cfg.get("rows"))
     total = len(rows)
 
     if total <= 0:
-        _emit(on_status, "[macros] нет строк для выполнения", False)
+        console.hud("err", "[macros] нет строк для выполнения")
         return False
 
     all_ok = True
 
     for i, row in enumerate(rows, start=1):
         if should_abort():
-            _emit(on_status, "[macros] прервано пользователем", None)
+            console.hud("ok", "[macros] прервано пользователем")
             return False
 
         key = str(row.get("key", "1"))[:1]
         cast_s = int(row.get("cast_s", 0))
 
-        # прогресс
-        _emit(on_status, f"Макрос используется ({i}/{total})", None)
+        console.hud("ok", f"Макрос используется ({i}/{total})")
 
-        # отправляем цифру в Arduino
         try:
             controller.send(key)
         except Exception:
             all_ok = False
 
-        # “кастуется”
         if cast_s > 0:
             end = time.time() + cast_s
             while time.time() < end:
                 if should_abort():
-                    _emit(on_status, "[macros] прервано пользователем", None)
+                    console.hud("ok", "[macros] прервано пользователем")
                     return False
                 time.sleep(0.05)
 
-    _emit(on_status, "Макросы выполнены", all_ok)
+    console.hud("succ", "Макросы выполнены")
     return bool(all_ok)
