@@ -12,16 +12,21 @@ from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from .templates import resolver as tplresolver
 from .ui_guard_data import ZONES, PAGES, CLOSE_BUTTONS
 
+from core.logging import console
+from core.state.pool import pool_get
+
 Point = Tuple[int, int]
 Zone = Tuple[int, int, int, int]
 
 DEFAULT_CLICK_THRESHOLD = 0.75
 DEFAULT_CONFIRM_TIMEOUT_S = 3.0
 
+
 class UIGuardEngine:
     """
     Детект «страниц» (оверлеев) и закрытие по крестику/кнопке.
     """
+
     def __init__(
         self,
         server: str,
@@ -29,15 +34,26 @@ class UIGuardEngine:
         *,
         click_threshold: float = DEFAULT_CLICK_THRESHOLD,
         confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
-        debug: bool = False,
-        on_report: Optional[callable] = None,
     ):
         self.server = (server or "boh").lower()
         self.controller = controller
         self.click_threshold = float(click_threshold)
         self.confirm_timeout_s = float(confirm_timeout_s)
-        self.debug = bool(debug)
-        self._report = on_report or (lambda *_: None)
+
+    # --- debug gating ---
+    def _dbg_enabled(self) -> bool:
+        try:
+            # включаем только при явном True
+            return pool_get(None, "runtime.debug.ui_guard_debug", False) is True
+        except Exception:
+            return False
+
+    def _dbg(self, msg: str):
+        try:
+            if self._dbg_enabled():
+                console.log(f"[UI_GUARD/DBG] {msg}")
+        except Exception:
+            pass
 
     # --- API ---
     def scan_open_page(self, window: Dict, lang: str) -> Optional[Dict[str, Any]]:
@@ -53,8 +69,7 @@ class UIGuardEngine:
         fb = self._fallback_scan_pages(window, (lang or "rus").lower(), ltrb)
         if fb is not None:
             (pt, key, score) = fb
-            if self.debug:
-                self._log(f"[ui_guard] page={key} score={score:.3f} @ {pt}")
+            self._dbg(f"page={key} score={score:.3f} @ {pt}")
             return {"key": key, "pt": pt}
         return None
 
@@ -74,14 +89,14 @@ class UIGuardEngine:
             waves += 1
             # кликаем уникальные точки (дедуп уже сделан внутри)
             for (x, y) in points:
-                self._report(f"[UI_GUARD] click close {page_key} @ {x},{y}")
+                console.log(f"[UI_GUARD] click close {page_key} @ {x},{y}")
                 self._click(x, y)
                 time.sleep(0.06)  # короткая стабилизация между кликами
             time.sleep(0.12)  # стабилизация кадра перед новой волной
 
             # safety: чтобы не попасть в бесконечный цикл на шуме
             if waves >= 10:
-                self._log(f"[ui_guard] too many waves for {page_key} -> break")
+                self._dbg(f"too many waves for {page_key} -> break")
                 break
 
         # 2) подтверждаем, что именно эта страница исчезла
@@ -92,7 +107,7 @@ class UIGuardEngine:
                 return True
             time.sleep(0.05)
 
-        self._log(f"[ui_guard] timeout closing {page_key}")
+        console.log(f"[UI_GUARD] timeout closing {page_key}")
         return False
 
     # --- internals ---
@@ -213,18 +228,10 @@ class UIGuardEngine:
                 self.controller.move(int(x), int(y))
             time.sleep(max(0.0, float(delay_s)))
             if hasattr(self.controller, "_click_left_arduino"):
+                self._dbg(f"click arduino @ {x},{y}")
                 self.controller._click_left_arduino()
             else:
+                self._dbg(f"click send(l) @ {x},{y}")
                 self.controller.send("l")
         except Exception:
             pass
-
-    def _log(self, msg: str):
-        if self.debug:
-            try:
-                print(msg)
-            except Exception:
-                pass
-
-def create_engine(**kw):
-    return UIGuardEngine(**kw)

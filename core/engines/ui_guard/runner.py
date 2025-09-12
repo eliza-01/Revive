@@ -2,6 +2,9 @@
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 
+from core.logging import console
+
+
 class UIGuardRunner:
     """
     Одноразовый запуск UI-стража:
@@ -17,27 +20,19 @@ class UIGuardRunner:
         engine: Any,
         get_window: Callable[[], Optional[Dict[str, Any]]],
         get_language: Callable[[], str],
-        report: Optional[Callable[[str], None]] = None,
         *,
-        is_focused: Optional[Callable[[], bool]] = None,   # <— добавлено
+        is_focused: Optional[Callable[[], bool]] = None,   # только фокус, без report/on_status
     ):
         self.engine = engine
         self._get_window = get_window
         self._get_language = get_language
-        self._report = report or (lambda *_: None)
         self._is_focused = is_focused or (lambda: True)
-
-    def _log(self, msg: str) -> None:
-        try:
-            self._report(str(msg))
-        except Exception:
-            pass
 
     def run_once(self) -> Dict[str, Any]:
         # если фокуса нет — ничего не делаем
         try:
             if not self._is_focused():
-                self._log("[UI_GUARD] skip: no focus")
+                console.hud("err", "[UI_GUARD] skip: no focus")
                 return {"found": False, "closed": False, "key": ""}
         except Exception:
             # в сомнительных ситуациях лучше не блокировать
@@ -45,7 +40,7 @@ class UIGuardRunner:
 
         win = self._get_window() or {}
         if not win:
-            self._log("[UI_GUARD] no window")
+            console.hud("err", "[UI_GUARD] no window")
             return {"found": False, "closed": False, "key": ""}
 
         lang = (self._get_language() or "rus").lower()
@@ -56,7 +51,7 @@ class UIGuardRunner:
             found = self.engine.scan_open_page(win, lang)
             if not found:
                 if closed_any:
-                    self._log("[UI_GUARD] screen clear")
+                    console.hud("succ", "[UI_GUARD] screen clear")
                 return {
                     "found": closed_any,
                     "closed": closed_any,
@@ -64,11 +59,11 @@ class UIGuardRunner:
                 }
 
             page_key = str(found.get("key") or "")
-            self._log(f"[UI_GUARD] found {page_key}")
+            console.hud("ok", f"[UI_GUARD] found {page_key}")
 
             ok = self.engine.try_close(win, lang, page_key)
             if not ok:
-                self._log(f"[UI_GUARD] cannot close {page_key}")
+                console.hud("err", f"[UI_GUARD] cannot close {page_key}")
                 return {"found": True, "closed": closed_any, "key": page_key}
 
             closed_any = True
