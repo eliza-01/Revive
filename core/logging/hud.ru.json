@@ -1,0 +1,10 @@
+{
+  "macros.started": "Макрос начался",
+  "macros.finished": "Макрос завершён",
+  "autofarm.started": "Автофарм начался",
+  "autofarm.finished": "Автофарм завершён",
+  "respawn.waiting": "Ожидание возрождения...",
+  "respawn.accepted": "Возрождение принято",
+  "focus.lost": "Фокус потерян",
+  "focus.gained": "Фокус восстановлен"
+}

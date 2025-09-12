@@ -258,6 +258,14 @@ class SystemSection(BaseSection):
         return {"found": False}
 
     def test_connect(self) -> str:
+        # Arduino ping status
+        try:
+            self.controller.send("ping")
+            ok = (self.controller.read() == "pong")
+            self.emit("driver", "[✓] Arduino ответила" if ok else "[×] Нет ответа", ok)
+        except Exception as e:
+            self.emit("driver", f"[×] Ошибка связи с Arduino: {e}", False)
+
         label_proxy = type("L", (), {"config": lambda *_a, **_k: None})
         run_test_command(self.controller, label_proxy)
         return "ok"
