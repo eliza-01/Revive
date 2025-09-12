@@ -44,17 +44,16 @@ class ServicesBundle:
         # PS adapter нужен сразу (используется ниже/снаружи)
         self.ps_adapter = PSAdapter(self.state)
 
-        # --- helpers для логов/статусов ---
+        # --- helpers для HUD ---
         def _status_map(ok: Optional[bool]) -> str:
             return "succ" if ok is True else "err" if ok is False else "ok"
 
         def _on_status(msg: str, ok: Optional[bool] = None):
-            # консоль
+            # консоль + HUD
             if ok is None:
                 console.log(msg)
             else:
                 console.log(f"{msg} [{'OK' if ok else 'FAIL'}]")
-            # HUD
             console.hud(_status_map(ok), msg)
 
         def _on_status_macros(msg: str, ok: Optional[bool] = None):
@@ -91,7 +90,6 @@ class ServicesBundle:
             server=lambda: pool_get(self.state, "config.server", "boh"),
             get_window=lambda: pool_get(self.state, "window.info", None),
             on_update=_on_ps_update,
-            on_status=_on_status,
         )
 
         # --- Window Focus service ---
@@ -145,7 +143,6 @@ class ServicesBundle:
         self.wf_service = WindowFocusService(
             get_window=lambda: pool_get(self.state, "window.info", None),
             on_update=_on_wf_update,
-            on_status=None,
         )
 
         # --- Macros Repeat service ---
@@ -159,7 +156,6 @@ class ServicesBundle:
             is_alive=lambda: pool_get(self.state, "player.alive", None),
             is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
             set_busy=lambda b: pool_write(self.state, "features.macros", {"busy": bool(b)}),
-            on_status=_on_status_macros,
         )
 
         # --- AutoFarm service ---
@@ -173,7 +169,6 @@ class ServicesBundle:
             is_alive=lambda: pool_get(self.state, "player.alive", None),
             is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
             set_busy=lambda b: pool_write(self.state, "features.autofarm", {"busy": bool(b)}),
-            on_status=_on_status,
         )
 
         # Доступ сервисов для правил

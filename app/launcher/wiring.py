@@ -55,6 +55,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
 
     # L2 UI language — первый из списка для сервера
     l2_langs = get_languages(server)
+    if not l2_langs:  # <<< жёсткая проверка без фолбэков
+        console.log(f"No languages in manifest for server '{server}'")
+        raise RuntimeError(f"No languages in manifest for server '{server}'")
     l2_lang = l2_langs[0]
 
     # === state / pool ===
@@ -67,6 +70,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     pool_write(state, "config", {
         "server": server,
         "language": l2_lang,      # язык интерфейса L2
+        "app_language": l2_lang,   # <<< язык приложения/консоли/HUD (UIBridge требует)
         "profiles": servers       # доступные сервера
     })
     pool_write(state, "account", {"login": "", "password": "", "pin": ""})

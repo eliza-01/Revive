@@ -13,7 +13,7 @@ import os
 #   console.hud("ok",  "macros.started", name="X")  # ключ из словаря
 #   console.hud("err", "Ошибка {code}", code=13)    # прямой текст
 
-_SUPPORTED_LANGS = {"ru", "en"}
+_SUPPORTED_LANGS = {"rus", "eng"}
 _ALLOWED_STATUS  = {"err", "succ", "ok"}
 
 _DICT_CACHE: Dict[str, Dict[str, str]] = {}

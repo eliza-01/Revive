@@ -316,7 +316,6 @@ class PipelineRule:
         # общие параметры из пула
         click_threshold = float(pool_get(self.s, "features.respawn.click_threshold", 0.70))
         confirm_timeout_s = float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0))
-        debug = bool(pool_get(self.s, "runtime.debug.respawn_debug", False))
 
         def _is_alive():
             try:
@@ -332,7 +331,6 @@ class PipelineRule:
                 is_alive_cb=_is_alive,
                 click_threshold=click_threshold,
                 confirm_timeout_s=confirm_timeout_s,
-                debug=debug,
             )
         elif RespawnEngine is not None:
             return RespawnEngine(
@@ -341,7 +339,6 @@ class PipelineRule:
                 is_alive_cb=_is_alive,
                 click_threshold=click_threshold,
                 confirm_timeout_s=confirm_timeout_s,
-                debug=debug,
             )
         else:
             raise RuntimeError("Respawn engine class/factory not found in loaded module")

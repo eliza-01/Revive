@@ -8,12 +8,12 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st = state
     # ---- Конфиг/мета ----
     st.setdefault("app", {
-        "language": "ru",
         "version": "",
         "update": {"available": False, "remote": "", "ts": 0.0},
         "ts": 0.0,
     })
     st.setdefault("config", {
+        "app_language": "ru",
         "server": "boh",
         "language": "rus",
         "profile": {},
