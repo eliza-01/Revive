@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
 
 from _archive.core.runtime.flow_engine import FlowEngine
 from core.vision.matching.template_matcher import match_in_zone
+from core.logging import console
 
 _RU2US = {
     # верхний ряд
@@ -144,9 +145,8 @@ class FlowCtx:
         return match_in_zone(win, ltrb, self.server, self._lang(), parts, thr) is not None
 
 class FlowOpExecutor:
-    def __init__(self, ctx: FlowCtx, on_status: Callable[[str, Optional[bool]], None] = lambda *_: None, logger: Callable[[str], None] = print):
+    def __init__(self, ctx: FlowCtx, logger: Callable[[str], None] = console.log):
         self.ctx = ctx
-        self._on_status = on_status
         self._log = logger
 
     def _subst(self, s: str) -> str:
@@ -198,16 +198,15 @@ class FlowOpExecutor:
                         time.sleep(delay_ms / 1000.0)
 
                 if not found:
-                    try:
-                        self._on_status(f"[flow] wait_optional: '{tpl}' not found after {total_tries} tries → continue", True)
-                    except:
-                        pass
+                    self._log(f"[flow] wait_optional: '{tpl}' not found after {total_tries} tries → continue")
                 ok = True
+
             elif op == "click_in":
                 tpl = step["tpl"]
                 if tpl == "{mode_key}":
                     tpl = self.ctx.extras.get("mode_key_provider", lambda: None)() or "buffer_mode_profile"
                 ok = self.ctx._click_in(step["zone"], tpl, int(step["timeout_ms"]), thr)
+
             elif op == "click_any":
                 ok = False
                 deadline = time.time() + int(step["timeout_ms"]) / 1000.0
@@ -216,6 +215,7 @@ class FlowOpExecutor:
                         ok = self.ctx._click_in(zk, step["tpl"], 1, thr)
                         if ok: break
                     time.sleep(0.05)
+
             elif op == "click_optional":
                 # Мягкий клик с внутренними ретраями: пробуем retry_count+1 раз.
                 zone = step["zone"]
@@ -238,14 +238,9 @@ class FlowOpExecutor:
                         time.sleep(delay_ms / 1000.0)
 
                 if not success:
-                    try:
-                        self._on_status(
-                            f"[flow] click_optional: '{tpl}' not clicked after {total_tries} tries → continue",
-                            True
-                        )
-                    except:
-                        pass
+                    self._log(f"[flow] click_optional: '{tpl}' not clicked after {total_tries} tries → continue")
                 ok = True
+
             elif op == "enter_pincode":
                 # МЯГКИЙ PIN: если панели нет или PIN пуст — считаем шаг успешным и идём дальше
                 zone = step.get("zone", "fullscreen")
@@ -283,6 +278,7 @@ class FlowOpExecutor:
                         pass
                     time.sleep(int(step.get("delay_ms", 80)) / 1000.0)
                     ok = True
+
             elif op == "move_zone_center":
                 zone_key = step["zone"]
                 zone = self.ctx.zones.get(zone_key)
@@ -298,10 +294,13 @@ class FlowOpExecutor:
                         pass
                     time.sleep(int(step.get("delay_ms", 50)) / 1000.0)
                     ok = True
+
             elif op == "dashboard_is_locked":
                 ok = self._dashboard_is_locked(step, thr)
+
             elif op == "while_visible_send":
                 ok = self._while_visible_send(step, thr)
+
             elif op == "send_arduino":
                 cmd = step.get("cmd", "")
                 delay_ms = int(step.get("delay_ms", 100))
@@ -337,6 +336,7 @@ class FlowOpExecutor:
                     text = _ru_to_us_keys(text)
                 self.ctx.controller.send(f"enter {text}")
                 ok = True
+
             elif op == "set_layout":
                 # Только Alt+Shift
                 target = (step.get("layout") or step.get("value") or "toggle").lower()  # "toggle" | "ru" | "en"
@@ -367,19 +367,23 @@ class FlowOpExecutor:
                         self._kb_layout = target
                         ok = True
                 else:
-                    self._on_status(f"[flow] set_layout: unknown layout '{target}'", False)
+                    self._log(f"[flow] set_layout: unknown layout '{target}'")
                     ok = False
 
             elif op == "sleep":
                 time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
+
             elif op == "click_village":
                 ok = self._click_by_resolver(step["zone"], "village_png", step, thr)
+
             elif op == "click_location":
                 ok = self._click_by_resolver(step["zone"], "location_png", step, thr)
+
             else:
-                self._on_status(f"[flow] unknown op: {op}", False); ok = False
+                self._log(f"[flow] unknown op: {op}"); ok = False
+
         except Exception as e:
-            self._on_status(f"[flow] op error {op}: {e}", False)
+            self._log(f"[flow] op error {op}: {e}")
             ok = False
 
         # ← ЕДИНЫЙ ПОСТ-ОЖИДАТЕЛЬ ДЛЯ ЛЮБОГО ШАГА
@@ -405,7 +409,7 @@ class FlowOpExecutor:
                 except: pass
                 next_probe = now + interval_s
             time.sleep(0.08)
-        self._on_status("[flow] dashboard still locked", False); return False
+        console.log("[flow] dashboard still locked"); return False
 
     def _while_visible_send(self, step: Dict, thr: float) -> bool:
         """Пока виден tpl в zone — отправлять cmd (например, 'b')."""
@@ -421,7 +425,7 @@ class FlowOpExecutor:
                 except: pass
                 next_probe = now + interval_s
             time.sleep(0.05)
-        self._on_status(f"[flow] still visible: {tpl_key}", False); return False
+        console.log(f"[flow] still visible: {tpl_key}"); return False
 
     def _click_by_resolver(self, zone_key: str, which: str, step: Dict, thr: float) -> bool:
         resolver = self.ctx.extras.get("resolver")
@@ -443,7 +447,7 @@ class FlowOpExecutor:
             file = f"{cat}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
             if not ok_res:
-                self._on_status(f"[tp] village template missing: {cat}", False)
+                self._log(f"[tp] village template missing: {cat}")
                 return False
             parts = ["dashboard", "teleport", "villages", cat, file]
         else:  # location_png
@@ -452,7 +456,7 @@ class FlowOpExecutor:
             file = f"{loc}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
             if not ok_res:
-                self._on_status(f"[tp] location template missing: {cat}/{loc}", False)
+                self._log(f"[tp] location template missing: {cat}/{loc}")
                 return False
             parts = ["dashboard", "teleport", "villages", cat, file]
 

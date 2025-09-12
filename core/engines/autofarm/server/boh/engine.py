@@ -10,6 +10,7 @@ from pathlib import Path
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.utils.colors import mask_for_colors_bgr, biggest_horizontal_band
 from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+from core.logging import console
 
 # локальный счётчик перезапусков именно АФ-цикла (НЕ общий рестарт менеджера)
 _RESTART_STREAK = 0
@@ -382,7 +383,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     """
     Низкоуровневый цикл автофарма для сервера 'boh'.
     ctx_base: {
-      server, controller, get_window, get_language, on_status, should_abort
+      server, controller, get_window, get_language, should_abort, ...
     }
     Внешние проверки (enabled/focus/alive/очередь) — на стороне rules.py.
     """
@@ -394,7 +395,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     lang = (ctx_base["get_language"]() or "eng").lower()
     win = ctx_base["get_window"]()
     if not win:
-        ctx_base["on_status"]("[AF boh] окно не найдено", False)
+        console.log("[autofarm] окно не найдено")
         return False
 
     zones = {
@@ -415,13 +416,13 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
         templates={},
         extras={},
     )
-    ex = FlowOpExecutor(ctx, on_status=ctx_base["on_status"])
+    ex = FlowOpExecutor(ctx)  # логгер по умолчанию — console.log
 
     start_ts = time.time()
 
     while True:
         if _abort(ctx_base):
-            ctx_base["on_status"]("[AF boh] остановлено пользователем", None)
+            console.log("[autofarm] остановлено пользователем")
             return False
 
         zone_id = (cfg or {}).get("zone") or ""
@@ -457,7 +458,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 current_alive = _target_alive_by_hp(win, server)
 
         if has_any and current_alive:
-            ctx_base["on_status"]("[AF boh] цель получена /targetnext", True)
+            console.log("[autofarm] цель получена /targetnext")
             ctx_base["af_current_target_name"] = None
 
             if _abort(ctx_base):
@@ -491,7 +492,8 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 _press_esc(ex)
             except Exception:
                 pass
-            ctx_base["on_status"]("[AF boh] 10 пустых циклов → запустить ПОЛНЫЙ ЦИКЛ (как после смерти)", False)
+            console.log(f"[autofarm] {_RESTART_STREAK_LIMIT} неудачных попыток")
+            console.log("[autofarm] Перезапускаю весь цикл полностью")
             return False
 
         time.sleep(0.3)
@@ -512,7 +514,7 @@ def _fallback_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str
         excluded_targets.clear()
 
     if not names:
-        ctx_base["on_status"]("[AF boh] нет списка монстров зоны", False)
+        console.log("[autofarm] нет списка монстров зоны")
         return False
 
     for nm in names:
@@ -530,7 +532,7 @@ def _fallback_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str
                 excluded_targets.add(nm)
                 continue
 
-            ctx_base["on_status"](f"[AF boh] цель найдена: {nm}", True)
+            console.log(f"[autofarm] цель найдена: {nm}")
             ctx_base["af_current_target_name"] = nm
             if _abort(ctx_base):
                 return False
@@ -556,7 +558,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
     """
     skills = list((cfg or {}).get("skills") or [])
     if not skills:
-        ctx_base["on_status"]("[AF boh] нет настроенных скиллов", False)
+        console.log("[autofarm] нет настроенных скиллов")
         return False
 
     plan: List[Dict[str, Any]] = []
@@ -574,16 +576,16 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
 
     while True:
         if _abort(ctx_base):
-            ctx_base["on_status"]("[AF boh] остановлено пользователем", None)
+            console.log("[autofarm] остановлено пользователем")
             return False
 
         if (time.time() - start_ts) > hard_timeout:
-            ctx_base["on_status"]("[AF boh] таймаут атаки", False)
+            console.log("[autofarm] таймаут атаки")
             return False
 
         alive = _target_alive_by_hp(win, server)
         if alive is False:
-            ctx_base["on_status"]("[AF boh] цель мертва/пропала", True)
+            console.log("[autofarm] цель мертва/пропала")
             time.sleep(0.2)
             return True
         if alive is None:

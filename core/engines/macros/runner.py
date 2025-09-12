@@ -1,16 +1,12 @@
-﻿# core/engines/macros/runner.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import time
 
-# используем ваш архивный движок шагов, как в примере _press_key
 from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+from core.logging import console
 
 
 def _press_key(controller, server, get_window, get_language, key_digit: str) -> bool:
-    """
-    Нажимает цифру через Arduino. Строго одна команда, без задержек.
-    """
     ctx = FlowCtx(
         server=server,
         controller=controller,
@@ -18,7 +14,7 @@ def _press_key(controller, server, get_window, get_language, key_digit: str) -> 
         get_language=get_language,
         zones={}, templates={}, extras={}
     )
-    ex = FlowOpExecutor(ctx, on_status=lambda *_: None)
+    ex = FlowOpExecutor(ctx)  # лог в console.log
     flow = [{"op": "send_arduino", "cmd": str(key_digit)[:2], "delay_ms": 0}]
     return bool(run_flow(flow, ex))
 
@@ -28,23 +24,16 @@ def run_macros(
     controller: Any,
     get_window: Callable[[], Optional[Dict]],
     get_language: Callable[[], str],
-    on_status: Callable[[str, Optional[bool]], None],
     cfg: Dict[str, Any],
     should_abort: Callable[[], bool],
 ) -> bool:
     """
     Одноразовый прогон макросов «сверху вниз».
-
-    ОЖИДАЕТ cfg = {"rows": [{"key": "1","cast_s": 2,"repeat_s": 0}, ...]}
-    - key: цифра '0'..'9' (нажимаем через Arduino)
-    - cast_s: длительность «кастуется», секунды
-    - repeat_s: «повторять через, сек». В ЭТОМ одноразовом раннере ПОВТОРА НЕТ.
-                 Явное правило: repeat_s == 0  → НЕ повторять.
-                 (Повторы реализуются уже во фоновом сервисе, если/когда он появится.)
+    cfg = {"rows": [{"key": "1","cast_s": 2,"repeat_s": 0}, ...]}
     """
     rows: List[Dict[str, Any]] = list(cfg.get("rows") or [])
     if not rows:
-        on_status("Нет макросов для выполнения", False)
+        console.log("[macros] нет макросов для выполнения")
         return False
 
     total = len(rows)
@@ -54,25 +43,19 @@ def run_macros(
 
         key = (str(row.get("key", "1"))[:1] or "1")
         cast_s = max(0, int(float(row.get("cast_s", 0))))
-        repeat_s = max(0, int(float(row.get("repeat_s", 0))))  # ← 0 означает «НЕ повторять»
+        repeat_s = max(0, int(float(row.get("repeat_s", 0))))  # 0 → без повтора
 
-        # статус для HUD/оркестратора
-        on_status(f"Макрос используется ({i}/{total})", None)
+        console.log(f"[macros] используется ({i}/{total}) key={key}, cast={cast_s}s, repeat={repeat_s}s")
 
-        # нажимаем кнопку
         if not _press_key(controller, server, get_window, get_language, key):
-            on_status(f"Не удалось нажать {key}", False)
+            console.log(f"[macros] не удалось нажать {key}")
             return False
 
-        # ждём «кастуется»
         end = time.time() + cast_s
         while time.time() < end:
             if should_abort():
                 return False
             time.sleep(0.05)
 
-        # В ЭТОМ одноразовом прогоне НЕ делаем повтор даже если repeat_s > 0.
-        # Повторять здесь — ответственность фонового сервиса (будет учитывать: repeat_s > 0 ⇒ планировать; == 0 ⇒ нет).
-
-    on_status("Макросы выполнены", True)
+    console.log("[macros] макросы выполнены")
     return True

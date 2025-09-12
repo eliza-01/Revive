@@ -1,29 +1,25 @@
-﻿# _archive/core/features/flow_actions.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import importlib
 from typing import Callable, Optional, Dict, Any
 
 from _archive.core.runtime.dashboard_guard import DASHBOARD_GUARD
 from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 from _archive.servers.l2mad.templates import resolver as l2mad_resolver
+from core.logging import console
 
 
 class FlowActions:
     def __init__(
-            self,
-            controller,
-            server: str,
-            get_window: Callable[[], Optional[Dict]],
-            get_language: Callable[[], str],
-            on_status=lambda *_: None,
-            logger=print,
+        self,
+        controller,
+        server: str,
+        get_window: Callable[[], Optional[Dict]],
+        get_language: Callable[[], str],
     ):
         self.controller = controller
         self.server = server
         self.get_window = get_window
         self.get_language = get_language
-        self.on_status = on_status
-        self.log = logger
 
     def _load(self, feature: str):
         zones = templates = flow = None
@@ -32,19 +28,20 @@ class FlowActions:
             zones = getattr(zmod, "ZONES", {})
             templates = getattr(zmod, "TEMPLATES", {})
         except Exception as e:
-            self.on_status(f"[flow] zones/templates load error: {e}", False)
+            console.log(f"[flow] zones/templates load error: {e}")
             zones, templates = {}, {}
         try:
             fmod = importlib.import_module(f"core.servers.{self.server}.flows.{feature}")
             flow = getattr(fmod, "FLOW", None)
-        except Exception:
+        except Exception as e:
+            console.log(f"[flow] flow load error: {e}")
             flow = None
         return zones, templates, flow
 
     def _run(self, feature: str, extras: Dict[str, Any] = None, guard: bool = False) -> bool:
         zones, templates, flow = self._load(feature)
         if not flow:
-            self.on_status(f"[{feature}] flow missing", False)
+            console.log(f"[{feature}] flow missing")
             return False
         ctx = FlowCtx(
             server=self.server,
@@ -55,7 +52,7 @@ class FlowActions:
             templates=templates,
             extras=extras or {},
         )
-        execu = FlowOpExecutor(ctx, on_status=self.on_status, logger=self.log)
+        execu = FlowOpExecutor(ctx)  # логирует в console.log
         if guard:
             DASHBOARD_GUARD.wait_free(timeout=10.0)
             with DASHBOARD_GUARD.session():
@@ -77,25 +74,23 @@ class FlowActions:
         return self._run("dashboard_reset", extras={}, guard=True)
 
     def post_tp_row(self, village_id: str, location_id: str, row_id: str) -> bool:
-        # зоны/шаблоны общие для rows
         try:
             zmod = importlib.import_module(f"core.servers.{self.server}.zones.rows")
             zones = getattr(zmod, "ZONES", {})
             templates = getattr(zmod, "TEMPLATES", {})
         except Exception as e:
-            self.on_status(f"[rows] zones/templates load error: {e}", False)
+            console.log(f"[rows] zones/templates load error: {e}")
             return False
-        # сам flow берём из файлов локации
         try:
             mod = importlib.import_module(
                 f"core.servers.{self.server}.flows.rows.{village_id}.{location_id}.{row_id}"
             )
             flow = getattr(mod, "FLOW", None)
         except Exception as e:
-            self.on_status(f"[rows] flow load error: {e}", False)
+            console.log(f"[rows] flow load error: {e}")
             return False
         if not flow:
-            self.on_status("[rows] flow missing", False)
+            console.log("[rows] flow missing")
             return False
 
         ctx = FlowCtx(
@@ -107,5 +102,5 @@ class FlowActions:
             templates=templates,
             extras={"village_id": village_id, "location_id": location_id, "row_id": row_id},
         )
-        execu = FlowOpExecutor(ctx, on_status=self.on_status, logger=self.log)
+        execu = FlowOpExecutor(ctx)
         return run_flow(flow, execu)
