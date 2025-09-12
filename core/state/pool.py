@@ -80,7 +80,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("runtime", {
         "orch": {"busy_until": 0.0, "active": False, "ts": 0.0},
         "debug": {
-            "respawn_debug": False, "pipeline_debug": False, "pool_debug": False, "ts": 0.0,
+            "log": False, "respawn_debug": False, "pipeline_debug": False, "pool_debug": False, "ts": 0.0,
         }
     })
     return st

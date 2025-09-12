@@ -1,7 +1,7 @@
-# core/arduino/serial_port.py
 import time
 import serial
 import serial.tools.list_ports
+from core.logging import console
 
 def find_arduino_port(vid_pid_hint=None):
     """
@@ -28,7 +28,7 @@ def init_serial(port=None, baudrate=9600, timeout=1):
 
     try:
         ser = serial.Serial(port, baudrate=baudrate, timeout=timeout)
-        print(f"[✓] Arduino найден на порту: {port}")
+        console.log(f"[✓] Arduino найден на порту: {port}")
         time.sleep(2)  # подождать инициализацию MCU после открытия порта
         return ser
     except Exception as e:
