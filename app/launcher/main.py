@@ -161,7 +161,7 @@ def launch_gui(local_version: str):
             url=index_path,
             width=820,
             height=900,
-            resizable = False,
+            resizable = True,  # не работает)
             frameless = True,  # перетаскивание за любое место тела
             easy_drag = True,
             on_top = True,  # окно поверх всех после запуска
@@ -174,6 +174,51 @@ def launch_gui(local_version: str):
         for name, fn in c["exposed"].items():
             window.expose(fn)
 
+        def exit_app():
+            try:
+                import threading
+                # Закрываем главное окно (сработают ваши обработчики closing → shutdown сервисов и HUD)
+                threading.Timer(0.01, lambda: window.destroy()).start()
+                return {"ok": True}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+
+        window.expose(exit_app)
+
+        def ui_minimize():
+            try:
+                window.minimize()
+                return {"ok": True}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+
+        window.expose(ui_minimize)
+
+        # --- Инжект небольшой кнопки «свернуть» в правый верх ---
+        def _inject_minimize_button(*_):
+            try:
+                js = r"""
+                (function(){
+                  const ID='__rv_min_btn__';
+                  if (document.getElementById(ID)) return;
+                  const b=document.createElement('button');
+                  b.id=ID;
+                  b.textContent='–';
+                  b.title='Свернуть';
+                  b.style.cssText='position:fixed;top:8px;right:8px;width:28px;height:28px;'
+                    +'line-height:26px;text-align:center;border:none;border-radius:6px;'
+                    +'background:#1f2937;color:#fff;opacity:.9;cursor:pointer;z-index:2147483647;';
+                  b.onmouseenter=()=>b.style.opacity='1';
+                  b.onmouseleave=()=>b.style.opacity='.9';
+                  b.addEventListener('click',()=>{ try{ pywebview.api.ui_minimize(); }catch(e){} });
+                  document.body.appendChild(b);
+                })();
+                """
+                window.evaluate_js(js)
+            except Exception:
+                pass
+        window.events.loaded += _inject_minimize_button
+
         # закрыть сплэш при загрузке UI
         def _close_splash(*_):
             _kill_splash(splash_proc, splash_ps1)
@@ -181,6 +226,21 @@ def launch_gui(local_version: str):
         window.events.loaded  += _close_splash
         window.events.shown   += _close_splash
         window.events.closing += _close_splash
+
+        # Снять always-on-top через короткое время после показа окна
+        def _drop_on_top():
+            try:
+                window.on_top = False
+            except Exception:
+                pass
+
+        def _schedule_drop_on_top(*_):
+            try:
+                import threading
+                threading.Timer(1.5, _drop_on_top).start()
+            except Exception:
+                pass
+        window.events.shown += _schedule_drop_on_top
 
         # аккуратное завершение сервисов
         def _on_main_closing():

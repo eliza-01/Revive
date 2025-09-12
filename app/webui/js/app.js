@@ -187,5 +187,14 @@
     }, 50);
   }
 
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnExit');
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        try { await pywebview.api.exit_app(); } catch (e) {}
+      });
+    }
+  });
+
   document.addEventListener("DOMContentLoaded", boot);
 })();
