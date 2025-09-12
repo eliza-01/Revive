@@ -1,12 +1,10 @@
-﻿# _archive/core/runtime/flow_ops.py
 from __future__ import annotations
 
 import time
 import re
-
 from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
 
-from _archive.core.runtime.flow_engine import FlowEngine
+from core.engines.flow.engine import FlowEngine
 from core.vision.matching.template_matcher import match_in_zone
 from core.logging import console
 
@@ -61,11 +59,13 @@ class FlowCtx:
         self.extras = extras or {}
 
     def _lang(self) -> str:
-        try: return (self.get_language() or "rus").lower()
-        except: return "rus"
+        try:
+            return (self.get_language() or "rus").lower()
+        except Exception:
+            return "rus"
 
-    def _win(self) -> Dict: return self.get_window() or {}
-
+    def _win(self) -> Dict:
+        return self.get_window() or {}
 
     def _zone_ltrb(self, zone_decl) -> ZoneLTRB:
         win = self._win()
@@ -77,7 +77,8 @@ class FlowCtx:
                 return (0, 0, ww, wh)
             if zone_decl.get("centered"):
                 w, h = int(zone_decl["width"]), int(zone_decl["height"])
-                l = ww // 2 - w // 2; t = wh // 2 - h // 2
+                l = ww // 2 - w // 2
+                t = wh // 2 - h // 2
                 return (l, t, l + w, t + h)
 
             # размеры: абсолют или доля
@@ -106,8 +107,6 @@ class FlowCtx:
 
         return (0, 0, int(self._win().get("width", 0)), int(self._win().get("height", 0)))
 
-
-
     def _parts(self, tpl_key_or_parts: Sequence[str] | str) -> Optional[List[str]]:
         if isinstance(tpl_key_or_parts, str):
             return self.templates.get(tpl_key_or_parts)
@@ -115,24 +114,29 @@ class FlowCtx:
 
     def wait(self, zone_key: str, tpl_key: str, timeout_ms: int, thr: float) -> bool:
         zone = self.zones.get(zone_key); parts = self._parts(tpl_key)
-        if not zone or not parts: return False
+        if not zone or not parts:
+            return False
         ltrb = self._zone_ltrb(zone); win = self._win()
         deadline = time.time() + timeout_ms / 1000.0
         while time.time() < deadline:
-            if match_in_zone(win, ltrb, self.server, self._lang(), parts, thr): return True
+            if match_in_zone(win, ltrb, self.server, self._lang(), parts, thr):
+                return True
             time.sleep(0.05)
         return False
 
     def _click_in(self, zone_key: str, tpl_key_or_parts: Sequence[str] | str, timeout_ms: int, thr: float) -> bool:
         zone = self.zones.get(zone_key); parts = self._parts(tpl_key_or_parts)
-        if not zone or not parts: return False
+        if not zone or not parts:
+            return False
         ltrb = self._zone_ltrb(zone); win = self._win()
         deadline = time.time() + timeout_ms / 1000.0
         while time.time() < deadline:
             pt = match_in_zone(win, ltrb, self.server, self._lang(), parts, thr)
             if pt:
-                try: self.controller.send(f"click:{pt[0]},{pt[1]}")
-                except: pass
+                try:
+                    self.controller.send(f"click:{pt[0]},{pt[1]}")
+                except Exception:
+                    pass
                 time.sleep(0.08)
                 return True
             time.sleep(0.05)
@@ -140,9 +144,11 @@ class FlowCtx:
 
     def _visible(self, zone_key: str, tpl_key_or_parts, thr: float) -> bool:
         zone = self.zones.get(zone_key); parts = self._parts(tpl_key_or_parts)
-        if not zone or not parts: return False
+        if not zone or not parts:
+            return False
         ltrb = self._zone_ltrb(zone); win = self._win()
         return match_in_zone(win, ltrb, self.server, self._lang(), parts, thr) is not None
+
 
 class FlowOpExecutor:
     def __init__(self, ctx: FlowCtx, logger: Callable[[str], None] = console.log):
@@ -180,7 +186,7 @@ class FlowOpExecutor:
                 ok = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
 
             elif op == "wait_optional":
-                # Мягкое ожидание с внутренними ретраями: пробуем retry_count+1 раз.
+                # Мягкое ожидание с внутренними ретраями
                 zone = step["zone"]
                 tpl  = step["tpl"]
                 timeout_ms = int(step.get("timeout_ms", 2000))
@@ -189,7 +195,7 @@ class FlowOpExecutor:
                 delay_ms = int(step.get("retry_delay_ms", 0))
 
                 found = False
-                total_tries = max(1, retries + 1)  # первая попытка + ретраи
+                total_tries = max(1, retries + 1)
                 for attempt in range(total_tries):
                     if self.ctx.wait(zone, tpl, timeout_ms, thr):
                         found = True
@@ -213,11 +219,12 @@ class FlowOpExecutor:
                 while time.time() < deadline and not ok:
                     for zk in tuple(step["zones"]):
                         ok = self.ctx._click_in(zk, step["tpl"], 1, thr)
-                        if ok: break
+                        if ok:
+                            break
                     time.sleep(0.05)
 
             elif op == "click_optional":
-                # Мягкий клик с внутренними ретраями: пробуем retry_count+1 раз.
+                # Мягкий клик с внутренними ретраями
                 zone = step["zone"]
                 tpl  = step["tpl"]
                 if tpl == "{mode_key}":
@@ -229,7 +236,7 @@ class FlowOpExecutor:
                 delay_ms = int(step.get("retry_delay_ms", 0))
 
                 success = False
-                total_tries = max(1, retries + 1)  # первая попытка + ретраи
+                total_tries = max(1, retries + 1)
                 for attempt in range(total_tries):
                     if self.ctx._click_in(zone, tpl, timeout_ms, thr):
                         success = True
@@ -242,17 +249,16 @@ class FlowOpExecutor:
                 ok = True
 
             elif op == "enter_pincode":
-                # МЯГКИЙ PIN: если панели нет или PIN пуст — считаем шаг успешным и идём дальше
+                # МЯГКИЙ PIN
                 zone = step.get("zone", "fullscreen")
-                visible_tpl = step.get("visible_tpl", "enter_pincode")  # можно переопределить в flow
-                # панель видна?
+                visible_tpl = step.get("visible_tpl", "enter_pincode")
                 if not self.ctx._visible(zone, visible_tpl, thr):
                     ok = True
                 else:
                     acc = self.ctx.extras.get("account") or {}
                     pin = str(acc.get("pin") or self.ctx.extras.get("account_pin") or "")
                     if not pin:
-                        ok = True  # нечего вводить → мягко пропускаем
+                        ok = True
                     else:
                         digit_delay = int(step.get("digit_delay_ms", 120))
                         ok = True
@@ -267,14 +273,15 @@ class FlowOpExecutor:
             elif op == "click_zone_center":
                 zone_key = step["zone"]
                 zone = self.ctx.zones.get(zone_key)
-                if not zone: ok = False
+                if not zone:
+                    ok = False
                 else:
                     l, t, r, b = self.ctx._zone_ltrb(zone)
                     x = (l + r) // 2
                     y = (t + b) // 2
                     try:
                         self.ctx.controller.send(f"click:{x},{y}")
-                    except:
+                    except Exception:
                         pass
                     time.sleep(int(step.get("delay_ms", 80)) / 1000.0)
                     ok = True
@@ -290,7 +297,7 @@ class FlowOpExecutor:
                     y = (t + b) // 2
                     try:
                         self.ctx.controller.send(f"move:{x},{y}")
-                    except:
+                    except Exception:
                         pass
                     time.sleep(int(step.get("delay_ms", 50)) / 1000.0)
                     ok = True
@@ -310,7 +317,7 @@ class FlowOpExecutor:
                 for i in range(count):
                     try:
                         self.ctx.controller.send(cmd)
-                    except:
+                    except Exception:
                         pass
                     if delay_ms > 0 and i < count - 1:
                         time.sleep(delay_ms / 1000.0)
@@ -319,7 +326,7 @@ class FlowOpExecutor:
             elif op == "enter_text":
                 text = self._subst(str(step.get("text", "")))
                 layout = (step.get("layout") or "auto").lower()
-                # ВАЖНО: если печатаем русское слово при RU-раскладке — конвертим
+                # если печатаем русское слово при RU-раскладке — конвертим
                 if layout == "ru" or (layout == "auto" and any(ord(c) > 127 for c in text)):
                     text = _ru_to_us_keys(text)
                 self.ctx.controller.send(f"enter_text {text}")
@@ -330,7 +337,7 @@ class FlowOpExecutor:
                 ok = True
 
             elif op == "send_message":
-                text = self._subst(str(step.get("text", "")))  # ← плейсхолдеры
+                text = self._subst(str(step.get("text", "")))  # плейсхолдеры
                 layout = (step.get("layout") or "auto").lower()
                 if layout == "ru" or (layout == "auto" and any(ord(c) > 127 for c in text)):
                     text = _ru_to_us_keys(text)
@@ -346,7 +353,7 @@ class FlowOpExecutor:
                 def _toggle_once():
                     try:
                         self.ctx.controller.send("layout_toggle_altshift")
-                    except:
+                    except Exception:
                         pass
                     if delay_ms > 0:
                         time.sleep(delay_ms / 1000.0)
@@ -371,7 +378,8 @@ class FlowOpExecutor:
                     ok = False
 
             elif op == "sleep":
-                time.sleep(int(step.get("ms", 50)) / 1000.0); ok = True
+                time.sleep(int(step.get("ms", 50)) / 1000.0)
+                ok = True
 
             elif op == "click_village":
                 ok = self._click_by_resolver(step["zone"], "village_png", step, thr)
@@ -380,18 +388,19 @@ class FlowOpExecutor:
                 ok = self._click_by_resolver(step["zone"], "location_png", step, thr)
 
             else:
-                self._log(f"[flow] unknown op: {op}"); ok = False
+                self._log(f"[flow] unknown op: {op}")
+                ok = False
 
         except Exception as e:
             self._log(f"[flow] op error {op}: {e}")
             ok = False
 
-        # ← ЕДИНЫЙ ПОСТ-ОЖИДАТЕЛЬ ДЛЯ ЛЮБОГО ШАГА
+        # ЕДИНЫЙ ПОСТ-ОЖИДАТЕЛЬ ДЛЯ ЛЮБОГО ШАГА
         try:
             post_wait = int(step.get("wait_ms", 0))
         except Exception:
             post_wait = 0
-        if post_wait > 0 and op != "sleep":  # для sleep не дублируем
+        if post_wait > 0 and op != "sleep":
             time.sleep(post_wait / 1000.0)
 
         self._log(f"[flow][step {idx}] result: {'OK' if ok else 'FAIL'}")
@@ -402,14 +411,18 @@ class FlowOpExecutor:
         timeout_ms = int(step.get("timeout_ms", 12000)); interval_s = float(step.get("probe_interval_s", 1.0))
         start = time.time(); next_probe = 0.0
         while (time.time() - start) * 1000.0 < timeout_ms:
-            if not self.ctx._visible(zone_key, tpl_key, thr): return True
+            if not self.ctx._visible(zone_key, tpl_key, thr):
+                return True
             now = time.time()
             if now >= next_probe:
-                try: self.ctx.controller.send("l")
-                except: pass
+                try:
+                    self.ctx.controller.send("l")
+                except Exception:
+                    pass
                 next_probe = now + interval_s
             time.sleep(0.08)
-        console.log("[flow] dashboard still locked"); return False
+        console.log("[flow] dashboard still locked")
+        return False
 
     def _while_visible_send(self, step: Dict, thr: float) -> bool:
         """Пока виден tpl в zone — отправлять cmd (например, 'b')."""
@@ -418,14 +431,18 @@ class FlowOpExecutor:
         timeout_ms = int(step.get("timeout_ms", 10000)); interval_s = float(step.get("probe_interval_s", 0.5))
         start = time.time(); next_probe = 0.0
         while (time.time() - start) * 1000.0 < timeout_ms:
-            if not self.ctx._visible(zone_key, tpl_key, thr): return True
+            if not self.ctx._visible(zone_key, tpl_key, thr):
+                return True
             now = time.time()
             if now >= next_probe:
-                try: self.ctx.controller.send(cmd)
-                except: pass
+                try:
+                    self.ctx.controller.send(cmd)
+                except Exception:
+                    pass
                 next_probe = now + interval_s
             time.sleep(0.05)
-        console.log(f"[flow] still visible: {tpl_key}"); return False
+        console.log(f"[flow] still visible: {tpl_key}")
+        return False
 
     def _click_by_resolver(self, zone_key: str, which: str, step: Dict, thr: float) -> bool:
         resolver = self.ctx.extras.get("resolver")
@@ -436,9 +453,8 @@ class FlowOpExecutor:
         cat = (self.ctx.extras.get("category_id") or "")
         loc = (self.ctx.extras.get("location_id") or "")
 
-        # ── NEW: Hotspots не открывает «вилладж» (нет подменю) ──
-        if which == "village_png" and cat.lower() == "hotspots":
-            # считаем шаг успешным и идём дальше
+        # Hotspots не открывает «вилладж» (нет подменю)
+        if which == "village_png" and (cat or "").lower() == "hotspots":
             return True
 
         if which == "village_png":
@@ -470,6 +486,7 @@ class FlowOpExecutor:
         if not isinstance(text, str):
             return text
         return re.sub(r"\{([A-Za-z0-9_]+)\}", lambda m: str(self.ctx.extras.get(m.group(1), "")), text)
+
 
 def run_flow(flow: List[Dict], executor: FlowOpExecutor) -> bool:
     engine = FlowEngine(flow, executor.exec)

@@ -5,6 +5,8 @@ import ctypes
 from ctypes import wintypes
 from typing import Dict, Any, Optional, Callable
 
+from core.logging import console
+
 DEFAULT_POLL_INTERVAL: float = 2.0  # сек
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -20,14 +22,6 @@ _GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
 GA_ROOT      = 2
 GA_ROOTOWNER = 3
 
-def _emit(status_cb: Optional[Callable[[str, Optional[bool]], None]], msg: str, ok: Optional[bool] = None):
-    try:
-        if callable(status_cb):
-            status_cb(msg, ok)
-        else:
-            print(f"[window_focus/common] {msg}")
-    except Exception:
-        print(f"[window_focus/common] {msg}")
 
 def _extract_hwnd(win: Dict[str, Any]) -> int:
     if not isinstance(win, dict):
@@ -42,12 +36,13 @@ def _extract_hwnd(win: Dict[str, Any]) -> int:
                 pass
     return 0
 
+
 def _hwnd_value(h) -> int:
     try:
-        # поддержка: int, ctypes HWND (имеет .value), None
         return int(h) if isinstance(h, int) else int(getattr(h, "value", 0)) or 0
     except Exception:
         return 0
+
 
 def _normalize_hwnd(hwnd: int) -> int:
     try:
@@ -56,6 +51,7 @@ def _normalize_hwnd(hwnd: int) -> int:
         return _hwnd_value(root) or _hwnd_value(h)
     except Exception:
         return _hwnd_value(hwnd)
+
 
 def _is_window_focused(target_hwnd: int) -> bool:
     t = _hwnd_value(target_hwnd)
@@ -66,13 +62,13 @@ def _is_window_focused(target_hwnd: int) -> bool:
         if not fg:
             return False
 
-        # 1) сравнение по GA_ROOT
+        # 1) по GA_ROOT
         a = _normalize_hwnd(fg)
         b = _normalize_hwnd(t)
         if a and b and a == b:
             return True
 
-        # 2) fallback: сравнение по GA_ROOTOWNER
+        # 2) fallback: GA_ROOTOWNER
         try:
             h_fg = wintypes.HWND(fg)
             h_t  = wintypes.HWND(t)
@@ -87,29 +83,28 @@ def _is_window_focused(target_hwnd: int) -> bool:
 
 def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     """
-    Движок window_focus (пока только фокус окна).
     Каждые poll_interval секунд публикует:
       on_update({"is_focused": bool, "ts": now})
     Работает, пока should_abort() не вернёт True.
     """
     get_window = ctx_base.get("get_window")
-    on_status: Callable[[str, Optional[bool]], None] = ctx_base.get("on_status") or (lambda *_: None)
     on_update: Optional[Callable[[Dict[str, Any]], None]] = ctx_base.get("on_update")
     should_abort: Callable[[], bool] = ctx_base.get("should_abort") or (lambda: False)
 
     poll_interval = float(cfg.get("poll_interval", DEFAULT_POLL_INTERVAL))
     debug_focus = bool(cfg.get("debug_focus", False))
 
-    _emit(on_status, f"[window_focus] старт (poll={poll_interval}s)…", None)
+    # LOG 1: старт
+    console.log(f"[window_focus] старт (poll={poll_interval}s)…")
 
     last_state: Optional[bool] = None
     try:
         while True:
             if should_abort():
-                _emit(on_status, "[window_focus] остановлено пользователем", True)
+                # LOG 2: остановка
+                console.log("[window_focus] остановлено пользователем")
                 return True
 
-            win = None
             try:
                 win = get_window() if callable(get_window) else None
             except Exception:
@@ -118,13 +113,13 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             hwnd = _extract_hwnd(win or {})
             focused = _is_window_focused(hwnd)
 
-            # DEBUG: одна строка с конкретными хэндлами (по запросу через cfg)
+            # LOG 3: отладка хэндлов (по флагу)
             if debug_focus:
                 try:
                     fg = _hwnd_value(_GetForegroundWindow())
                     a = _normalize_hwnd(fg)
                     b = _normalize_hwnd(hwnd)
-                    _emit(on_status, f"[window_focus] dbg: target={hwnd} norm={b} fg={fg} fg_norm={a}", None)
+                    console.log(f"[window_focus] dbg: target={hwnd} norm={b} fg={fg} fg_norm={a}")
                 except Exception:
                     pass
 
@@ -134,11 +129,12 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 except Exception:
                     pass
 
+            # LOG 4: изменение состояния фокуса
             if last_state is None or focused != last_state:
-                _emit(on_status, f"[window_focus] фокус окна: {'да' if focused else 'нет'}", True if focused else None)
+                console.log(f"[window_focus] фокус окна: {'да' if focused else 'нет'}")
                 last_state = focused
 
             time.sleep(poll_interval)
     except Exception as e:
-        _emit(on_status, f"[window_focus] ошибка: {e}", False)
+        console.log(f"[window_focus] ошибка: {e}")
         return False

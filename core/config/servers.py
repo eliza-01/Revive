@@ -3,10 +3,17 @@ from __future__ import annotations
 import json
 import os
 from typing import Dict, List, Any
+from core.logging import console
 
 # Путь к манифесту рядом с этим файлом
 _MANIFEST_PATH = os.path.join(os.path.dirname(__file__), "servers.manifest.json")
 _manifest_cache: Dict[str, Any] | None = None
+
+
+def _ve(msg: str):
+    """Локальный helper: шлём текст в консоль и выбрасываем ValueError (без фолбэков)."""
+    console.log(f"[manifest] {msg}")
+    raise ValueError(msg)
 
 
 def _load_manifest() -> Dict[str, Any]:
@@ -24,7 +31,7 @@ def _current_assembly_blob() -> Dict[str, Any]:
     cur = m.get("current_assembly")
     assemblies = m.get("assemblies") or {}
     if not cur or cur not in assemblies:
-        raise ValueError("Invalid servers.manifest.json: current_assembly not found")
+        _ve("Invalid servers.manifest.json: current_assembly not found")
     return assemblies[cur]
 
 
@@ -32,14 +39,14 @@ def _servers_dict() -> Dict[str, Dict[str, Any]]:
     asm = _current_assembly_blob()
     servers = asm.get("servers")
     if not isinstance(servers, dict):
-        raise ValueError("Invalid servers.manifest.json: 'servers' must be an object")
+        _ve("Invalid servers.manifest.json: 'servers' must be an object")
     return servers
 
 
 def _server(server_id: str) -> Dict[str, Any]:
     servers = _servers_dict()
     if server_id not in servers:
-        raise ValueError(f"Unknown server id: {server_id}")
+        _ve(f"Unknown server id: {server_id}")
     return servers[server_id]
 
 
@@ -55,7 +62,7 @@ def get_languages(server_id: str) -> List[str]:
     sys = (_server(server_id).get("system") or {})
     langs = sys.get("languages") or []
     if not isinstance(langs, list):
-        raise ValueError(f"Invalid languages for server '{server_id}'")
+        _ve(f"Invalid languages for server '{server_id}'")
     return list(langs)
 
 
@@ -77,7 +84,7 @@ def get_buff_methods(server_id: str) -> List[str]:
     buff = (_server(server_id).get("buff") or {})
     methods = buff.get("methods") or []
     if not isinstance(methods, list):
-        raise ValueError(f"Invalid buff.methods for server '{server_id}'")
+        _ve(f"Invalid buff.methods for server '{server_id}'")
     return list(methods)
 
 
@@ -86,7 +93,7 @@ def get_buff_modes(server_id: str) -> List[str]:
     buff = (_server(server_id).get("buff") or {})
     modes = buff.get("modes") or []
     if not isinstance(modes, list):
-        raise ValueError(f"Invalid buff.modes for server '{server_id}'")
+        _ve(f"Invalid buff.modes for server '{server_id}'")
     return list(modes)
 
 
@@ -95,5 +102,5 @@ def get_tp_methods(server_id: str) -> List[str]:
     tp = (_server(server_id).get("tp") or {})
     methods = tp.get("methods") or []
     if not isinstance(methods, list):
-        raise ValueError(f"Invalid tp.methods for server '{server_id}'")
+        _ve(f"Invalid tp.methods for server '{server_id}'")
     return list(methods)

@@ -4,17 +4,14 @@ from typing import Callable, Optional, Dict, Any, List
 import threading, time
 
 from core.engines.macros.runner import run_macros
+from core.logging import console
 
 
 class MacrosRepeatService:
     """
     Фоновый сервис повтора макросов по полю repeat_s > 0.
-    Внешние факторы:
-      - включена ли функция повторов (is_enabled)
-      - жив ли персонаж (is_alive: True/False/None)
-      - есть ли фокус у окна игры (is_focused)
-
-    Интерфейс: start(), stop(), is_running(), bump_all()
+    Внешние факторы: включена ли функция, жив ли персонаж, есть ли фокус.
+    Весь вывод — в HUD через console.hud(...).
     """
 
     def __init__(
@@ -25,12 +22,11 @@ class MacrosRepeatService:
         get_language: Callable[[], str],
         get_rows: Callable[[], List[Dict[str, Any]]],
         is_enabled: Callable[[], bool],
-        on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
         *,
         # None означает «неизвестно» (например, потерян фокус и виталы не читаем).
         is_alive: Optional[Callable[[], Optional[bool]]] = None,
         is_focused: Optional[Callable[[], bool]] = None,
-        set_busy: Optional[Callable[[bool], None]] = None,   # ← коллбек для features.macros.busy
+        set_busy: Optional[Callable[[bool], None]] = None,   # коллбек для features.macros.busy
     ):
         self._server = server
         self._controller = controller
@@ -38,7 +34,6 @@ class MacrosRepeatService:
         self._get_language = get_language
         self._get_rows = get_rows
         self._is_enabled = is_enabled
-        self._on_status = on_status or (lambda *_: None)
         self._is_alive = is_alive or (lambda: True)
         self._is_focused = is_focused or (lambda: True)
         self._set_busy = set_busy or (lambda _b: None)
@@ -101,7 +96,7 @@ class MacrosRepeatService:
                 respawn_happened = (self._was_alive is False and alive is True)
                 if respawn_happened:
                     self.bump_all()
-                    self._on_status("Сброс таймеров повторов после респавна", None)
+                    console.hud("ok", "Сброс таймеров повторов после респавна")
 
                 # обновляем прошлые значения
                 self._was_alive = alive
@@ -132,7 +127,7 @@ class MacrosRepeatService:
                     self._run_row(row)
 
             except Exception as e:
-                print("[macros/service] error:", e)
+                console.log(f"[macros/service] error: {e}")
 
             time.sleep(poll_interval)
 
@@ -144,10 +139,12 @@ class MacrosRepeatService:
                 controller=self._controller,
                 get_window=self._get_window,
                 get_language=self._get_language,
-                on_status=self._on_status,
                 cfg={"rows": [row]},
                 should_abort=lambda: (not self._is_enabled()),
             )
-            self._on_status(f"Повтор макроса {row.get('key')} завершён", ok)
+            if ok:
+                console.hud("succ", f"Повтор макроса {row.get('key')} завершён")
+            else:
+                console.hud("err", f"Повтор макроса {row.get('key')} не выполнен")
         finally:
             self._set_busy(False)

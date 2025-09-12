@@ -13,6 +13,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "ts": 0.0,
     })
     st.setdefault("config", {
+        "app_language": "ru",
         "server": "boh",
         "language": "rus",
         "profile": {},
@@ -75,16 +76,11 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "autofarm": {"running": False, "ts": 0.0},
     })
 
-    # ---- UI-статусы ----
-    ui = st.setdefault("ui_status", {})
-    for scope in ("driver", "window", "watcher", "update", "buff", "macros", "tp", "respawn", "focus"):
-        ui.setdefault(scope, {"text": "", "ok": None, "ts": 0.0})
-
     # ---- Runtime/Debug ----
     st.setdefault("runtime", {
         "orch": {"busy_until": 0.0, "active": False, "ts": 0.0},
         "debug": {
-            "respawn_debug": False, "pipeline_debug": False, "pool_debug": False, "ts": 0.0,
+            "log": False, "respawn_debug": False, "pipeline_debug": False, "pool_debug": False, "ui_guard_debug": False, "ts": 0.0,
         }
     })
     return st

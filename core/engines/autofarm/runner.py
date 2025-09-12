@@ -3,22 +3,29 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import importlib
 
+from core.logging import console
+
+
 def run_autofarm(
     server: str,
     controller: Any,
     get_window: Callable[[], Optional[Dict]],
     get_language: Callable[[], str],
-    on_status: Callable[[str, Optional[bool]], None],
     cfg: Dict[str, Any],
     should_abort: Callable[[], bool],
 ) -> bool:
     """
-    Одноразовый прогон автофарма. Здесь только подготовка и вызов
-    server-движка core.engines.autofarm.server.<server>.engine.start(ctx, cfg).
+    Одноразовый прогон автофарма.
+    Здесь только подготовка и вызов server-движка:
+      core.engines.autofarm.server.<server>.engine.start(ctx, cfg)
     """
-    on_status("Автофарм: запуск", None)
+    try:
+        console.hud("succ", "[AUTOFARM] запуск")
+        console.log("[autofarm] run_autofarm: start")
+    except Exception:
+        pass
 
-    # --- нормализация конфига (ровно как в сервисе) --------------------------
+    # --- нормализация конфига ---
     raw = dict(cfg or {})
 
     def _norm_int(x, d=0):
@@ -33,44 +40,52 @@ def run_autofarm(
     skills: List[Dict[str, Any]] = []
     for s in (raw.get("skills") or []):
         skills.append({
-            "key":      (str((s or {}).get("key", "1"))[:1] or "1"),
-            "slug":     ((s or {}).get("slug", "") or ""),
-            "cast_ms":  max(0, _norm_int((s or {}).get("cast_ms", 0))),
+            "key":     (str((s or {}).get("key", "1"))[:1] or "1"),
+            "slug":    ((s or {}).get("slug", "") or ""),
+            "cast_ms": max(0, _norm_int((s or {}).get("cast_ms", 0))),
         })
 
-    cfg = {
-        "mode":        mode,
-        "profession":  (raw.get("profession") or "").strip(),
-        "zone":        zone,
-        "skills":      skills,
-        "monsters":    list(raw.get("monsters") or []),
+    cfg_norm = {
+        "mode":       mode,
+        "profession": (raw.get("profession") or "").strip(),
+        "zone":       zone,
+        "skills":     skills,
+        "monsters":   list(raw.get("monsters") or []),
     }
 
-    if not zone or not skills:
-        on_status("Нет зоны или атакующих скиллов", False)
+    # обязательные проверки (без фолбэков)
+    if not server:
+        console.hud("err", "[AUTOFARM] server не задан")
+        console.log("[autofarm] error: server is empty")
         return False
 
-    # --- загрузка серверного движка и запуск ---------------------------------
-    mod_name = f"core.engines.autofarm.server.{(server or 'boh').lower()}.engine"
+    if not zone or not skills:
+        console.hud("err", "[AUTOFARM] нет зоны или атакующих скиллов")
+        console.log("[autofarm] error: missing zone or skills")
+        return False
+
+    # --- загрузка серверного движка и старт ---
+    mod_name = f"core.engines.autofarm.server.{server.lower()}.engine"
     try:
         mod = importlib.import_module(mod_name)
-        start = getattr(mod, "start", None)
-        if not callable(start):
-            on_status(f"Движок '{mod_name}' без start()", False)
-            return False
     except Exception as e:
-        on_status(f"Импорт движка не удался: {e}", False)
+        console.hud("err", f"[AUTOFARM] импорт движка не удался: {e}")
+        console.log(f"[autofarm] import fail {mod_name}: {e}")
+        return False
+
+    start = getattr(mod, "start", None)
+    if not callable(start):
+        console.hud("err", f"[AUTOFARM] в модуле нет start(): {mod_name}")
+        console.log(f"[autofarm] start() missing in {mod_name}")
         return False
 
     ctx = {
-        "server":        (server or "boh").lower(),
-        "controller":    controller,
-        "get_window":    get_window,
-        "get_language":  get_language,
-        "on_status":     on_status,
-        "should_abort":  should_abort,
+        "server":       server.lower(),
+        "controller":   controller,
+        "get_window":   get_window,
+        "get_language": get_language,
+        "should_abort": should_abort,
     }
 
-    # теперь реально работаем — внутри start() вся логика поиска/атаки
-    ok = bool(start(ctx, cfg))
+    ok = bool(start(ctx, cfg_norm))
     return ok

@@ -170,15 +170,13 @@ class SystemSection(BaseSection):
         servers = list_servers()
         cur_server = pool_get(self.s, "config.server", servers[0])
 
-        # повторный ping при первом заходе
-        last = pool_get(self.s, "ui_status", {})
-        if not last or not (last.get("driver") and last["driver"].get("text")):
-            try:
-                self.controller.send("ping")
-                ok = (self.controller.read() == "pong")
-                self.emit("driver", "[✓] Arduino ответила" if ok else "[×] Нет ответа", ok)
-            except Exception as e:
-                self.emit("driver", f"[×] Ошибка связи с Arduino: {e}", False)
+        # Проводим ping здесь и формируем driver_status напрямую (без ui_status)
+        try:
+            self.controller.send("ping")
+            ok = (self.controller.read() == "pong")
+            driver_status = {"text": ("[✓] Arduino ответила" if ok else "[×] Нет ответа"), "ok": ok}
+        except Exception as e:
+            driver_status = {"text": f"[×] Ошибка связи с Arduino: {e}", "ok": False}
 
         # данные для UI из манифеста
         l2_langs = get_languages(cur_server)
@@ -201,7 +199,8 @@ class SystemSection(BaseSection):
             "buff_current": pool_get(self.s, "features.buff.mode", ""),
             "tp_methods": tp_methods,
 
-            "driver_status": pool_get(self.s, "ui_status.driver", {"text": "Состояние связи: неизвестно", "ok": None}),
+            # driver_status теперь формируется локально, без ui_status
+            "driver_status": driver_status,
             "respawn": {
                 "enabled": bool(pool_get(self.s, "features.respawn.enabled", False)),
                 "wait_enabled": bool(pool_get(self.s, "features.respawn.wait_enabled", False)),
@@ -258,6 +257,14 @@ class SystemSection(BaseSection):
         return {"found": False}
 
     def test_connect(self) -> str:
+        # Arduino ping status
+        try:
+            self.controller.send("ping")
+            ok = (self.controller.read() == "pong")
+            self.emit("driver", "[✓] Arduino ответила" if ok else "[×] Нет ответа", ok)
+        except Exception as e:
+            self.emit("driver", f"[×] Ошибка связи с Arduino: {e}", False)
+
         label_proxy = type("L", (), {"config": lambda *_a, **_k: None})
         run_test_command(self.controller, label_proxy)
         return "ok"

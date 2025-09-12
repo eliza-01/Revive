@@ -1,20 +1,22 @@
 ﻿# core/engines/autofarm/skill_repo.py
 from __future__ import annotations
-import os, json, sys, base64
+import os, json, sys, base64  # noqa: F401 (sys оставлен, если где-то импортируется модуль и ожидает его)
 from typing import Dict, List
+
+from core.logging import console  # ← новый логгер
 
 AF_ROOT = os.path.dirname(__file__)  # core/engines/autofarm
 WEBUI = os.path.abspath(os.path.join(AF_ROOT, "..", "..", "..", "app", "webui"))
 
 def _read_json(path: str) -> Dict:
     if not os.path.exists(path):
-        sys.stderr.write(f"[autofarm] JSON missing: {path}\n")
+        console.log(f"[autofarm] JSON missing: {path}")
         return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        sys.stderr.write(f"[autofarm] bad JSON: {path} :: {e}\n")
+        console.log(f"[autofarm] bad JSON: {path} :: {e}")
         return {}
 
 def _prof_path() -> str:
@@ -56,7 +58,7 @@ def list_professions(lang: str) -> list[dict]:
     return out
 
 def _catalog_path() -> str:
-    return os.path.join(AF_ROOT, "server","common", "skills_catalog.json")
+    return os.path.join(AF_ROOT, "server", "common", "skills_catalog.json")
 
 def _icon_data_uri(server: str, slug: str) -> str | None:
     candidates = [
@@ -68,6 +70,7 @@ def _icon_data_uri(server: str, slug: str) -> str | None:
             with open(p, "rb") as f:
                 b = f.read()
             return "data:image/png;base64," + base64.b64encode(b).decode("ascii")
+    # отсутствие иконки — норм, без спама в лог
     return None
 
 def list_skills(profession: str, types: List[str], lang: str, server: str) -> List[Dict]:

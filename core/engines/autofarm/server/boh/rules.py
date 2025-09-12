@@ -1,18 +1,10 @@
-﻿from __future__ import annotations
-from typing import Any, Dict, Optional, Tuple, Callable
+﻿# core/engines/autofarm/server/boh/rules.py
+from __future__ import annotations
+from typing import Any, Dict, Optional, Tuple
 
-from core.state.pool import pool_get, pool_merge, pool_write
+from core.state.pool import pool_get, pool_merge
 from core.orchestrators.snapshot import Snapshot
-from core.engines.autofarm.runner import run_autofarm
-
-# необязательная очередность (если есть helper очереди)
-try:
-    from core.state.helpers.queue import feature_slot  # type: ignore
-except Exception:  # мягкий фолбэк
-    from contextlib import contextmanager
-    @contextmanager
-    def feature_slot(*_args, **_kwargs):
-        yield
+from core.logging import console
 
 
 def _normalize_cfg(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -63,9 +55,9 @@ def run_step(
     state: Dict[str, Any],
     ps_adapter,
     controller,
-    report: Callable[[str], None],
     snap: Snapshot,
     helpers: Optional[Dict[str, Any]] = None,
+    report: Optional[object] = None,  # ← оставлен для совместимости вызова из PipelineRule, не используется
 ) -> Tuple[bool, bool]:
     """
     Шаг пайплайна AUTOFARM. Контракт: (ok, advance).
@@ -73,33 +65,33 @@ def run_step(
     Здесь ТОЛЬКО сценарная логика:
       - уважаем выключатель, фокус и факт жизни
       - manual → пропуск
-      - auto → "пинаем" сервис, иначе fallback на однократный прогон движка
-      - статусы/флаги features.autofarm.status/busy/waiting
-    Весь низкоуровневый цикл — в server/boh/engine.py (через run_autofarm).
+      - auto → "пинаем" сервис (если есть)
+      - статусы/флаги features.autofarm.status/waiting
+    Никаких фолбэков на прямой движок.
     """
     helpers = helpers or {}
 
     # выключено?
     if not bool(pool_get(state, "features.autofarm.enabled", False)):
-        report("[AUTOFARM] выключено — пропуск шага")
+        console.hud("ok", "[AUTOFARM] выключено — пропуск шага")
         return True, True
 
     # окно есть?
     if not snap.has_window:
-        report("[AUTOFARM] нет окна — пропуск")
+        console.hud("err", "[AUTOFARM] нет окна — пропуск")
         return False, False
 
     # жив ли игрок?
     alive = pool_get(state, "player.alive", None)
     if alive is False:
-        report("[AUTOFARM] персонаж мёртв — пропуск (до респавна)")
+        console.hud("ok", "[AUTOFARM] персонаж мёртв — пропуск (до респавна)")
         return True, True
 
     # уважение фокуса: если его нет — НЕ идём дальше, не тратим кулдаун
     focused = _is_focused_now(state=state, ps_adapter=ps_adapter, snap=snap)
     if focused is False:
         pool_merge(state, "features.autofarm", {"waiting": True, "status": "unfocused"})
-        report("[AUTOFARM] пауза: окно без фокуса — жду")
+        console.hud("ok", "[AUTOFARM] пауза: окно без фокуса — жду")
         return False, False
     pool_merge(state, "features.autofarm", {"waiting": False})
 
@@ -108,59 +100,22 @@ def run_step(
     mode = (cfg.get("mode") or "auto").strip().lower()
 
     if mode == "manual":
-        report("[AUTOFARM] режим manual — пропуск в пайплайне")
+        console.hud("ok", "[AUTOFARM] режим manual — пропуск в пайплайне")
         return True, True
 
-    # сначала даём шанс сервису (если подключён)
+    # auto: даём команду сервису (если подключён)
     try:
         svc = (state.get("_services") or {}).get("autofarm")
         if hasattr(svc, "run_once_now"):
             svc.run_once_now()
             pool_merge(state, "features.autofarm", {"status": "kicked"})
-            report("[AUTOFARM] запуск цикла передан сервису")
+            console.hud("ok", "[AUTOFARM] запуск цикла передан сервису")
+            return True, True
+        else:
+            console.hud("err", "[AUTOFARM] сервис не найден — пропуск шага")
+            console.log("[AUTOFARM] service object missing or has no run_once_now()")
             return True, True
     except Exception as e:
-        report(f"[AUTOFARM] сервис недоступен, fallback: {e}")
-
-    # fallback: одноразовый прогон движка (с уважением флагов)
-    def _status(text: str, ok: Optional[bool] = None):
-        report(f"[AUTOFARM] {text}")
-        pool_merge(state, "features.autofarm", {"status": text or ""})
-
-    # should_abort: выключили, потеряли фокус или умерли
-    def _should_abort() -> bool:
-        if not bool(pool_get(state, "features.autofarm.enabled", False)):
-            return True
-        f = _is_focused_now(state=state, ps_adapter=ps_adapter, snap=snap)
-        if f is False:
-            return True
-        a = pool_get(state, "player.alive", None)
-        if a is False:
-            return True
-        return False
-
-    server = (pool_get(state, "config.server", "") or "").lower()
-
-    # очередь/слот функции (если есть helper)
-    with feature_slot(state, "autofarm", report, wait_key="features.autofarm", wait_msg="[AUTOFARM] очередь: жду слота"):
-        # «busy» только на время фолбэка
-        try:
-            pool_write(state, "features.autofarm", {"busy": True})
-        except Exception:
-            pass
-        try:
-            ok = run_autofarm(
-                server=server,
-                controller=controller,
-                get_window=lambda: pool_get(state, "window.info", None),
-                get_language=lambda: pool_get(state, "config.language", "rus"),
-                on_status=_status,
-                cfg=cfg,
-                should_abort=_should_abort,
-            )
-            return (bool(ok), True if ok else True)  # при ошибке не зацикливаем шаг
-        finally:
-            try:
-                pool_write(state, "features.autofarm", {"busy": False})
-            except Exception:
-                pass
+        console.hud("err", "[AUTOFARM] ошибка обращения к сервису — пропуск шага")
+        console.log(f"[AUTOFARM] service access error: {e}")
+        return True, True

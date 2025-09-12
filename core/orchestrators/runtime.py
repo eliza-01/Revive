@@ -26,16 +26,6 @@ def orchestrator_tick(state: Dict[str, Any], ps_adapter, rules) -> None:
     """
     snap = build_snapshot(state, ps_adapter)
 
-    # короткий 4-строчный лог — КАЖДЫЙ тик
-    is_dead = (snap.alive is False) or (snap.hp_ratio is not None and snap.hp_ratio <= 0.001)
-    respawn_on = bool(pool_get(state, "features.respawn.enabled", False))
-    macros_on  = bool(pool_get(state, "features.macros.enabled", False))
-    autofarm_on  = bool(pool_get(state, "features.autofarm.enabled", False))
-    print(f"win={snap.has_window} focus={snap.is_focused}")
-    print(f"alive={snap.alive} is_dead={is_dead} hp={snap.hp_ratio}")
-    print(f"respawn={respawn_on} macros={macros_on} autofarm={autofarm_on}")
-    print("----------------------------------------")
-
     # полный дамп по флагу
     if pool_get(state, "runtime.debug.pool_debug", False):
         log_pool_snapshot(state)

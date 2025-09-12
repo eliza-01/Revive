@@ -46,7 +46,7 @@ class AutofarmSection(BaseSection):
         try:
             return _af_list_zones_declared(server, language)
         except Exception as e:
-            print(f"[autofarm] af_list_zones_declared_only error: {e}")
+            console.log(f"[autofarm] af_list_zones_declared_only error: {e}")
             return []
 
     def af_zone_info(self, zone_id: str, lang: Optional[str] = None) -> dict:
@@ -55,7 +55,7 @@ class AutofarmSection(BaseSection):
         try:
             return _af_get_zone_info(server, zone_id, language)
         except Exception as e:
-            print(f"[autofarm] af_zone_info error: {e}")
+            console.log(f"[autofarm] af_zone_info error: {e}")
             return {"id": zone_id, "title": zone_id, "about": "", "images": [], "monsters": []}
 
     # ---------- ПРОФЫ / СКИЛЛЫ (как было) ----------
@@ -65,7 +65,7 @@ class AutofarmSection(BaseSection):
         try:
             return _af_list_profs(language)
         except Exception as e:
-            print(f"[autofarm] af_get_professions error: {e}")
+            console.log(f"[autofarm] af_get_professions error: {e}")
             return []
 
     def af_get_attack_skills(self, profession: str, lang: Optional[str] = None):
@@ -74,7 +74,7 @@ class AutofarmSection(BaseSection):
         try:
             return _af_list_skills(profession, ["attack"], language, server)
         except Exception as e:
-            print(f"[autofarm] af_get_attack_skills error: {e}")
+            console.log(f"[autofarm] af_get_attack_skills error: {e}")
             return []
 
     # ---------- НАСТРОЙКИ ОТ UI ----------

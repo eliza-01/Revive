@@ -18,12 +18,10 @@ class PlayerStateService:
         server: Callable[[], str],
         get_window: Callable[[], Optional[Dict[str, Any]]],
         on_update: Optional[Callable[[Dict[str, Any]], None]] = None,
-        on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
     ):
         self._server = server
         self._get_window = get_window
         self._on_update = on_update
-        self._on_status = on_status or (lambda *_: None)
         self._run = False
         self._thr: Optional[threading.Thread] = None
 
@@ -42,7 +40,6 @@ class PlayerStateService:
                         run_player_state(
                             server=self._server() or "boh",
                             get_window=self._get_window,
-                            on_status=lambda *_: None,
                             on_update=self._on_update,
                             cfg={"poll_interval": poll_interval},
                             should_abort=lambda: (not self._run),

@@ -4,6 +4,7 @@ from typing import Callable, Optional, Dict, Any
 import threading, time
 
 from core.engines.autofarm.runner import run_autofarm
+from core.logging import console
 
 
 class AutoFarmService:
@@ -30,7 +31,6 @@ class AutoFarmService:
         is_enabled: Callable[[], bool],
         is_alive: Callable[[], Optional[bool]] = lambda: True,
         is_focused: Callable[[], bool] = lambda: True,
-        on_status: Optional[Callable[[str, Optional[bool]], None]] = None,
         *,
         set_busy: Optional[Callable[[bool], None]] = None,  # ← коллбек для features.autofarm.busy
     ):
@@ -44,7 +44,6 @@ class AutoFarmService:
         self._is_alive = is_alive
         self._is_focused = is_focused
 
-        self._on_status = on_status or (lambda *_: None)
         self._set_busy = set_busy or (lambda _b: None)
 
         self._thr: Optional[threading.Thread] = None
@@ -131,7 +130,6 @@ class AutoFarmService:
                 controller=self._controller,
                 get_window=self._get_window,
                 get_language=self._get_language,
-                on_status=self._on_status,
                 cfg=cfg,
                 should_abort=lambda: (
                     (not self._is_enabled())
@@ -140,7 +138,17 @@ class AutoFarmService:
                     or self._cancel
                 ),
             )
-            self._on_status("Автофарм цикл завершён", bool(ok))
+
+            # единый вывод статуса
+            try:
+                if ok:
+                    console.hud("succ", "Автофарм: цикл завершён")
+                else:
+                    console.hud("err", "Автофарм: цикл завершён (ошибка)")
+                console.log(f"[autofarm] cycle finished → {bool(ok)}")
+            except Exception:
+                pass
+
         finally:
             self._set_busy(False)
 

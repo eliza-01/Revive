@@ -1,57 +1,40 @@
 ﻿# app/launcher/infra/ui_bridge.py
 from __future__ import annotations
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import json, threading
-from core.state.pool import pool_write, pool_get
+from core.state.pool import pool_get
+from core.logging import console
 
 class UIBridge:
     """
-    Единая обвязка для HUD, статусов в UI и таймеров.
+    Мост: HUD и таймеры. UI-статусы пушим через BaseSection.emit().
     """
     def __init__(self, window, state: Dict[str, Any], hud_window=None):
         self.window = window
         self.state = state
         self.hud_window = hud_window
 
-    # простой планировщик (как раньше schedule)
+        if self.hud_window is None:
+            raise RuntimeError("UIBridge: HUD window is not attached")
+
+        # Привязка HUD к логгеру и установка языка (никаких фолбэков)
+        console.bind(hud_push=self.hud_push)
+        lang = str(pool_get(self.state, "config.app_language", "")).strip().lower()
+        if not lang:
+            raise RuntimeError("UIBridge: app_language is not set in state['config']['app_language']")
+        console.set_language(lang)
+
+    # простой планировщик
     def schedule(self, fn, ms: int):
         t = threading.Timer(max(0.0, ms) / 1000.0, fn)
         t.daemon = True
         t.start()
 
-    # HUD: вывести строку
-    def hud_push(self, text: str):
+    # HUD: принимает статус отдельно, в JS передаём объект {status, text},
+    # но сам HUD окрашивает по status, отображает ТОЛЬКО text.
+    def hud_push(self, status: str, text: str):
         if not self.hud_window:
-            return
-        try:
-            js = f"window.ReviveHUD && window.ReviveHUD.push({json.dumps(str(text))})"
-            self.hud_window.evaluate_js(js)
-        except Exception as e:
-            print(f"[HUD] eval error: {e}")
-
-    # лог + HUD
-    def log(self, msg: str, ok: Optional[bool] = None):
-        try:
-            # хотите — отмечайте итог в консоли
-            if ok is None:
-                print(msg)
-            else:
-                print(f"{msg} [{'OK' if ok else 'FAIL'}]")
-        finally:
-            self.hud_push(msg)
-
-    # лог для повторов макросов (в точности как было)
-    def log_ok(self, msg: str, ok: Optional[bool] = None):
-        try:
-            print(f"[MACROS] {msg}")
-        finally:
-            self.hud_push(f"Повтор макроса: {msg}")
-
-    # статусы для UI + запись в пул
-    def ui_emit(self, scope: str, text: str, ok: Optional[bool]):
-        payload = {"scope": scope, "text": text, "ok": (True if ok is True else False if ok is False else None)}
-        pool_write(self.state, f"ui_status.{scope}", {"text": text, "ok": payload["ok"]})
-        try:
-            self.window.evaluate_js(f"window.ReviveUI && window.ReviveUI.onStatus({json.dumps(payload)})")
-        except Exception:
-            pass
+            raise RuntimeError("UIBridge.hud_push: HUD window is not attached")
+        payload = {"status": str(status), "text": str(text)}
+        js = f"window.ReviveHUD && window.ReviveHUD.push({json.dumps(payload, ensure_ascii=False)})"
+        self.hud_window.evaluate_js(js)

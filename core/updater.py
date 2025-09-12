@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+from core.logging import console
 
 def get_remote_version() -> str:
     return "0.0.1"
@@ -20,5 +21,5 @@ def download_new_exe(remote_version: str, progress_callback):
     return f"Revive-{remote_version}.exe"
 
 def launch_downloaded_exe_and_exit(exe_name: str):
-    print(f"[update] would launch: {exe_name}")
+    console.log(f"[update] would launch: {exe_name}")
     sys.exit(0)

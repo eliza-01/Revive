@@ -4,6 +4,8 @@ import os, json, base64, mimetypes
 from typing import Dict, Any, List
 from pathlib import Path
 
+from core.logging import console
+
 AF_ROOT = os.path.join("core", "engines", "autofarm")
 
 def _zones_json_candidates(server: str) -> List[str]:
@@ -14,14 +16,20 @@ def _zones_json_candidates(server: str) -> List[str]:
     ]
 
 def _read_zones_map(server: str) -> Dict[str, Any]:
-    for p in _zones_json_candidates(server):
+    cands = _zones_json_candidates(server)
+    for p in cands:
         try:
             with open(p, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
+            if isinstance(data, dict):
+                return data
+            console.log(f"[autofarm][zones] invalid JSON root (not object): {p}")
+        except FileNotFoundError:
+            # нормально: идём к следующему кандидату
+            continue
+        except Exception as e:
+            console.log(f"[autofarm][zones] read/parse error at {p}: {e}")
+    console.log(f"[autofarm][zones] zones.json not found for server '{server}' (checked: {', '.join(cands)})")
     return {}
 
 def _pick_title(z: dict, lang: str) -> str:
@@ -55,14 +63,15 @@ def _as_data_uri(p: Path) -> str | None:
         mime = mimetypes.guess_type(str(p))[0] or "image/png"
         b = p.read_bytes()
         return f"data:{mime};base64," + base64.b64encode(b).decode("ascii")
-    except Exception:
+    except Exception as e:
+        console.log(f"[autofarm][zones] image read error: {p}: {e}")
         return None
 
 def _zone_gallery(server: str, zone_id: str, z: dict) -> List[Dict[str, str]]:
     """
     Картинки (если объявлены) ищем в:
       core/engines/autofarm/server/<server>/zones/<zone_id>/<name>
-    Отдаём file:// URI, как раньше.
+    Отдаём Data URI (data:*), чтобы UI мог сразу отрисовать без файловых путей.
     """
     base = Path("core") / "engines" / "autofarm" / "server" / server / "zones" / zone_id
     base_gallery = base / "gallery"
@@ -75,15 +84,21 @@ def _zone_gallery(server: str, zone_id: str, z: dict) -> List[Dict[str, str]]:
     for name in gallery:
         rel = Path(str(name))
         # пробуем и в корне зоны, и в подкаталоге gallery
+        found = False
         for p in (base / rel, base_gallery / rel):
             try:
                 if p.exists():
                     src = _as_data_uri(p)
                     if src:
                         out.append({"name": str(name), "src": src})
-                        break
-            except Exception:
-                continue
+                    else:
+                        console.log(f"[autofarm][zones] failed to encode image: {p}")
+                    found = True
+                    break
+            except Exception as e:
+                console.log(f"[autofarm][zones] gallery probe error: {p}: {e}")
+        if not found:
+            console.log(f"[autofarm][zones] gallery asset not found: {name} (zone={zone_id}, server={server})")
     return out
 
 def list_zones_declared(server: str, lang: str = "eng") -> List[Dict[str, Any]]:
@@ -95,6 +110,7 @@ def list_zones_declared(server: str, lang: str = "eng") -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for zid, z in (data or {}).items():
         if not isinstance(z, dict):
+            console.log(f"[autofarm][zones] skip zone '{zid}': not an object")
             continue
         title = _pick_title(z, lang) or zid
         out.append({"id": zid, "title": title})
@@ -108,6 +124,8 @@ def get_zone_info(server: str, zone_id: str, lang: str = "eng") -> Dict[str, Any
     """
     data = _read_zones_map(server)
     z = (data or {}).get(zone_id) or {}
+    if not z:
+        console.log(f"[autofarm][zones] zone id not found: '{zone_id}' (server={server})")
     return {
         "id": zone_id,
         "title": _pick_title(z, lang) or zone_id,

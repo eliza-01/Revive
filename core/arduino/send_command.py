@@ -1,18 +1,22 @@
-# core/arduino/send_command.py
+﻿# core/arduino/send_command.py
+from __future__ import annotations
+
+from core.logging import console
+
 def send_command(ser, command: str):
     """
     Пишет строку в Serial и добавляет '\n' при необходимости.
     """
     if ser is None:
-        print("[×] Порт не инициализирован (ser=None)")
+        console.log("[×] Порт не инициализирован (ser=None)")
         return
     if not getattr(ser, "is_open", False):
-        print(f"[×] Порт {getattr(ser, 'port', '?')} закрыт.")
+        console.log(f"[×] Порт {getattr(ser, 'port', '?')} закрыт.")
         return
     try:
         if not command.endswith("\n"):
             command += "\n"
         ser.write(command.encode("utf-8"))
-        print(f"[>>] {command.strip()}")
+        console.log(f"[>>] {command.strip()}")
     except Exception as e:
-        print(f"[×] Ошибка при отправке: {e}")
+        console.log(f"[×] Ошибка при отправке: {e}")

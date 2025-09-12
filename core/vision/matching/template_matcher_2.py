@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
+from core.logging import console
 
 Point = Tuple[int, int]
 ZoneLTRB = Tuple[int, int, int, int]
@@ -130,13 +131,13 @@ def match_multi_in_zone(
         tpath = _resolve_path(server, (lang or "rus").lower(), parts, engine=engine)
         if not tpath:
             if debug:
-                print(f"[tm2] no template path for key={key} (server={server}, engine={engine})")
+                console.log(f"[tm2] no template path for key={key} (server={server}, engine={engine})")
             continue
 
         tpl = _load_template_abs(tpath)
         if tpl is None or tpl.size == 0:
             if debug:
-                print(f"[tm2] failed to read template: {tpath}")
+                console.log(f"[tm2] failed to read template: {tpath}")
             continue
 
         for s in scales:
@@ -165,7 +166,7 @@ def match_multi_in_zone(
         cy_screen = int(window.get("y", 0)) + int(cy_client)
 
         if debug:
-            print(f"[tm2] {best['key']} score={best['score']:.3f} @ ({cx_screen},{cy_screen})")
+            console.log(f"[tm2] {best['key']} score={best['score']:.3f} @ ({cx_screen},{cy_screen})")
 
         return ((cx_screen, cy_screen), best["key"])
 

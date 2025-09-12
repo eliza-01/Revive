@@ -5,7 +5,7 @@ from typing import Optional
 from core.arduino.safe_serial import SafeSerial
 from core.os.win.window import focus_client_area
 from core.os.win.mouse import move_abs
-
+from core.logging import console
 
 class ReviveController:
     """
@@ -38,14 +38,14 @@ class ReviveController:
         try:
             focus_client_area(window_info)
         except Exception as e:
-            print(f"[ctrl] focus fail: {e}")
+            console.log(f"[ctrl] focus fail: {e}")
 
     def move(self, x: int, y: int, duration: float = 0.0) -> None:
         """Перемещаем курсор на абсолютные координаты экрана."""
         try:
             move_abs(int(x), int(y), duration=duration)
         except Exception as e:
-            print(f"[ctrl] move fail: {e}")
+            console.log(f"[ctrl] move fail: {e}")
 
     # ---- arduino-only click ----
     def _click_left_arduino(self) -> bool:
@@ -55,7 +55,7 @@ class ReviveController:
         """
         ok = self._ss.write_line("l")  # SafeSerial сам добавит '\n' и переподключится при необходимости
         if not ok:
-            print("[ctrl] arduino click failed (serial not open or write error)")
+            console.log("[ctrl] arduino click failed (serial not open or write error)")
         return ok
 
     # ---- high-level helpers ----
@@ -84,13 +84,13 @@ class ReviveController:
                 sx, sy = xy.split(",", 1)
                 self.click_screen(int(sx), int(sy))
             except Exception as e:
-                print(f"[ctrl] click parse error: {e}")
+                console.log(f"[ctrl] click parse error: {e}")
             return
 
         # произвольная команда в Arduino (например, на будущее)
         if not self.is_connected():
-            print("[ctrl] serial not open. command ignored:", cmd)
+            console.log(f"[ctrl] serial not open. command ignored: {cmd}")
             return
         ok = self._ss.write_line(cmd)
         if not ok:
-            print("[ctrl] send failed:", cmd)
+            console.log(f"[ctrl] send failed: {cmd}")

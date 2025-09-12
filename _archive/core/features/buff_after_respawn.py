@@ -4,6 +4,7 @@ from typing import Callable, Optional, Dict
 import importlib
 
 from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+from core.logging import console
 
 BUFF_MODE_PROFILE = "profile"
 BUFF_MODE_MAGE = "mage"
@@ -11,24 +12,12 @@ BUFF_MODE_FIGHTER = "fighter"
 
 
 class BuffAfterRespawnWorker:
-    """
-    Выполняет баф по выбранному методу:
-      - method='dashboard' -> core.servers.<server>.flows.buff_dashboard
-        (если файла нет — fallback на flows.buffer)
-      - method='npc'       -> core.servers.<server>.flows.buff_npc
-
-    Зоны/шаблоны берутся из core.servers.<server>.zones.buffer
-
-    В flow можно использовать tpl="{mode_key}" — подставится один из:
-      buffer_mode_profile | buffer_mode_mage | buffer_mode_fighter
-    """
     def __init__(
         self,
         controller,
         server: str,
         get_window: Callable[[], Optional[Dict]],
         get_language: Callable[[], str],
-        on_status: Callable[[str, Optional[bool]], None] = lambda *_: None,
         click_threshold: float = 0.87,
         debug: bool = False,
     ):
@@ -36,14 +25,12 @@ class BuffAfterRespawnWorker:
         self.server = server
         self._get_window = get_window
         self._get_language = get_language
-        self._on_status = on_status
         self._click_thr = float(click_threshold)
         self._debug = bool(debug)
 
         self._mode = BUFF_MODE_PROFILE
         self._method = "dashboard"  # 'dashboard' | 'npc'
 
-    # --- публичные настройки ---
     def set_mode(self, mode: str):
         m = (mode or BUFF_MODE_PROFILE).lower()
         self._mode = m if m in (BUFF_MODE_PROFILE, BUFF_MODE_MAGE, BUFF_MODE_FIGHTER) else BUFF_MODE_PROFILE
@@ -52,7 +39,6 @@ class BuffAfterRespawnWorker:
         m = (method or "dashboard").lower()
         self._method = m if m in ("dashboard", "npc") else "dashboard"
 
-    # --- внутренние ---
     def _mode_tpl_key(self) -> str:
         return {
             BUFF_MODE_PROFILE: "buffer_mode_profile",
@@ -61,23 +47,17 @@ class BuffAfterRespawnWorker:
         }[self._mode]
 
     def _load_flow(self):
-        """
-        Возвращает список шагов FLOW для выбранного метода.
-        dashboard:  пробуем flows.buff_dashboard, иначе fallback на flows.buffer
-        npc:        flows.buff_npc (без fallback)
-        """
         try:
             if self._method == "dashboard":
                 try:
                     mod = importlib.import_module(f"core.servers.{self.server}.flows.buff_dashboard")
                 except Exception:
-                    # бэк-компат: старое имя файла
                     mod = importlib.import_module(f"core.servers.{self.server}.flows.buffer")
-            else:  # npc
+            else:
                 mod = importlib.import_module(f"core.servers.{self.server}.flows.buff_npc")
             return getattr(mod, "FLOW", [])
         except Exception as e:
-            self._on_status(f"[buffer] load flow error: {e}", False)
+            console.log(f"[buffer] load flow error: {e}")
             return []
 
     def _load_zones(self):
@@ -87,14 +67,13 @@ class BuffAfterRespawnWorker:
             templates = getattr(zm, "TEMPLATES", {})
             return zones, templates
         except Exception as e:
-            self._on_status(f"[buffer] zones load error: {e}", False)
+            console.log(f"[buffer] zones load error: {e}")
             return {}, {}
 
-    # --- запуск ---
     def run_once(self) -> bool:
         flow = self._load_flow()
         if not flow:
-            self._on_status("[buffer] empty flow (nothing to do)", False)
+            console.log("[buffer] empty flow (nothing to do)")
             return False
 
         zones, templates = self._load_zones()
@@ -108,12 +87,9 @@ class BuffAfterRespawnWorker:
             get_language=self._get_language,
             zones=zones,
             templates=templates,
-            extras={
-                # для "{mode_key}" в flow
-                "mode_key_provider": lambda: self._mode_tpl_key(),
-            },
+            extras={"mode_key_provider": lambda: self._mode_tpl_key()},
         )
-        execu = FlowOpExecutor(ctx, on_status=self._on_status, logger=lambda m: print(m))
+        execu = FlowOpExecutor(ctx)
         ok = run_flow(flow, execu)
-        self._on_status(("Баф выполнен" if ok else "Баф не выполнен"), ok)
+        console.log("Баф выполнен" if ok else "Баф не выполнен")
         return ok

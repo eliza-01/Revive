@@ -1,9 +1,10 @@
-# core/arduino/safe_serial.py
+﻿# core/arduino/safe_serial.py
 # Обёртка над pyserial с авто-переподключением и подавлением PermissionError(13)
 from __future__ import annotations
 import time
 from typing import Optional
 from core.arduino.serial_port import init_serial
+from core.logging import console
 
 class SafeSerial:
     def __init__(self, port: Optional[str] = None, baudrate: int = 9600, timeout: float = 1.0):
@@ -26,7 +27,7 @@ class SafeSerial:
             except Exception:
                 pass
         except Exception as e:
-            print(f"[serial] connect fail: {e}")
+            console.log(f"[serial] connect fail: {e}")
             self.ser = None
 
     def is_open(self) -> bool:
@@ -51,7 +52,7 @@ class SafeSerial:
             return True
         except PermissionError as e:
             # устройство не опознает команду → разрыв и повторная попытка один раз
-            print(f"[serial] write perm error: {e}. reconnecting...")
+            console.log(f"[serial] write perm error: {e}. reconnecting...")
             self.close()
             time.sleep(0.2)
             self._connect()
@@ -61,10 +62,10 @@ class SafeSerial:
                 self.ser.write(line.encode("utf-8"))
                 return True
             except Exception as e2:
-                print(f"[serial] re-write fail: {e2}")
+                console.log(f"[serial] re-write fail: {e2}")
                 return False
         except Exception as e:
-            print(f"[serial] write fail: {e}")
+            console.log(f"[serial] write fail: {e}")
             return False
 
     def read_line(self, timeout_s: float = 1.0) -> Optional[str]:
@@ -77,8 +78,8 @@ class SafeSerial:
                     return self.ser.readline().decode(errors="ignore").strip()
                 time.sleep(0.01)
         except PermissionError as e:
-            print(f"[serial] read perm error: {e}")
+            console.log(f"[serial] read perm error: {e}")
             self.close()
         except Exception as e:
-            print(f"[serial] read fail: {e}")
+            console.log(f"[serial] read fail: {e}")
         return None
