@@ -1,6 +1,5 @@
-﻿# core/orchestrators/pipeline_rule.py
-from __future__ import annotations
-from typing import Any, Callable, Dict, Optional, List
+﻿from __future__ import annotations
+from typing import Any, Dict, List
 import time
 import importlib
 
@@ -8,6 +7,7 @@ from core.orchestrators.snapshot import Snapshot
 from core.engines.respawn.runner import RespawnRunner
 
 from core.state.pool import pool_get, pool_merge, pool_write
+from core.logging import console
 
 
 class PipelineRule:
@@ -15,13 +15,14 @@ class PipelineRule:
     Универсальный оркестратор-пайплайн.
     Следит за очередью шагов из пула (pipeline.order) и их завершением.
     Логику шагов (respawn/macros и др.) делегируем в server-специфичные rules.py.
+
+    Репортов больше нет — сообщения уходим напрямую в HUD через console.hud.
     """
 
-    def __init__(self, state: Dict[str, Any], ps_adapter, controller, report: Callable[[str], None]):
+    def __init__(self, state: Dict[str, Any], ps_adapter, controller):
         self.s = state
         self.ps = ps_adapter
         self.controller = controller
-        self.report = report
 
         self._active = False
         self._idx = 0
@@ -34,19 +35,17 @@ class PipelineRule:
             get_language=lambda: pool_get(self.s, "config.language", "rus"),
         )
 
-    # --- util debug ---
+    # --- util debug / hud ---
     def _dbg(self, msg: str):
         if pool_get(self.s, "runtime.debug.respawn_debug", False) or pool_get(self.s, "runtime.debug.pipeline_debug", False):
             try:
-                print(f"[PIPE/DBG] {msg}")
+                console.log(f"[PIPE/DBG] {msg}")
             except Exception:
                 pass
 
-    def _set_busy(self, feature: str, on: bool):
-        try:
-            pool_write(self.s, f"features.{feature}", {"busy": bool(on)})
-        except Exception:
-            pass
+    def _hud_ok(self, text: str):   console.hud("ok",   text)
+    def _hud_succ(self, text: str): console.hud("succ", text)
+    def _hud_err(self, text: str):  console.hud("err",  text)
 
     # ---------- lifecycle ----------
     def when(self, snap: Snapshot) -> bool:
@@ -61,10 +60,9 @@ class PipelineRule:
         # --- ГЕЙТ ПО ФОКУСУ ---
         # Не запускать и не продвигать пайплайн, пока окно не во фокусе.
         # Блокируем ТОЛЬКО при явном False (None трактуем как «не знаем»).
-
         if snap.is_focused is False:
             self._dbg("skip: no focus — waiting focus=True to progress pipeline")
-            print(f"skip pipeline: no focus")
+            console.log("skip pipeline: no focus")
             return False
 
         order = self._order()
@@ -92,7 +90,7 @@ class PipelineRule:
         # Смерть есть, окно есть, а авто-респавн выключен — сообщим и подождём
         if (not self._active) and is_dead and (not respawn_on) and snap.has_window:
             self._dbg("no-activate: dead but respawn disabled")
-            self.report("[PIPE] смерть обнаружена, но авто-респавн выключен")
+            self._hud_err("[PIPE] смерть обнаружена, но авто-респавн выключен")
             self._busy_until = time.time() + 2.0
             return False
 
@@ -103,7 +101,7 @@ class PipelineRule:
                 self._idx = 0
                 pool_merge(self.s, "pipeline", {"active": True, "idx": 0, "last_step": ""})
                 self._dbg(f"activate: dead={is_dead} alive={snap.alive} hp={snap.hp_ratio}")
-                self.report("[PIPE] старт пайплайна после смерти")
+                self._hud_succ("[PIPE] старт пайплайна после смерти")
                 return True
             return False
 
@@ -194,7 +192,7 @@ class PipelineRule:
                             state=self.s,
                             ps_adapter=self.ps,
                             controller=self.controller,
-                            report=self.report,
+                            report=None,  # репортов больше нет
                             snap=snap,
                             helpers={
                                 "respawn_runner": self._respawn_runner,
@@ -205,9 +203,9 @@ class PipelineRule:
                         return bool(ok), bool(adv)
                     except Exception as e:
                         self._dbg(f"respawn rules error: {e}")
-                        self.report("[RESPAWN] ошибка server rules — пропуск шага")
+                        self._hud_err("[RESPAWN] ошибка server rules — пропуск шага")
                         return True, True
-                self.report("[RESPAWN] rules.py не найден для сервера — пропуск шага")
+                self._hud_err("[RESPAWN] rules.py не найден для сервера — пропуск шага")
                 return True, True
             finally:
                 _busy_off("respawn")
@@ -222,7 +220,7 @@ class PipelineRule:
                             state=self.s,
                             ps_adapter=self.ps,
                             controller=self.controller,
-                            report=self.report,
+                            report=None,  # репортов больше нет
                             snap=snap,
                             helpers={
                                 "get_window": lambda: pool_get(self.s, "window.info", None),
@@ -232,9 +230,9 @@ class PipelineRule:
                         return bool(ok), bool(adv)
                     except Exception as e:
                         self._dbg(f"macros rules error: {e}")
-                        self.report("[MACROS] ошибка server rules — пропуск шага")
+                        self._hud_err("[MACROS] ошибка server rules — пропуск шага")
                         return True, True
-                self.report("[MACROS] rules.py не найден для сервера — пропуск шага")
+                self._hud_err("[MACROS] rules.py не найден для сервера — пропуск шага")
                 return True, True
             finally:
                 _busy_off("macros")
@@ -262,7 +260,7 @@ class PipelineRule:
                         state=self.s,
                         ps_adapter=self.ps,
                         controller=self.controller,
-                        report=self.report,
+                        report=None,  # репортов больше нет
                         snap=snap,
                         helpers={
                             "get_window": lambda: pool_get(self.s, "window.info", None),
@@ -272,24 +270,24 @@ class PipelineRule:
                     return bool(ok), bool(adv)
                 except Exception as e:
                     self._dbg(f"autofarm rules error: {e}")
-                    self.report("[AUTOFARM] ошибка server rules — пропуск шага")
+                    self._hud_err("[AUTOFARM] ошибка server rules — пропуск шага")
                     return True, True
-            self.report("[AUTOFARM] rules.py не найден для сервера — пропуск шага")
+            self._hud_err("[AUTOFARM] rules.py не найден для сервера — пропуск шага")
             return True, True
 
         self._dbg(f"unknown step: {step}")
-        self.report(f"[PIPE] неизвестный шаг: {step} — пропуск")
+        self._hud_err(f"[PIPE] неизвестный шаг: {step} — пропуск")
         return True, True
 
     # ---------- simple stubs (вынесем позже) ----------
 
     def _step_buff(self, snap: Snapshot) -> tuple[bool, bool]:
-        self.report("[BUFF] выполнен (stub)")
+        self._hud_succ("[BUFF] выполнен (stub)")
         self._dbg("buff: stub ok")
         return True, True
 
     def _step_tp(self, snap: Snapshot) -> tuple[bool, bool]:
-        self.report("[TP] выполнено (stub)")
+        self._hud_succ("[TP] выполнено (stub)")
         self._dbg("tp: stub ok")
         return True, True
 
@@ -330,7 +328,14 @@ class PipelineRule:
                 return True
 
         def _on_engine_report(code: str, text: str):
-            self.report(f"[RESPAWN] {text}")
+            # простое отображение в HUD по коду
+            c = (str(code or "").strip().lower())
+            if c in ("err", "error", "fail", "failed"):
+                self._hud_err(f"[RESPAWN] {text}")
+            elif c in ("succ", "success", "ok", "done"):
+                self._hud_succ(f"[RESPAWN] {text}")
+            else:
+                self._hud_ok(f"[RESPAWN] {text}")
 
         if callable(create_engine):
             return create_engine(
@@ -356,12 +361,13 @@ class PipelineRule:
             raise RuntimeError("Respawn engine class/factory not found in loaded module")
 
     def _finish(self):
-        self.report("[PIPE] пайплайн завершён")
+        self._hud_ok("[PIPE] пайплайн завершён")
         self._dbg("finish: reset state")
         self._active = False
         self._idx = 0
         self._busy_until = time.time() + 1.0
         pool_merge(self.s, "pipeline", {"active": False, "idx": 0})
 
-def make_pipeline_rule(state, ps_adapter, controller, report):
-    return PipelineRule(state, ps_adapter, controller, report)
+
+def make_pipeline_rule(state, ps_adapter, controller):
+    return PipelineRule(state, ps_adapter, controller)

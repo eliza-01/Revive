@@ -1,5 +1,4 @@
-﻿# app/launcher/wiring.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Dict, Any
 import importlib
 
@@ -39,6 +38,9 @@ from app.launcher.infra.ui_bridge import UIBridge
 from app.launcher.infra.expose import expose_api
 from app.launcher.infra.orchestrator_loop import OrchestratorLoop
 from app.launcher.infra.services import ServicesBundle
+
+# новый логгер
+from core.logging import console
 
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
@@ -124,7 +126,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             if isinstance(exported, dict):
                 exposed.update(exported)
         except Exception as e:
-            print(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
+            console.log(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
     # pool_dump для JS (pywebview.api.pool_dump)
     def pool_dump_api():
@@ -138,12 +140,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     try:
         expose_api(window, exposed)
     except Exception as e:
-        print("[wiring] expose error:", e)
+        console.log(f"[wiring] expose error: {e}")
 
     # === Правила оркестратора ===
     rules = [
         make_focus_pause_rule(state, {"grace_seconds": 0.3}),
-        make_pipeline_rule(state, ps_adapter, controller, report=ui.log),
+        make_pipeline_rule(state, ps_adapter, controller),
     ]
     loop = OrchestratorLoop(state, ps_adapter, rules, ui.schedule, period_ms=2222)
 
@@ -163,6 +165,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         try:
             controller.close()
         except Exception as e:
-            print(f"[shutdown] controller.close(): {e}")
+            console.log(f"[shutdown] controller.close(): {e}")
 
     return {"sections": sections, "shutdown": shutdown, "exposed": exposed}

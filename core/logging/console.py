@@ -3,6 +3,8 @@ from typing import Optional, Callable, Dict
 import json
 import os
 
+# from core.logging import console
+
 # Публичный API:
 #   console.bind(hud_push=callable)                 # callable(status:str, text:str) -> None
 #   console.set_language("ru" | "en")               # обязателен до первого hud()
