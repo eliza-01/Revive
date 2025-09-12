@@ -1,78 +1,90 @@
-﻿# core/logging/console.py
-from __future__ import annotations
-from typing import Optional, Callable, Dict
+﻿from __future__ import annotations
 import json
 import os
+import threading
 
-# from core.logging import console
+# === internal state ===
+_HUD_PUSH = None              # функция-пушер HUD: hud_push(status: str, text: str)
+_LANG = "eng"                 # язык подписи HUD (по умолчанию eng, переопределяется set_language)
+_DICT_CACHE = {}              # кеш словарей по языку
+_WARNED_LANGS = set()         # чтобы не спамить варнингами
+_LOCK = threading.Lock()
 
-# Публичный API:
-#   console.bind(hud_push=callable)                 # callable(status:str, text:str) -> None
-#   console.set_language("ru" | "en")               # обязателен до первого hud()
-#   console.log("в stdout")
-#   console.hud("ok",  "macros.started", name="X")  # ключ из словаря
-#   console.hud("err", "Ошибка {code}", code=13)    # прямой текст
 
-_SUPPORTED_LANGS = {"rus", "eng"}
-_ALLOWED_STATUS  = {"err", "succ", "ok"}
-
-_DICT_CACHE: Dict[str, Dict[str, str]] = {}
-
-_HUD_PUSH: Optional[Callable[[str, str], None]] = None
-_LANG: Optional[str] = None  # текущий язык; без него hud() не работает
-
-def bind(*, hud_push: Callable[[str, str], None]) -> None:
-    """Привязка функции отправки в HUD (обязательна до первого hud())."""
-    if not callable(hud_push):
-        raise TypeError("console.bind: hud_push must be callable(status:str, text:str) -> None")
+def bind(*, hud_push=None):
+    """Привязка функций вывода (сейчас только HUD)."""
     global _HUD_PUSH
     _HUD_PUSH = hud_push
 
-def set_language(lang: str) -> None:
-    """Установить язык ('ru'|'en'). Никаких автоподстановок."""
-    if lang not in _SUPPORTED_LANGS:
-        raise ValueError(f"console.set_language: unsupported language '{lang}'")
+
+def set_language(lang: str):
+    """Устанавливает язык для HUD-подписей. Без фаталов — если словаря нет, работаем без перевода."""
     global _LANG
-    _LANG = lang
+    _LANG = str(lang or "").strip().lower() or "eng"
 
-def _load_lang_dict(lang: str) -> Dict[str, str]:
-    if lang in _DICT_CACHE:
-        return _DICT_CACHE[lang]
-    path = os.path.join(os.path.dirname(__file__), f"hud.{lang}.json")
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"console.hud: missing dictionary file {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, dict):
-        raise ValueError(f"console.hud: hud.{lang}.json must contain an object")
-    _DICT_CACHE[lang] = data
-    return data
 
-def hud(status: str, key_or_text: str, **kwargs) -> None:
+def _lang_dict_path(lang: str) -> str:
+    base = os.path.dirname(__file__)
+    return os.path.join(base, f"hud.{lang}.json")
+
+
+def _load_lang_dict(lang: str) -> dict:
+    """Безопасно грузит словарь HUD. Если файла нет — возвращает пустой словарь (fallback, без исключений)."""
+    lang = (lang or "").strip().lower() or "eng"
+    with _LOCK:
+        if lang in _DICT_CACHE:
+            return _DICT_CACHE[lang]
+
+        path = _lang_dict_path(lang)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                dct = json.load(f) or {}
+                _DICT_CACHE[lang] = dct
+                return dct
+        except FileNotFoundError:
+            # Однократно предупредим в stdout и продолжим без перевода
+            if lang not in _WARNED_LANGS:
+                print(f"[console.hud] dictionary not found, fallback to raw text: {path}")
+                _WARNED_LANGS.add(lang)
+            _DICT_CACHE[lang] = {}
+            return {}
+        except Exception as e:
+            if lang not in _WARNED_LANGS:
+                print(f"[console.hud] dictionary load error ({path}): {e} — using raw text")
+                _WARNED_LANGS.add(lang)
+            _DICT_CACHE[lang] = {}
+            return {}
+
+
+def log(msg: str):
+    """Простой лог в консоль (stdout)."""
+    try:
+        print(str(msg))
+    except Exception:
+        pass
+
+
+def hud(status: str, text: str):
     """
-    Пуш в HUD:
-    - status: 'err'|'succ'|'ok' (для цвета в HUD)
-    - key_or_text: ключ словаря ТЕКУЩЕГО языка ИЛИ прямой текст с {переменными}
-    В HUD уходит ТОЛЬКО форматированный текст. В stdout не печатает.
+    Безопасный HUD-вызов.
+    - Пытаемся перевести текст через словарь текущего языка (если есть).
+    - Если hud_push не привязан — дублируем в stdout, чтобы не терять события.
     """
-    if _HUD_PUSH is None:
-        raise RuntimeError("console.hud: HUD push is not bound. Call console.bind(...) first.")
-    if _LANG is None:
-        raise RuntimeError("console.hud: language is not set. Call console.set_language(...).")
-    if status not in _ALLOWED_STATUS:
-        raise ValueError(f"console.hud: unsupported status '{status}', expected one of {sorted(_ALLOWED_STATUS)}")
+    status = str(status or "")
+    raw_text = str(text or "")
 
-    dct = _load_lang_dict(_LANG)
-    template = dct.get(key_or_text)
-    text = template if isinstance(template, str) else key_or_text
+    try:
+        dct = _load_lang_dict(_LANG)
+        # Если ключ есть — переводим, если нет — показываем как есть
+        shown_text = dct.get(raw_text, raw_text)
+    except Exception:
+        shown_text = raw_text  # абсолютно безопасный фолбэк
 
-    # строгая подстановка — без молчаливых заглушек
-    if "{" in text and "}" in text:
-        text = text.format(**kwargs)
-
-    # Пушим статус отдельно, но в HUD передаём только текст
-    _HUD_PUSH(status, text)
-
-def log(text: str) -> None:
-    """Вывод только в stdout."""
-    print(text)
+    try:
+        if callable(_HUD_PUSH):
+            _HUD_PUSH(status, shown_text)
+        else:
+            print(f"[HUD][{status}] {shown_text}")
+    except Exception as e:
+        # Последний рубеж — не уронить поток из-за HUD
+        print(f"[console.hud] push error: {e} | [{status}] {shown_text}")

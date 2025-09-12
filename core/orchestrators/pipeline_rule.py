@@ -67,8 +67,7 @@ class PipelineRule:
 
         # --- ГЕЙТ ПО ФОКУСУ ---
         if snap.is_focused is False:
-            console.log("[PIPE] skip: no focus — waiting focus=True to progress pipeline")
-            console.log("skip pipeline: no focus")
+            console.log("[PIPE] skip: waiting is_focused = True to progress pipeline")
             return False
 
         order = self._order()
