@@ -10,7 +10,8 @@ from pathlib import Path
 
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.utils.colors import mask_for_colors_bgr, biggest_horizontal_band
-from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+# ↓ было: from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+from core.engines.flow.ops import FlowCtx, FlowOpExecutor, run_flow
 from core.logging import console
 
 # локальный счётчик перезапусков именно АФ-цикла (НЕ общий рестарт менеджера)
@@ -272,37 +273,78 @@ def _press_key(ex: FlowOpExecutor, key_digit: str) -> bool:
 def _press_esc(ex: FlowOpExecutor) -> bool:
     return bool(run_flow([{"op": "send_arduino", "cmd": "esc", "delay_ms": 0}], ex))
 
-def _has_dot_colors_near_rect(win: Dict, rect: Tuple[int,int,int,int],
-                              pad: int = 20, tol: int = 12, min_px: int = 10) -> Tuple[bool,bool,int,int]:
+def _has_dot_colors_near_rect(
+    win: Dict,
+    rect: Tuple[int, int, int, int],
+    pad: int = 20,
+    tol: int = 3,
+    min_px: int = 30,
+) -> Tuple[bool, bool, int, int, bool]:
+    """
+    Проверяем наличие «точек» статуса цели рядом с именем.
+
+    Возвращает кортеж:
+      (has_friend, has_enemy, friend_px, enemy_px, has_neutral)
+
+    ВАЖНО:
+      - Определение друга/врага НЕ зависит от нейтральной точки — их проверяем сразу.
+      - Нейтральная (серая) точка служит подтверждением наведения курсора и
+        проверяется отдельно ПОСЛЕ наведения (в месте вызова).
+    """
     x, y, w, h = rect
     W, H = int(win["width"]), int(win["height"])
-    l = max(0, x - pad); t = max(0, y - pad)
-    r = min(W, x + w + pad); b = min(H, y + h + pad)
+    l = max(0, x - pad)
+    t = max(0, y - pad)
+    r = min(W, x + w + pad)
+    b = min(H, y + h + pad)
     if r <= l or b <= t:
-        return (False, False, 0, 0)
-    roi = capture_window_region_bgr(win, (l,t,r,b))
-    if roi is None or roi.size == 0:
-        return (False, False, 0, 0)
+        return (False, False, 0, 0, False)
 
-    def _mask_for_rgb_pool(img_bgr: np.ndarray, pool_rgb: List[Tuple[int,int,int]], tol: int) -> np.ndarray:
+    roi = capture_window_region_bgr(win, (l, t, r, b))
+    if roi is None or roi.size == 0:
+        return (False, False, 0, 0, False)
+
+    def _mask_for_rgb_pool(img_bgr: np.ndarray, pool_rgb: List[Tuple[int, int, int]], tol: int) -> np.ndarray:
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        R, G, B = img_rgb[:,:,0], img_rgb[:,:,1], img_rgb[:,:,2]
+        R, G, B = img_rgb[:, :, 0], img_rgb[:, :, 1], img_rgb[:, :, 2]
         mask = np.zeros(img_rgb.shape[:2], dtype=np.uint8)
-        for (r,g,b) in pool_rgb:
+        for (r, g, b) in pool_rgb:
             m = (np.abs(R - r) <= tol) & (np.abs(G - g) <= tol) & (np.abs(B - b) <= tol)
             mask |= m.astype(np.uint8)
         return mask
 
-    FRIEND_RGB = [(16,69,131),(21,74,136),(25,77,138),(32,82,143),(32,85,147),(46,99,161)]
-    ENEMY_RGB  = [(169,30,0),(183,58,23),(196,69,32),(204,89,58),(221,100,73),(239,138,114)]
+    # Дружеские (синие) точки
+    FRIEND_RGB = [(16, 69, 131), (21, 74, 136), (25, 77, 138), (32, 82, 143), (32, 85, 147), (46, 99, 161)]
+    # Вражеские (красные) точки
+    ENEMY_RGB = [(169, 30, 0), (183, 58, 23), (196, 69, 32), (204, 89, 58), (221, 100, 73), (239, 138, 114)]
+    # Нейтральные (серые) точки — из target_gray_dot.png (6 штук, де-дуп)
+    NEUTRAL_RGB = [(66, 61, 57), (75, 70, 66), (91, 86, 82), (107, 103, 98), (121, 116, 112), (132, 128, 123)]
+
     m_friend = _mask_for_rgb_pool(roi, FRIEND_RGB, tol)
-    m_enemy  = _mask_for_rgb_pool(roi, ENEMY_RGB,  tol)
+    m_enemy = _mask_for_rgb_pool(roi, ENEMY_RGB, tol)
+    m_neutral = _mask_for_rgb_pool(roi, NEUTRAL_RGB, tol)
 
     friend_px = int(np.count_nonzero(m_friend))
-    enemy_px  = int(np.count_nonzero(m_enemy))
-    return (friend_px >= min_px, enemy_px >= min_px, friend_px, enemy_px)
+    enemy_px = int(np.count_nonzero(m_enemy))
+    neutral_px = int(np.count_nonzero(m_neutral))
+
+    has_friend = friend_px >= min_px
+    has_enemy = enemy_px >= min_px
+    has_neutral = neutral_px >= min_px  # подтверждение наведения (проверяется ПОСЛЕ hover в вызывающем коде)
+
+    return (has_friend, has_enemy, friend_px, enemy_px, has_neutral)
+
 
 def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win: Dict, cfg: Dict[str, Any]) -> bool:
+    """
+    Логика:
+      1) Находим имя моба по шаблону.
+      2) СРАЗУ проверяем на друга/врага (без наведения курсора). Если друг/враг — пропускаем.
+      3) Наводим курсор на точку клика (без клика), коротко ждём.
+      4) Повторно проверяем ту же область на наличие нейтральных серых точек.
+         Если neutral нет — это не hover по имени → пропускаем.
+      5) Кликаем и возвращаем True.
+    """
     zone_id = (cfg or {}).get("zone") or ""
     if not zone_id:
         return False
@@ -335,22 +377,40 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
             return False
         if nm in excluded_targets:
             continue
+
         tpl = _resolve_monster_template(server, lang, zone_id, nm)
         if not tpl:
             continue
+
         rect = _match_template_on_window(win, tpl, threshold=0.84)
         if not rect:
             continue
 
-        has_friend, has_enemy, fpx, epx = _has_dot_colors_near_rect(win, rect, pad=20, tol=12, min_px=10)
+        # 1) первичная фильтрация: друг/враг без наведения
+        has_friend, has_enemy, _, _, _ = _has_dot_colors_near_rect(win, rect, pad=20, tol=3, min_px=20)
         if has_friend or has_enemy:
             continue
 
-        ctx_base["af_current_target_name"] = nm
+        # 2) наводим курсор рядом с именем (в ту же точку, куда будем кликать)
         x, y, w, h = rect
         cx = min(max(0, int(x + w / 2)), int(win["width"]) - 1)
         cy = min(max(0, int(y + h + 30)), int(win["height"]) - 1)
+        abs_x = int((win.get("x") or 0) + cx)
+        abs_y = int((win.get("y") or 0) + cy)
+        try:
+            controller.move(abs_x, abs_y)
+        except Exception:
+            pass
+        time.sleep(0.35)  # даём HUD/игре подсветить имя нейтральной точкой
+
+        # 3) проверка нейтральной «серой» точки уже ПОСЛЕ наведения
+        _, _, _, _, has_neutral = _has_dot_colors_near_rect(win, rect, pad=20, tol=3, min_px=20)
+        if not has_neutral:
+            continue  # не подтверждён hover по имени — пропускаем
+
+        # 4) кликаем
         _movenclick_client(controller, win, cx, cy)
+        ctx_base["af_current_target_name"] = nm
         return True
 
     return False

@@ -4,8 +4,8 @@ from typing import Any, Callable, Dict, Optional, List
 import time
 from core.logging import console
 
-# используем архивный движок шагов, как в примере _press_key
-from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+# ↓ было: from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
+from core.engines.flow.ops import FlowCtx, FlowOpExecutor, run_flow
 
 
 def _press_key(controller, server, get_window, get_language, key_digit: str) -> bool:
