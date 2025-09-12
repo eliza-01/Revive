@@ -21,6 +21,7 @@ import numpy as np
 import win32con
 import win32gui
 import win32ui
+from core.logging import console
 
 __all__ = [
     "ensure_dpi_awareness",
@@ -41,13 +42,13 @@ def ensure_dpi_awareness() -> None:
         return
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor v2
-        print("[GDI] DPI-awareness: Per-Monitor v2")
+        console.log("[GDI] DPI-awareness: Per-Monitor v2")
     except Exception:
         try:
             ctypes.windll.user32.SetProcessDPIAware()  # System DPI
-            print("[GDI] DPI-awareness: System")
+            console.log("[GDI] DPI-awareness: System")
         except Exception:
-            print("[GDI] DPI-awareness: failed")
+            console.log("[GDI] DPI-awareness: failed")
     _dpi_ready = True
 
 def _release_gdi(hwnd, hwnd_dc, srcdc, memdc, bmp) -> None:
