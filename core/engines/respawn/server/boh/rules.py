@@ -4,6 +4,7 @@ import time
 
 from core.state.pool import pool_get, pool_write
 from core.orchestrators.snapshot import Snapshot
+from core.logging import console
 
 
 def run_step(
@@ -11,7 +12,7 @@ def run_step(
     state: Dict[str, Any],
     ps_adapter,
     controller,
-    report,
+    report,  # оставляем в сигнатуре для совместимости, НО не используем
     snap: Snapshot,
     helpers: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, bool]:
@@ -25,12 +26,11 @@ def run_step(
     helpers = helpers or {}
 
     def is_focused_now() -> bool:
-        """Свежий фокус: сперва из ps_adapter, затем из пула, затем из снапшота."""
-        # 1) свежайший источник — адаптер (его апдейтит WindowFocusService)
+        """Свежий фокус: сперва из пула (если выставлен явно)."""
         try:
             val = pool_get(state, "focus.is_focused", None)
             if isinstance(val, bool):
-                report(f"[RESPAWN] focus(pool) = {val}")
+                console.log(f"[respawn] focus(pool) = {val}")
                 return val
         except Exception:
             pass
@@ -41,7 +41,7 @@ def run_step(
 
     # перед любой активностью — уважение фокуса
     if is_focused_now() is False:
-        report("[RESPAWN] пауза: окно без фокуса — жду возврата фокуса")
+        console.hud("ok", "[respawn] пауза: окно без фокуса — жду возврата фокуса")
         return False, False
 
     # уже жив
@@ -52,7 +52,7 @@ def run_step(
     # движок
     runner = helpers.get("respawn_runner")
     if runner is None or not hasattr(runner, "engine"):
-        report("[RESPAWN] internal: runner/engine missing")
+        console.hud("err", "[respawn] internal: runner/engine missing")
         return False, True
     engine = runner.engine
 
@@ -72,7 +72,7 @@ def run_step(
         wait_seconds = int(pool_get(state, "features.respawn.wait_seconds", 0))
 
         if wait_enabled and wait_seconds > 0:
-            report(f"[RESPAWN] жду reborn_banner {wait_seconds} сек")
+            console.hud("ok", f"[respawn] жду reborn_banner {wait_seconds} сек")
             elapsed_focused = 0.0  # накапливаем ТОЛЬКО при фокусе
             last_ts = time.time()
             last_tick = -1
@@ -86,7 +86,7 @@ def run_step(
                 st = ps_adapter.last() or {}
                 if st.get("alive"):
                     _set_last_respawn(state, "revive")
-                    report("[RESPAWN] ожили в ожидании — считаю type=revive")
+                    console.hud("ok", "[respawn] ожили в ожидании — считаю type=revive")
                     _reset_macros_after_respawn(state)
                     return True, True
 
@@ -95,7 +95,7 @@ def run_step(
                     tick = int(elapsed_focused)
                     if tick != last_tick:
                         last_tick = tick
-                        report(f"[RESPAWN] unfocused, waiting for revive {tick}/{wait_seconds} сек.")
+                        console.hud("ok", f"[respawn] unfocused, waiting for revive {tick}/{wait_seconds} сек.")
                     time.sleep(0.2)
                     continue
 
@@ -105,44 +105,44 @@ def run_step(
                 tick = int(elapsed_focused)
                 if tick != last_tick:
                     last_tick = tick
-                    report(f"[RESPAWN] ожидание reborn… {tick}/{wait_seconds}")
+                    console.hud("ok", f"[respawn] ожидание reborn… {tick}/{wait_seconds}")
 
                 found = engine.scan_banner_key(
                     win, lang,
                     allowed_keys=["reborn_banner", "accept_button"]
                 )
                 if found and found[1] in ("reborn_banner", "accept_button"):
-                    report("[RESPAWN] найден reborn — поднимаюсь (accept)")
+                    console.hud("ok", "[respawn] найден reborn — поднимаюсь (accept)")
                     ok = bool(engine.run_stand_up_once(
                         win, lang, timeout_ms=14_000,
                         allowed_keys=["reborn_banner", "accept_button"]
                     ))
                     if ok:
                         _set_last_respawn(state, "revive")
-                        report("[RESPAWN] итог: type=revive")
+                        console.hud("ok", "[respawn] итог: type=revive")
                         _reset_macros_after_respawn(state)
                         return True, True
                     else:
-                        report("[RESPAWN] reborn не сработал — повтор шага")
+                        console.hud("err", "[respawn] reborn не сработал — повтор шага")
                         return False, False
 
                 time.sleep(0.2)
 
             # таймаут ожидания → сначала пробуем точечно reborn
-            report("[RESPAWN] таймер ожидания вышел")
+            console.hud("ok", "[respawn] таймер ожидания вышел")
             prefer_reborn = engine.scan_banner_key(
                 win, lang,
                 allowed_keys=["reborn_banner", "accept_button"]
             )
             if prefer_reborn and prefer_reborn[1] in ("reborn_banner", "accept_button"):
-                report("[RESPAWN] по таймауту: reborn виден — поднимаюсь (accept)")
+                console.hud("ok", "[respawn] по таймауту: reborn виден — поднимаюсь (accept)")
                 ok = bool(engine.run_stand_up_once(
                     win, lang, timeout_ms=14_000,
                     allowed_keys=["reborn_banner", "accept_button"]
                 ))
                 rtype = "revive"
             else:
-                report("[RESPAWN] по таймауту: reborn нет — поднимаюсь сам (death)")
+                console.hud("ok", "[respawn] по таймауту: reborn нет — поднимаюсь сам (death)")
                 ok = bool(engine.run_stand_up_once(
                     win, lang, timeout_ms=14_000,
                     allowed_keys=["death_banner"]
@@ -151,7 +151,7 @@ def run_step(
 
             if ok:
                 _set_last_respawn(state, rtype)
-                report(f"[RESPAWN] итог: type={rtype}")
+                console.hud("ok", f"[respawn] итог: type={rtype}")
                 _reset_macros_after_respawn(state)
                 return True, True
             return False, True
@@ -162,21 +162,21 @@ def run_step(
             allowed_keys=["reborn_banner", "accept_button", "death_banner"]
         )
         if found and found[1] in ("reborn_banner", "accept_button"):
-            report("[RESPAWN] auto: найден reborn — поднимаюсь (accept)")
+            console.hud("ok", "[respawn] auto: найден reborn — поднимаюсь (accept)")
             ok = bool(engine.run_stand_up_once(
                 win, lang, timeout_ms=14_000,
                 allowed_keys=["reborn_banner", "accept_button"]
             ))
             rtype = "revive"
         elif found and found[1] == "death_banner":
-            report("[RESPAWN] auto: найден death — поднимаюсь сам")
+            console.hud("ok", "[respawn] auto: найден death — поднимаюсь сам")
             ok = bool(engine.run_stand_up_once(
                 win, lang, timeout_ms=14_000,
                 allowed_keys=["death_banner"]
             ))
             rtype = "self"
         else:
-            report("[RESPAWN] auto: баннеры не видны — общий подъём")
+            console.hud("ok", "[respawn] auto: баннеры не видны — общий подъём")
             ok = bool(engine.run_stand_up_once(
                 win, lang, timeout_ms=14_000,
                 allowed_keys=["reborn_banner", "accept_button", "death_banner"]
@@ -185,7 +185,7 @@ def run_step(
 
         if ok:
             _set_last_respawn(state, rtype)
-            report(f"[RESPAWN] итог: type={rtype}")
+            console.hud("ok", f"[respawn] итог: type={rtype}")
             _reset_macros_after_respawn(state)
             return True, True
 

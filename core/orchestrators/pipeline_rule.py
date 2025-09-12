@@ -39,8 +39,7 @@ class PipelineRule:
     def _dbg(self, msg: str):
         try:
             pd = pool_get(self.s, "runtime.debug.pipeline_debug", False)
-            rd = pool_get(self.s, "runtime.debug.respawn_debug", False)
-            if (pd is True) or (rd is True):  # ← только настоящий bool True
+            if pd is True:  # ← только настоящий bool True
                 console.log(f"[PIPE/DBG] {msg}")
         except Exception:
             pass

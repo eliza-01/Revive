@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/respawn/engine.py
+from __future__ import annotations
 import time
 from typing import Optional, Dict, Tuple, Callable, List, Any
 
@@ -9,10 +10,12 @@ from core.vision.matching.template_matcher_2 import (
 )
 from .respawn_data import ZONES, TEMPLATES
 from .templates import resolver as tplresolver
+from core.logging import console
+from core.state.pool import pool_get
 
 Point = Tuple[int, int]
 
-# Снизил порог — чтобы исключить «ложную неудачу», когда картинки почти одинаковые
+# Порог и таймаут по умолчанию
 DEFAULT_CLICK_THRESHOLD = 0.70
 DEFAULT_CONFIRM_TIMEOUT_S = 6.0
 
@@ -33,39 +36,49 @@ class RespawnEngine:
 
     def __init__(
         self,
+        *,
         server: str,
         controller: Any,
         is_alive_cb: Optional[Callable[[], bool]] = None,
         click_threshold: float = DEFAULT_CLICK_THRESHOLD,
         confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
-        debug: bool = False,
-        on_report: Optional[Callable[[str, str], None]] = None,
     ):
         self.server = server
         self.controller = controller
         self._is_alive_cb = is_alive_cb or (lambda: True)
         self.click_threshold = float(click_threshold)
         self.confirm_timeout_s = float(confirm_timeout_s)
-        self.debug = bool(debug)
-        self.on_report = on_report
 
-    # ---- API ----
+    # ---- debug ----
+    def _debug_enabled(self) -> bool:
+        """
+        Включаем отладку ТОЛЬКО при явном True в пуле:
+        runtime.debug.respawn_debug == True
+        Никакого state в инстансе — читаем флаг из пула напрямую.
+        """
+        try:
+            rd = pool_get({}, "runtime.debug.respawn_debug", False)  # корень не используется в pool_get
+            return (rd is True)
+        except Exception:
+            return False
 
-    def set_server(self, server: str) -> None:
-        self.server = server
+    def _dbg(self, msg: str):
+        try:
+            if self._debug_enabled():
+                console.log(f"[RESPAWN/DBG] {msg}")
+        except Exception:
+            pass
 
-    def _report(self, code: str, text: str):
-        if callable(self.on_report):
-            try:
-                self.on_report(code, text)
-            except Exception:
-                pass
-
+    # ---- helpers ----
     def _is_alive(self) -> bool:
         try:
             return bool(self._is_alive_cb())
         except Exception:
             return True
+
+    # ---- API ----
+    def set_server(self, server: str) -> None:
+        self.server = server
 
     def scan_banner_key(
         self,
@@ -75,7 +88,6 @@ class RespawnEngine:
     ) -> Optional[Tuple[Point, str]]:
         """
         Вернуть ((x,y), key) по разрешённым ключам или None.
-        Во время отладки печатаем, если шаблон не резолвится.
         """
         zone_decl = ZONES.get("death_banners")
         if not zone_decl or not window:
@@ -84,16 +96,16 @@ class RespawnEngine:
 
         key_order = list(allowed_keys) if allowed_keys else list(PREFERRED_TEMPLATE_KEYS)
 
-        # Диагностика: проверим, что пути к шаблонам реально есть
-        if self.debug:
+        # Диагностика наличия шаблонов — только если включён пуловый дебаг
+        if self._debug_enabled():
             for k in key_order:
                 parts = TEMPLATES.get(k)
                 if not parts:
-                    self._report("TPL_MISS", f"нет parts для ключа '{k}'")
+                    self._dbg(f"нет parts для ключа '{k}'")
                     continue
                 p = tplresolver.resolve((lang or "rus").lower(), *parts)
                 if not p:
-                    self._report("TPL_MISS", f"не найден файл шаблона для '{k}' (lang={lang})")
+                    self._dbg(f"не найден файл шаблона для '{k}' (lang={lang})")
 
         return match_multi_in_zone(
             window=window,
@@ -104,7 +116,7 @@ class RespawnEngine:
             key_order=key_order,
             threshold=self.click_threshold,
             engine="respawn",
-            debug=self.debug,
+            debug=self._debug_enabled(),
         )
 
     def find_key_in_zone(
@@ -130,6 +142,7 @@ class RespawnEngine:
             template_parts=parts,
             threshold=self.click_threshold,
             engine="respawn",
+            debug=self._debug_enabled(),
         )
 
     def run_stand_up_once(
@@ -145,7 +158,8 @@ class RespawnEngine:
           - цикл: скан разрешённых ключей, клик, ожидание alive/исчезновения
           - если баннер исчез — краткое ожидание подгрузки
         """
-        self._report("BANNERS_SCAN_START", "Ищу баннеры (death/reborn)…")
+        self._dbg("start: ищу баннеры (death/reborn)…")
+        console.hud("ok", "[respawn] Жду кнопку в город или рес")
 
         # фокус
         try:
@@ -156,7 +170,7 @@ class RespawnEngine:
 
         zone_decl = ZONES.get("death_banners")
         if not zone_decl or not window:
-            self._report("NO_WINDOW", "Окно/зона не заданы")
+            self._dbg("no window/zone (death_banners) — abort")
             return False
         ltrb = compute_zone_ltrb(window, zone_decl)
 
@@ -180,8 +194,8 @@ class RespawnEngine:
 
         while time.time() < total_deadline:
             if self._is_alive():
-                self._report("ALIVE_OK", "Поднялись (hp > 0)")
-                self._report("SUCCESS", "Успешно восстановились")
+                self._dbg("alive>0 — поднялись")
+                console.hud("succ", "[respawn] Возродились")
                 return True
 
             res = match_multi_in_zone(
@@ -193,21 +207,22 @@ class RespawnEngine:
                 key_order=keys_for_phase,
                 threshold=self.click_threshold,
                 engine="respawn",
-                debug=self.debug,
+                debug=self._debug_enabled(),
             )
 
             if res is None:
-                # Баннер исчез — ждём загрузку
+                # Баннер исчез — ждём загрузку/подъём чуть-чуть
                 if last_seen_key == "death_banner":
-                    self._report("BANNER_GONE:DEATH", "Death_banner исчез — ждём загрузку")
+                    self._dbg("death_banner исчез → ждём загрузку")
+                    console.hud("ok", "[respawn] кнопка пропала. Ждём подъём")
                 elif last_seen_key == "reborn_banner":
-                    self._report("BANNER_GONE:REBORN", "Reborn баннер исчез — ждём подъёма")
-                # короткая пауза и проверка alive
+                    self._dbg("reborn баннер исчез → ждём подъёма")
+                    console.hud("ok", "[respawn] окно реса пропало. Ждём подъём")
                 load_deadline = time.time() + 2.0
                 while time.time() < load_deadline:
                     if self._is_alive():
-                        self._report("ALIVE_OK", "Поднялись (hp > 0)")
-                        self._report("SUCCESS", "Успешно восстановились")
+                        self._dbg("alive>0 после исчезновения баннера — ок")
+                        console.hud("succ", "[respawn] Возродились")
                         return True
                     time.sleep(0.05)
                 time.sleep(0.05)
@@ -228,21 +243,24 @@ class RespawnEngine:
                 acc = self.find_key_in_zone(window, lang, "accept_button")
                 if acc is not None:
                     click_x, click_y = acc
-                self._report("CLICK:REBORN_ACCEPT", "Клик по кнопке согласия (reborn)")
+                self._dbg("click: reborn accept")
+                console.hud("ok", "[respawn] соглашаемся на рес")
                 confirm_wait_s = 5.0
             elif key == "death_banner":
-                self._report("CLICK:DEATH", "Клик по death_banner")
+                self._dbg("click: death_banner")
+                console.hud("ok", "[respawn] встаём в город")
 
             _click(click_x, click_y)
             last_click_ts = now
 
+            # ожидание подтверждения
             confirm_deadline = now + float(confirm_wait_s)
             while time.time() < confirm_deadline:
                 if self._is_alive():
-                    self._report("ALIVE_OK", "Поднялись (hp > 0)")
-                    self._report("SUCCESS", "Успешно восстановились")
+                    self._dbg("alive>0 после клика — ок")
+                    console.hud("succ", "[respawn] Возродились")
                     return True
-                # если баннер исчез — отдаём управление наверх (цикл сам решит)
+                # если баннер исчез — отдаём управление наверх
                 res2 = match_multi_in_zone(
                     window=window,
                     zone_ltrb=ltrb,
@@ -252,20 +270,23 @@ class RespawnEngine:
                     key_order=keys_for_phase,
                     threshold=self.click_threshold,
                     engine="respawn",
-                    debug=self.debug,
+                    debug=self._debug_enabled(),
                 )
                 if res2 is None:
                     if key == "death_banner":
-                        self._report("BANNER_GONE:DEATH", "Death_banner исчез — ждём загрузку")
+                        self._dbg("death_banner пропал после клика — ждём загрузку")
+                        console.hud("ok", "[respawn] кнопка пропала. Ждём подъём")
                     elif key == "reborn_banner":
-                        self._report("BANNER_GONE:REBORN", "Reborn баннер исчез — ждём подъёма")
+                        self._dbg("reborn пропал после клика — ждём подъёма")
+                        console.hud("ok", "[respawn] окно реса пропало. Ждём подъём")
                     break
                 time.sleep(0.05)
 
-            self._report("TIMEOUT:CONFIRM", "Таймаут подтверждения после клика")
+            self._dbg("timeout confirm — продолжаю цикл")
             time.sleep(0.05)
 
-        self._report("FAIL", "Не удалось подняться")
+        self._dbg("fail: не удалось подняться")
+        console.hud("err", "[respawn] не удалось подняться")
         return False
 
 
@@ -276,8 +297,6 @@ def create_engine(
     is_alive_cb: Optional[Callable[[], bool]] = None,
     click_threshold: float = DEFAULT_CLICK_THRESHOLD,
     confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
-    debug: bool = False,
-    on_report: Optional[Callable[[str, str], None]] = None,
 ) -> RespawnEngine:
     return RespawnEngine(
         server=server,
@@ -285,6 +304,5 @@ def create_engine(
         is_alive_cb=is_alive_cb,
         click_threshold=click_threshold,
         confirm_timeout_s=confirm_timeout_s,
-        debug=debug,
-        on_report=on_report,
     )
+
