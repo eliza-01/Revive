@@ -33,3 +33,16 @@ body { -webkit-app-region: drag; } /* перетаскивать за любое
   -webkit-app-region: no-drag; /* чтобы можно было выделить текст */
   flex: 1 1 auto;
 }
+
+#hudLog {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.25;
+  color: #e5e7eb; /* базовый */
+}
+
+.hud-line { opacity: 0.95; }
+
+.hud-line.ok   { color: #e5e7eb; }  /* нейтральный */
+.hud-line.succ { color: #34d399; }  /* зеленый */
+.hud-line.err  { color: #f87171; }  /* красный */
