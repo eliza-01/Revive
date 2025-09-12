@@ -1,5 +1,4 @@
-﻿# core/engines/player_state/watcher.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import threading, time
 from typing import Callable, Optional, Dict, Any
 
@@ -7,11 +6,9 @@ from core.engines.player_state.server.l2mad import engine as ps_boh
 
 
 class PlayerStateWatcher:
-    def __init__(self, server: str, get_window: Callable[[], dict],
-                 on_status: Callable[[str, Optional[bool]], None] = None):
+    def __init__(self, server: str, get_window: Callable[[], dict]):
         self.server = (server or "boh").lower()
         self.get_window = get_window
-        self.on_status = on_status or (lambda *_: None)
         self._running = False
         self._th = None
         self.last = {"hp_ratio": 1.0, "ts": 0.0}
@@ -28,7 +25,6 @@ class PlayerStateWatcher:
         def loop():
             ctx = {
                 "get_window": self.get_window,
-                "on_status": lambda txt, ok=None: self.on_status(txt, ok),
                 "on_update": self._on_update,
                 "should_abort": lambda: not self._running,
             }
