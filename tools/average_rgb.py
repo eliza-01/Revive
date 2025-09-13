@@ -1,4 +1,4 @@
-# extract_neutral_rgb.py
+# tools/average_rgb.py
 # -*- coding: utf-8 -*-
 """
 Извлекает пул из 6 RGB-цветов из изображения

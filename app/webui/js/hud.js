@@ -9,7 +9,32 @@
     if (!logEl) return;
     logEl.textContent = text || "—";
   }
-  function push(text){
+  function push(arg){
+    const attEl = document.getElementById('hudAttention');
+    let status = 'ok', text = '';
+    if (arg && typeof arg === 'object'){
+      status = String(arg.status || 'ok').toLowerCase();
+      text = String(arg.text ?? '');
+    } else {
+      text = String(arg ?? '');
+    }
+
+    if (status === 'att'){
+      if (attEl){
+        if (text && text.trim()){
+          attEl.innerHTML = `<span class="att-ico blink">⚠️</span><span class="att-text"></span>`;
+          const span = attEl.querySelector('.att-text');
+          if (span) span.textContent = text;
+          attEl.style.display = 'flex';
+        } else {
+          // пустая строка — скрыть attention
+          attEl.innerHTML = '';
+          attEl.style.display = 'none';
+        }
+      }
+      return;
+    }
+
     const t = `[${new Date().toLocaleTimeString()}] ${text}`;
     buf.push(t);
     while (buf.length > MAX) buf.shift();
@@ -19,5 +44,13 @@
     return buf.slice();
   }
 
-  window.ReviveHUD = { set, push, dump };
+  function stop_attention(){
+    const attEl = document.getElementById('hudAttention');
+    if (attEl){
+      attEl.innerHTML = '';
+      attEl.style.display = 'none';
+    }
+  }
+
+  window.ReviveHUD = { set, push, dump, stop_attention };
 })();

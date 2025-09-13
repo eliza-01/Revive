@@ -138,9 +138,9 @@
 
         <label class="ml">Режим:</label>
         <select id="buffMode" class="xs">
-          <option value="profile">profile</option>
-          <option value="mage">mage</option>
-          <option value="fighter">fighter</option>
+<!--          <option value="profile">profile</option>-->
+<!--          <option value="mage">mage</option>-->
+<!--          <option value="fighter">fighter</option>-->
         </select>
 
         <button class="ml" id="btnBuffOnce">Баф один раз</button>
@@ -148,7 +148,39 @@
       <div class="row compact">
         <span id="status-buff" class="status gray">Отключено</span>
       </div>
+      <div class="row compact">
+        <button class="ml" id="btnBuffChecker">Проверять баф</button>
+      </div>
     </section>
+
+    <!--  Модальное buff-checker'a  -->
+<!--    <div id="buffCheckerModal" class="modal hidden" aria-hidden="true">-->
+<!--      <div class="modal__backdrop" data-close></div>-->
+<!--      <div class="modal__panel">-->
+<!--        <div class="modal__hdr">-->
+<!--          <h4>Проверка бафов</h4>-->
+<!--          <button class="modal__x" id="buffCheckerClose" title="Закрыть">×</button>-->
+<!--        </div>-->
+
+<!--        <div class="tabs">-->
+<!--          <button class="tab is-active" data-tab="buffs">Buffs</button>-->
+<!--          <button class="tab" data-tab="dances">Dances</button>-->
+<!--          <button class="tab" data-tab="songs">Songs</button>-->
+<!--        </div>-->
+
+<!--        <div class="tabpanes">-->
+<!--          <div class="tabpane is-active" data-pane="buffs"><div class="grid" id="grid-buffs"></div></div>-->
+<!--          <div class="tabpane" data-pane="dances"><div class="grid" id="grid-dances"></div></div>-->
+<!--          <div class="tabpane" data-pane="songs"><div class="grid" id="grid-songs"></div></div>-->
+<!--        </div>-->
+
+<!--        <div class="modal__ftr">-->
+<!--          <button id="buffCheckerSave" class="primary">Сохранить</button>-->
+<!--          <button id="buffCheckerCancel" data-close>Отмена</button>-->
+<!--        </div>-->
+<!--      </div>-->
+<!--    </div>-->
+
 
     <section class="card" id="sec-macros" data-section="macros">
       <h4>Макросы</h4>
@@ -301,6 +333,7 @@
   <script src="js/respawn.ui.js"></script>
   <script src="js/buff.ui.js"></script>
   <script src="js/extra.buff.profile.js"></script>
+  <script src="js/extra.buff.checker.js"></script>
   <script src="js/macros.ui.js"></script>
   <script src="js/tp.ui.js"></script>
   <script src="js/autofarm.ui.js"></script>

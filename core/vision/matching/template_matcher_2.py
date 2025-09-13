@@ -1,5 +1,4 @@
 ﻿# core/vision/matching/template_matcher_2.py
-# core/vision/matching/template_matcher_2.py
 # Универсальный мульти-матчер по зоне: несколько ключей, мультимасштаб, с резолвером
 # core.engines.<engine>.server.<server>.templates.resolver
 
@@ -58,9 +57,15 @@ def match_key_in_zone_single(
     if not window:
         return None
 
-    zone_img = capture_window_region_bgr(window, zone_ltrb)
-    if zone_img is None or zone_img.size == 0:
+    zone_img_bgr = capture_window_region_bgr(window, zone_ltrb)
+    if zone_img_bgr is None or zone_img_bgr.size == 0:
         return None
+
+    # Приводим зону к GRAY, чтобы тип совпадал с шаблоном
+    if zone_img_bgr.ndim == 3:
+        zone_gray = cv2.cvtColor(zone_img_bgr, cv2.COLOR_BGR2GRAY)
+    else:
+        zone_gray = zone_img_bgr
 
     tpath = _resolve_path(server, (lang or "rus").lower(), template_parts, engine=engine)
     if not tpath:
@@ -70,10 +75,10 @@ def match_key_in_zone_single(
     if templ is None:
         return None
 
-    if zone_img.shape[0] < templ.shape[0] or zone_img.shape[1] < templ.shape[1]:
+    if zone_gray.shape[0] < templ.shape[0] or zone_gray.shape[1] < templ.shape[1]:
         return None
 
-    res = cv2.matchTemplate(zone_img, templ, cv2.TM_CCOEFF_NORMED)
+    res = cv2.matchTemplate(zone_gray, templ, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(res)
     if float(max_val) < float(threshold):
         return None

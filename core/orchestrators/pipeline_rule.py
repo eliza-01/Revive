@@ -77,6 +77,11 @@ class PipelineRule:
 
         # Корректный детект смерти
         is_dead = (snap.alive is False) or (snap.hp_ratio is not None and snap.hp_ratio <= 0.001)
+        if is_dead is True:
+            console.hud("att", "Вы мертвы")
+        else:
+            console.hud("att", "")
+
         # Тумблер авто-респавна — только из пула
         respawn_on = bool(pool_get(self.s, "features.respawn.enabled", False))
         # Единственный _dbg — тик
@@ -85,7 +90,7 @@ class PipelineRule:
             "tick: "
             f"snap.is_focused={snap.is_focused} "
             f"snap.alive={snap.alive} snap.is_dead={is_dead} snap.hp={snap.hp_ratio} "
-            f"respawn={respawn_on} macros={macros_on} active(pipeline?)={self._active} idx={self._idx}"
+            f"respawn={respawn_on} macros={macros_on} active(pipeline?)={self._active} idx={self._idx} "
             f"----------------------------------------"
         )
 
@@ -157,6 +162,7 @@ class PipelineRule:
         return bool(pool_get(self.s, f"features.{feature}.enabled", False))
 
     def _call_server_rule(self, engine: str, func: str = "run_step"):
+        """По умолчанию ищем core.engines.{engine}.server.{server}.rules"""
         server = pool_get(self.s, "config.server", None)
         if not server:
             console.log(f"[PIPE] {engine}: server is not set in pool (config.server)")
@@ -169,6 +175,25 @@ class PipelineRule:
                 return fn
         except Exception as e:
             console.log(f"[PIPE] {engine}: import error for {mod_name}: {e}")
+        return None
+
+    def _call_dashboard_rule(self, submodule: str, func: str = "run_step"):
+        """
+        Вложенные правила dashboard: buffer/teleport/…:
+        core.engines.dashboard.server.{server}.{submodule}.rules
+        """
+        server = pool_get(self.s, "config.server", None)
+        if not server:
+            console.log("[PIPE] dashboard: server is not set in pool (config.server)")
+            return None
+        mod_name = f"core.engines.dashboard.server.{str(server).lower()}.{submodule}.rules"
+        try:
+            mod = importlib.import_module(mod_name)
+            fn = getattr(mod, func, None)
+            if callable(fn):
+                return fn
+        except Exception as e:
+            console.log(f"[PIPE] dashboard: import error for {mod_name}: {e}")
         return None
 
     def _run_step(self, step: str, snap: Snapshot) -> tuple[bool, bool]:
@@ -239,14 +264,57 @@ class PipelineRule:
         if step == "buff":
             _busy_on("buff")
             try:
-                return self._step_buff(snap)
+                # dashboard → buffer.rules
+                fn = self._call_dashboard_rule("buffer", func="run_step")
+                if callable(fn):
+                    try:
+                        ok, adv = fn(
+                            state=self.s,
+                            ps_adapter=self.ps,
+                            controller=self.controller,
+                            snap=snap,
+                            helpers={
+                                "get_window": lambda: pool_get(self.s, "window.info", None),
+                                "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                            },
+                        )
+                        return bool(ok), bool(adv)
+                    except Exception as e:
+                        console.log(f"[BUFF] dashboard/buffer rules error: {e}")
+                        self._hud_err("[BUFF] ошибка dashboard/buffer rules — пропуск шага")
+                        return True, True
+                console.log("[BUFF] dashboard/buffer rules.py не найден — пропуск шага")
+                self._hud_err("[BUFF] dashboard/buffer rules.py не найден — пропуск шага")
+                return True, True
             finally:
                 _busy_off("buff")
 
         if step == "tp":
             _busy_on("tp")
             try:
-                return self._step_tp(snap)
+                # если появится dashboard/teleport.rules — подцепится автоматически
+                fn = self._call_dashboard_rule("teleport", func="run_step")
+                if callable(fn):
+                    try:
+                        ok, adv = fn(
+                            state=self.s,
+                            ps_adapter=self.ps,
+                            controller=self.controller,
+                            snap=snap,
+                            helpers={
+                                "get_window": lambda: pool_get(self.s, "window.info", None),
+                                "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                            },
+                        )
+                        return bool(ok), bool(adv)
+                    except Exception as e:
+                        console.log(f"[TP] dashboard/teleport rules error: {e}")
+                        self._hud_err("[TP] ошибка dashboard/teleport rules — пропуск шага")
+                        return True, True
+                # временный заглушечный успех
+                self._hud_succ("[TP] выполнено (stub)")
+                console.log("[TP] stub ok (rules not found)")
+                return True, True
             finally:
                 _busy_off("tp")
 
@@ -277,22 +345,11 @@ class PipelineRule:
         self._hud_err(f"[PIPE] неизвестный шаг: {step} — пропуск")
         return True, True
 
-    # ---------- simple stubs (вынесем позже) ----------
-    def _step_buff(self, snap: Snapshot) -> tuple[bool, bool]:
-        self._hud_succ("[BUFF] выполнен (stub)")
-        console.log("[BUFF] stub ok")
-        return True, True
-
-    def _step_tp(self, snap: Snapshot) -> tuple[bool, bool]:
-        self._hud_succ("[TP] выполнено (stub)")
-        console.log("[TP] stub ok")
-        return True, True
-
     # ---------- utils ----------
     def _order(self) -> List[str]:
-        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "macros"]) or [])
+        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "autofarm"]) or [])
         if not raw:
-            raw = ["respawn", "macros"]
+            raw = ["respawn", "buff", "macros", "autofarm"]
         rest = [x for x in raw if x and x.lower() != "respawn"]
         return ["respawn"] + rest
 

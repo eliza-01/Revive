@@ -18,7 +18,7 @@
           "buff": {
             "section": true,
             "methods": ["dashboard"],
-            "modes": ["profile", "mage", "fighter"]
+            "modes": ["profile", "mage", "fighter", "archer"]
           },
           "macros": {
             "section": true
@@ -46,7 +46,7 @@
             "section": true
           },
           "buff": {
-            "section": false,
+            "section": true,
             "methods": ["dashboard"],
             "modes": ["profile", "mage", "fighter"]
           },

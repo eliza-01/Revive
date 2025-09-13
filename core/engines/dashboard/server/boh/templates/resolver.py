@@ -1,28 +1,23 @@
 ﻿# core/engines/dashboard/server/boh/templates/resolver.py
-# Жёсткий, предсказуемый резолвер для шаблонов respawn-движка.
-# Теперь поддерживает плейсхолдер "<lang>", алиасы языков и языковые фолбэки.
+# Резолвер для шаблонов dashboard-движка.
+# Поддерживает плейсхолдер "<lang>", алиасы языков и вложенные подпапки.
+# Разрешает только реально существующие файлы под eng/, rus/ и common/.
 
+from __future__ import annotations
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 _LANG_FALLBACK = "rus"
-
-# Алиасы языков на всякий случай
 _LANG_ALIASES = {
-    "ru": "rus",
-    "rus": "rus",
-    "russian": "rus",
-    "en": "eng",
-    "eng": "eng",
-    "english": "eng",
+    "ru": "rus", "rus": "rus", "russian": "rus",
+    "en": "eng", "eng": "eng", "english": "eng",
 }
 
-# Разрешённые имена файлов в каталоге языка
-_ALLOWED_FILES = {
-    # добавишь сюда новые имена — они сразу начнут резолвиться
-}
+# Для починки опечатки "сommon" (кириллическая 'с')
+_CYR_TO_LAT = {ord("с"): "c", ord("С"): "C"}
 
 def _templates_root() -> str:
+    # .../core/engines/dashboard/server/boh/templates
     return os.path.abspath(os.path.dirname(__file__))
 
 def _norm_lang(lang: str) -> str:
@@ -32,57 +27,138 @@ def _norm_lang(lang: str) -> str:
 def _lang_dir(lang: str) -> str:
     return os.path.join(_templates_root(), _norm_lang(lang))
 
-def _try_path(lang: str, filename: str) -> Optional[str]:
-    if filename not in _ALLOWED_FILES:
+def _common_dir() -> str:
+    return os.path.join(_templates_root(), "common")
+
+def _is_common_token(token: str) -> bool:
+    return token.translate(_CYR_TO_LAT).lower().strip() == "common"
+
+def _scan_dir(base: str) -> set[str]:
+    out: set[str] = set()
+    if not os.path.isdir(base):
+        return out
+    for root, _dirs, files in os.walk(base):
+        for fn in files:
+            if not fn.lower().endswith(".png"):
+                continue
+            full = os.path.join(root, fn)
+            rel = os.path.relpath(full, base).replace("\\", "/")
+            out.add(rel)
+    return out
+
+# --- Белые списки формируются автоматически по содержимому eng/, rus/ и common/ ---
+_ALLOWED_REL_LANG: set[str] = set()     # относительные пути, встречающиеся в eng/ или rus/
+for _L in ("eng", "rus"):
+    _ALLOWED_REL_LANG |= _scan_dir(os.path.join(_templates_root(), _L))
+
+_ALLOWED_REL_COMMON: set[str] = _scan_dir(_common_dir())
+
+def _safe_join(base_dir: str, *parts: str) -> Optional[str]:
+    # Собираем путь под base_dir, защищаемся от traversal
+    joined = os.path.join(base_dir, *parts)
+    normd  = os.path.abspath(joined)
+    base   = os.path.abspath(base_dir)
+    if not normd.startswith(base + os.sep) and normd != base:
         return None
-    p = os.path.join(_lang_dir(lang), filename)
-    return p if os.path.isfile(p) else None
+    return normd
+
+def _try_langs(rel_parts: Tuple[str, ...], lang: str) -> Optional[str]:
+    """
+    Порядок попыток: lang -> rus -> eng
+    """
+    rel_norm = "/".join(rel_parts)
+    # сначала проверяем, что такой относительный путь вообще встречался в eng/ или rus/
+    if rel_norm not in _ALLOWED_REL_LANG:
+        return None
+
+    for L in (_norm_lang(lang), "rus", "eng"):
+        base = _lang_dir(L)
+        p = _safe_join(base, *rel_parts)
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+def _try_common(rel_parts: Tuple[str, ...]) -> Optional[str]:
+    rel_norm = "/".join(rel_parts)
+    if rel_norm not in _ALLOWED_REL_COMMON:
+        return None
+    base = _common_dir()
+    p = _safe_join(base, *rel_parts)
+    if p and os.path.isfile(p):
+        return p
+    return None
 
 def resolve(lang: str, *parts: str) -> Optional[str]:
     """
-    Поддерживаем вызовы вида:
-      resolve("rus", "reborn_banner.png")                # 1 сегмент
-      resolve("rus", "<lang>", "reborn_banner.png")      # 2 сегмента с плейсхолдером
-    Выполняем фолбэк по языкам: lang → rus → eng.
+    Примеры:
+      resolve("rus", "<lang>", "main", "dashboard_init.png")
+      resolve("eng", "<lang>", "buffer", "icons", "buffs", "mental_shield.png")
+      resolve("eng", "common", "buffer", "icons", "buffs", "mental_shield.png")  # явный common
     """
-    # вытащим имя файла
-    filename: Optional[str] = None
     if not parts:
         return None
-    if len(parts) == 1:
-        filename = parts[0]
-    elif len(parts) == 2 and parts[0] in ("<lang>", "lang"):
-        filename = parts[1]
-    else:
-        # не поддерживаем вложенные подпапки и лишние сегменты
-        return None
 
-    if filename not in _ALLOWED_FILES:
-        return None
-
-    langs_to_try = []
-    prim = _norm_lang(lang)
-    langs_to_try.append(prim)
-    if "rus" not in langs_to_try:
-        langs_to_try.append("rus")
-    if "eng" not in langs_to_try:
-        langs_to_try.append("eng")
-
-    for L in langs_to_try:
-        p = _try_path(L, filename)
+    # поддерживаем как "<lang>", так и уже нормализованный язык первым сегментом
+    # и явный (или опечаточный) "common"
+    head = parts[0]
+    if head in ("<lang>", "lang"):
+        rel_parts = tuple(parts[1:])
+        # 1) пробуем языковые каталоги
+        p = _try_langs(rel_parts, lang)
         if p:
             return p
-    return None
+        # 2) фолбэк в common
+        return _try_common(rel_parts)
+
+    head_norm = head.lower()
+    if head_norm in ("eng", "rus"):
+        # Язык указан явно в пути
+        lang = head_norm
+        rel_parts = tuple(parts[1:])
+        p = _try_langs(rel_parts, lang)
+        if p:
+            return p
+        # фолбэк в common
+        return _try_common(rel_parts)
+
+    if _is_common_token(head):
+        # Явный common (и/или "сommon" с кириллической 'с')
+        rel_parts = tuple(parts[1:])
+        return _try_common(rel_parts)
+
+    # Иначе считаем, что первый сегмент — это подпапка,
+    # и требуется "<lang>" в TEMPLATES (т.е. пытаемся как языковой путь)
+    rel_parts = tuple(parts)
+    p = _try_langs(rel_parts, lang)
+    if p:
+        return p
+    return _try_common(rel_parts)
 
 def exists(lang: str, *parts: str) -> bool:
     return resolve(lang, *parts) is not None
 
 def listdir(lang: str, *parts: str) -> List[str]:
-    # Возвращаем только разрешённые файлы, которые реально существуют в нормализованном языке
-    base = _lang_dir(lang)
+    """
+    Возвращает список разрешённых файлов, реально существующих:
+      - если parts начинается с common/ — из common
+      - иначе: из указанного языка (с учётом наличия)
+    """
     out: List[str] = []
-    for name in sorted(_ALLOWED_FILES):
-        p = os.path.join(base, name)
-        if os.path.isfile(p):
-            out.append(name)
+    if parts and _is_common_token(parts[0]):
+        base = _common_dir()
+        rel_prefix = "/".join(parts[1:]).replace("\\", "/")
+        for rel in sorted(_ALLOWED_REL_COMMON):
+            if not rel_prefix or rel.startswith(rel_prefix):
+                p = os.path.join(base, rel)
+                if os.path.isfile(p):
+                    out.append(rel)
+        return out
+
+    base = _lang_dir(_norm_lang(lang))
+    rel_prefix = "/".join(parts[1:] if (parts and parts[0] in ("<lang>", "lang")) else parts).replace("\\", "/")
+    for rel in sorted(_ALLOWED_REL_LANG):
+        if not rel_prefix or rel.startswith(rel_prefix):
+            p = os.path.join(base, rel)
+            if os.path.isfile(p):
+                out.append(rel)
     return out

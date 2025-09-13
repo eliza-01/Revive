@@ -20,27 +20,45 @@ class BuffSection(BaseSection):
         self.schedule = schedule
         self.checker = checker
 
-        # ensure defaults exist (ensure_pool уже сделал, но обновим методы от профиля при первом создании)
-        # методы/текущий метод уже проставляются в SystemSection, так что здесь ничего не нужно.
-
     # --- setters ---
     def buff_set_enabled(self, enabled: bool):
         pool_write(self.s, "features.buff", {"enabled": bool(enabled)})
         self.emit("buff", "Баф: вкл" if enabled else "Баф: выкл", True if enabled else None)
 
     def buff_set_mode(self, mode: str):
-        methods = set(pool_get(self.s, "features.buff.methods", []) or [])
+        modes = set(pool_get(self.s, "features.buff.modes", []) or [])
         m = (mode or "").strip().lower()
-        if methods and m not in methods:
-            # неизвестный метод — пометим предупреждением, но сохраним как есть (вдруг профиль обновится)
-            self.emit("buff", f"Неизвестный метод бафа: {mode}", None)
+        if modes and m not in modes:
+            self.emit("buff", f"Неизвестный режим бафа: {mode}", None)
         pool_write(self.s, "features.buff", {"mode": mode or ""})
+
+    def buff_set_method(self, method: str):
+        methods = set(pool_get(self.s, "features.buff.methods", []) or [])
+        m = (method or "").strip().lower()
+        if methods and m not in methods:
+            self.emit("buff", f"Неизвестный метод бафа: {method}", None)
+        pool_write(self.s, "features.buff", {"method": m})
+
+    # --- checker ---
+    def buff_checker_get(self) -> list[str]:
+        return list(pool_get(self.s, "features.buff.checker", []) or [])
+
+    def buff_checker_set(self, items: list[str]) -> bool:
+        try:
+            items = [str(x).strip() for x in (items or []) if x]
+            pool_write(self.s, "features.buff", {"checker": items})
+            self.emit("buff", f"Checker обновлён ({len(items)} шт.)", True)
+            return True
+        except Exception:
+            self.emit("buff", "Ошибка обновления Checker", False)
+            return False
 
     # --- getters ---
     def buff_get_config(self) -> Dict[str, Any]:
         return {
             "enabled": bool(pool_get(self.s, "features.buff.enabled", False)),
             "mode": pool_get(self.s, "features.buff.mode", ""),
+            "method": pool_get(self.s, "features.buff.method", ""),
             "methods": list(pool_get(self.s, "features.buff.methods", []) or []),
         }
 
@@ -56,14 +74,15 @@ class BuffSection(BaseSection):
             return False
         mode = pool_get(self.s, "features.buff.mode", "")
         self.emit("buff", f"Запуск бафа (режим: {mode or '—'})", None)
-        # если есть отдельный движок/сервис — вызвать здесь.
-        # пока просто возвращаем True как “акция принята”.
         return True
 
     def expose(self) -> dict:
         return {
             "buff_set_enabled": self.buff_set_enabled,
             "buff_set_mode": self.buff_set_mode,
+            "buff_set_method": self.buff_set_method,
             "buff_get_config": self.buff_get_config,
             "buff_run_once": self.buff_run_once,
+            "buff_checker_get": self.buff_checker_get,   # ← добавлено
+            "buff_checker_set": self.buff_checker_set,   # ← добавлено
         }

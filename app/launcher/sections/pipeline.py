@@ -33,7 +33,7 @@ class PipelineSection(BaseSection):
 
     def pipeline_get_order(self) -> Dict[str, any]:
         return {
-            "order": list(pool_get(self.s, "pipeline.order", ["respawn", "macros"]) or ["respawn"]),
+            "order": list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "autofarm"]) or ["respawn"]),
             "allowed": list(pool_get(self.s, "pipeline.allowed", ALLOWED_STEPS_DEFAULT) or ALLOWED_STEPS_DEFAULT),
         }
 
