@@ -189,7 +189,7 @@ class RecordSection:
     def record_play_now(self) -> Dict[str, Any]:
         focused = (self._focus_now() is not False)
         if focused:
-            ok = self.runner.engine.play(wait_focus_cb=None, countdown_s=3.0)
+            ok = self.runner.engine.play(wait_focus_cb=None, countdown_s=2.0)
             return {"ok": bool(ok), "mode": "played" if ok else "error"}
         else:
             try:

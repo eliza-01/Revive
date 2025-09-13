@@ -215,7 +215,7 @@ class RecordEngine:
 
     # -------- playback API --------
 
-    def play(self, slug: Optional[str] = None, *, wait_focus_cb=None, countdown_s: float = 3.0) -> bool:
+    def play(self, slug: Optional[str] = None, *, wait_focus_cb=None, countdown_s: float = 1) -> bool:
         if self._recording or self._playing:
             return False
 
