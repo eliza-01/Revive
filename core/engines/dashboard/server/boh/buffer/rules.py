@@ -1,7 +1,9 @@
-# core/engines/dashboard/server/boh/buffer/rules.py
+# core/engines/dashboard/server/<server>/buffer/rules.py
 from __future__ import annotations
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, List, Tuple
 import time
+import tempfile
+import importlib
 import os
 
 import cv2
@@ -9,16 +11,128 @@ import numpy as np
 
 from core.logging import console
 from core.state.pool import pool_get
+from core.vision.zones import compute_zone_ltrb
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
+from core.vision.matching.template_matcher_2 import (
+    match_key_in_zone_single,
+    match_multi_in_zone,
+)
 
-# Общие данные по зонам/шаблонам
-from core.engines.dashboard.server.boh.dashboard_data import TEMPLATES
-
-# Серверный резолвер путей до png (ВАЖНО: должен уметь резолвить вложенные подпапки)
-from core.engines.dashboard.server.boh.templates.resolver import resolve as tpl_resolve
+from ..dashboard_data import TEMPLATES, ZONES, BUFFS, DANCES, SONGS
+from .engine import BufferEngine
+from ..templates.resolver import resolve as tpl_resolve
 
 
-# ---------------------- low-level helpers ----------------------
+# ---------------------- helpers ----------------------
+def _debug_open_zone_with_icons(
+    state: Dict[str, Any],
+    win: Dict,
+    lang: str,
+    tokens: list[str],
+    zone_name: str = "current_buffs",
+    filename_hint: str = "verify"
+) -> None:
+    """
+    Если включен флаг runtime.debug.buff_zone=True —
+    сохраняет PNG зоны + снизу полосу с иконками, которые ищем.
+    Автоматически открывает изображение системной вьюхой.
+    """
+    dbg = bool(pool_get(state, "runtime.debug.buff_zone", False))
+    if not dbg:
+        return
+    try:
+        # зона
+        decl = ZONES.get(zone_name)
+        if decl is None:
+            console.log(f"[dashboard/buffer][dbg] zone '{zone_name}' not found")
+            return
+        ltrb = compute_zone_ltrb(win, decl)
+        roi = capture_window_region_bgr(win, ltrb)
+        if roi is None or roi.size == 0:
+            console.log(f"[dashboard/buffer][dbg] zone '{zone_name}' empty")
+            return
+
+        # собрать иконки (25x25 + зелёная рамка + подпись)
+        icons = []
+        for tok in (tokens or []):
+            parts = (BUFFS.get(tok) or DANCES.get(tok) or SONGS.get(tok))
+            if not parts:
+                continue
+            p = tpl_resolve(lang, *parts)
+            if not (p and os.path.isfile(p)):
+                continue
+            img = cv2.imread(p, cv2.IMREAD_UNCHANGED)
+            if img is None or img.size == 0:
+                continue
+            # в BGR
+            if img.ndim == 2:
+                icon = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            elif img.ndim == 3 and img.shape[2] == 4:
+                icon = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            else:
+                icon = img
+            icon = cv2.resize(icon, (25, 25), interpolation=cv2.INTER_AREA)
+            # рамка
+            icon = cv2.copyMakeBorder(icon, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=(0, 255, 0))
+            # подпись
+            label_h = 14
+            tile_w, tile_h = icon.shape[1], icon.shape[0] + label_h
+            tile = np.zeros((tile_h, tile_w, 3), dtype=np.uint8)
+            tile[0:icon.shape[0], 0:icon.shape[1]] = icon
+            cv2.putText(tile, str(tok)[:10], (2, tile_h - 3),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
+            icons.append(tile)
+
+        # собрать полосу иконок (несколько рядов при необходимости)
+        strip = None
+        if icons:
+            cols = min(12, len(icons))
+            rows = int(np.ceil(len(icons) / cols))
+            row_imgs = []
+            for r in range(rows):
+                row_tiles = icons[r * cols:(r + 1) * cols]
+                row_imgs.append(np.hstack(row_tiles))
+            strip = np.vstack(row_imgs)
+            # заголовок
+            header = np.zeros((20, strip.shape[1], 3), dtype=np.uint8)
+            cv2.putText(header, "SEARCHING:", (5, 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+            strip = np.vstack([header, strip])
+
+        # финальная картинка: roi сверху, ниже — полоса иконок (если есть)
+        roi_bgr = roi if roi.ndim == 3 else cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+        if strip is not None:
+            W = max(roi_bgr.shape[1], strip.shape[1])
+
+            def _pad_w(img):
+                if img.shape[1] == W:
+                    return img
+                pad = np.zeros((img.shape[0], W - img.shape[1], 3), dtype=np.uint8)
+                return np.hstack([img, pad])
+
+            out = np.vstack([_pad_w(roi_bgr), _pad_w(strip)])
+        else:
+            out = roi_bgr
+
+        # сохранить и открыть
+        ts = int(time.time())
+        base = f"revive_dbg_{zone_name}_{filename_hint}_{ts}.png"
+        path = os.path.join(tempfile.gettempdir(), base)
+        cv2.imwrite(path, out)
+        console.log(f"[dashboard/buffer][dbg] saved zone '{zone_name}' -> {path}")
+        try:
+            os.startfile(path)  # Windows
+        except Exception:
+            try:
+                import subprocess, platform
+                if platform.system() == "Darwin":
+                    subprocess.Popen(["open", path])
+                else:
+                    subprocess.Popen(["xdg-open", path])
+            except Exception:
+                pass
+    except Exception as e:
+        console.log(f"[dashboard/buffer][dbg] error: {e}")
 
 def _focused_now(state: Dict[str, Any]) -> Optional[bool]:
     try:
@@ -37,93 +151,54 @@ def _hud_err(msg: str):  console.hud("err",  msg)
 def _hud_succ(msg: str): console.hud("succ", msg)
 
 
-def _resolve_template(lang: str, key: str) -> Optional[str]:
-    """
-    Берём parts из TEMPLATES[key] и резолвим через server resolver.
-    TEMPLATES[key] ожидается в формате: ["<lang>", "dir1", "dir2", "file.png"].
-    """
-    parts = TEMPLATES.get(key)
-    if not parts:
-        return None
-    p = tpl_resolve(lang, *parts)
-    return p if (p and os.path.isfile(p)) else None
+def _zone_ltrb(win: Dict, name: str) -> tuple[int, int, int, int]:
+    decl = ZONES.get(name, ZONES.get("fullscreen", {"fullscreen": True}))
+    l, t, r, b = compute_zone_ltrb(win, decl)
+    return (int(l), int(t), int(r), int(b))
 
 
-def _frame_full(win: Dict) -> Optional[np.ndarray]:
-    """Снимок всей клиентской области окна (BGR)."""
-    l, t, r, b = 0, 0, int(win["width"]), int(win["height"])
-    return capture_window_region_bgr(win, (l, t, r, b))
-
-
-def _match_template(win: Dict, img_path: str, thr: float = 0.87) -> Optional[Tuple[int, int, int, int]]:
-    """
-    OpenCV matchTemplate по всему окну.
-    Возвращает (x, y, w, h) найденного шаблона в координатах окна либо None.
-    """
+def _click(controller, x: int, y: int, *, hover_delay_s: float = 0.20, post_delay_s: float = 0.20) -> None:
     try:
-        if not (win and img_path and os.path.isfile(img_path)):
-            return None
-        tpl = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-        if tpl is None or tpl.size == 0:
-            return None
-        th, tw = tpl.shape[:2]
-        frame = _frame_full(win)
-        if frame is None or frame.size == 0:
-            return None
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        res = cv2.matchTemplate(gray, tpl, cv2.TM_CCOEFF_NORMED)
-        _, maxVal, _, maxLoc = cv2.minMaxLoc(res)
-        if float(maxVal) < float(thr):
-            return None
-        x, y = int(maxLoc[0]), int(maxLoc[1])
-        return (x, y, tw, th)
-    except Exception:
-        return None
-
-
-def _visible(win: Dict, img_path: Optional[str], thr: float = 0.87) -> bool:
-    return bool(img_path and _match_template(win, img_path, thr) is not None)
-
-
-def _click_center(controller, win: Dict, rect: Tuple[int, int, int, int], delay_s: float = 0.08):
-    x, y, w, h = rect
-    cx = int(x + w / 2)
-    cy = int(y + h / 2)
-    # переводим из координат клиента окна в абсолютные координаты экрана
-    abs_x = int((win.get("x") or 0) + cx)
-    abs_y = int((win.get("y") or 0) + cy)
-    try:
-        controller.send(f"click:{abs_x},{abs_y}")
+        if hasattr(controller, "move"):
+            controller.move(int(x), int(y))
+        time.sleep(max(0.0, float(hover_delay_s)))
+        if hasattr(controller, "_click_left_arduino"):
+            controller._click_left_arduino()
+        else:
+            controller.send("l")
+        time.sleep(max(0.0, float(post_delay_s)))
     except Exception:
         pass
-    if delay_s > 0:
-        time.sleep(delay_s)
 
 
-def _click_by_template(controller, win: Dict, img_path: str, thr: float = 0.87, delay_s: float = 0.08) -> bool:
-    rect = _match_template(win, img_path, thr)
-    if not rect:
-        return False
-    _click_center(controller, win, rect, delay_s=delay_s)
-    return True
-
-
-def _ensure_alt_b(controller, open_state: bool, win: Dict, lang: str, timeout_s: float = 2.0) -> bool:
+def _ensure_alt_b(controller, *, want_open: bool, win: Dict, server: str, lang: str, timeout_s: float = 2.0) -> bool:
     """
-    Привести дашборд к нужному состоянию (open_state=True → открыт, False → закрыт),
-    используя Alt+B и проверяя по шаблону 'dashboard_init'.
+    Привести дэш к нужному состоянию (want_open=True → открыт) по ключу 'dashboard_init'.
+    Проверка состояния — как в respawn: сначала матч, без клика.
     """
-    init_png = _resolve_template(lang, "dashboard_init")
-    if not init_png:
+    parts = TEMPLATES.get("dashboard_init")
+    if not parts:
         _hud_err("[dashboard] нет шаблона dashboard_init")
         return False
 
+    def _is_open() -> bool:
+        pt = match_key_in_zone_single(
+            window=win,
+            zone_ltrb=_zone_ltrb(win, "fullscreen"),
+            server=server,
+            lang=lang,
+            template_parts=parts,
+            threshold=0.87,
+            engine="dashboard",
+        )
+        return pt is not None
+
     # уже в нужном состоянии?
-    vis = _visible(win, init_png, thr=0.87)
-    if (open_state and vis) or ((not open_state) and (not vis)):
+    cur = _is_open()
+    if (want_open and cur) or ((not want_open) and (not cur)):
         return True
 
-    # один тоггл Alt+B и ждём подтверждения
+    # тоггл Alt+B
     try:
         controller.send("altB")
     except Exception:
@@ -131,38 +206,32 @@ def _ensure_alt_b(controller, open_state: bool, win: Dict, lang: str, timeout_s:
 
     end = time.time() + max(0.2, float(timeout_s))
     while time.time() < end:
-        if _visible(win, init_png, thr=0.87) == open_state:
+        if _is_open() == want_open:
             return True
         time.sleep(0.05)
     return False
 
 
-def _unlock_if_locked(controller, win: Dict, lang: str, timeout_s: float = 12.0, probe_interval_s: float = 1.0) -> bool:
+def _dashboard_is_locked(win: Dict, server: str, lang: str) -> bool:
     """
-    Если на экране виден один из 'dashboard_is_locked_*' — периодически жмём 'l'
-    пока баннер не исчезнет, либо по таймауту.
+    Новый вариант: не нажимаем ничего — просто проверяем наличие хотя бы одного
+    из 'dashboard_is_locked_*' (по аналогии с respawn-метчами).
     """
-    lock1 = _resolve_template(lang, "dashboard_is_locked_1")
-    lock2 = _resolve_template(lang, "dashboard_is_locked_2")
-    if not (lock1 or lock2):
-        return True  # нечего проверять
-
-    start = time.time()
-    next_probe = 0.0
-    while (time.time() - start) < timeout_s:
-        vis1 = _visible(win, lock1, thr=0.82) if lock1 else False
-        vis2 = _visible(win, lock2, thr=0.82) if lock2 else False
-        if not (vis1 or vis2):
+    for key in ("dashboard_is_locked_1", "dashboard_is_locked_2"):
+        parts = TEMPLATES.get(key)
+        if not parts:
+            continue
+        pt = match_key_in_zone_single(
+            window=win,
+            zone_ltrb=_zone_ltrb(win, "fullscreen"),
+            server=server,
+            lang=lang,
+            template_parts=parts,
+            threshold=0.82,
+            engine="dashboard",
+        )
+        if pt:
             return True
-        now = time.time()
-        if now >= next_probe:
-            try:
-                controller.send("l")
-            except Exception:
-                pass
-            next_probe = now + max(0.2, probe_interval_s)
-        time.sleep(0.05)
-    console.log("[dashboard] lock banner still visible")
     return False
 
 
@@ -176,13 +245,14 @@ def run_step(
     helpers: Dict[str, Any],
 ) -> tuple[bool, bool]:
     """
-    Выполняет шаг 'buff' через dashboard/buffer:
-      1) Сброс: если дэш уже открыт — закрываем Alt+B.
-      2) Открываем дэш Alt+B и убеждаемся, что открыт (dashboard_init).
-      3) Анлок, если висит баннер блокировки.
-      4) Открываем вкладку баффера.
-      5) Жмём выбранный профиль (profile|mage|fighter|archer*).
-    Возвращает (ok, advance).
+    Шаг 'buff' через dashboard/buffer:
+      1) Закрыть дэш, если открыт (Alt+B).
+      2) Открыть дэш (Alt+B) и убедиться, что открыт.
+      3) Если заблокирован — сообщить и выйти (пробуем позже).
+      4) Открыть вкладку баффера.
+      5) Нажать профиль (profile|mage|fighter|archer*).
+      6) Проверить баф по иконкам (features.buff.checker).
+      7) По успеху прожать Restore HP и закрыть дэш.
     """
 
     # окно и фокус
@@ -190,99 +260,107 @@ def run_step(
     if not _win_ok(win):
         return False, False
 
-    f = _focused_now(state)
-    if f is False:
+    if _focused_now(state) is False:
         console.hud("ok", "[dashboard] пауза: окно без фокуса — жду")
         return False, False
 
-    # язык интерфейса L2
+    # параметры окружения
     lang = (helpers.get("get_language", lambda: "rus")() or "rus").lower()  # type: ignore
+    server = (pool_get(state, "config.server", "") or "").lower()
 
-    # ---- 1) Сброс: если открыт — закрываем Alt+B
-    if not _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.5):
-        # даже если был закрыт — это не крит, продолжаем
-        pass
+    # создаём низкоуровневый движок вкладки Buffer
+    be = BufferEngine(
+        state=state,
+        server=server,
+        controller=controller,
+        get_window=helpers.get("get_window", lambda: None),
+        get_language=helpers.get("get_language", lambda: "rus"),
+    )
 
-    # ---- 2) Открываем и проверяем
-    if not _ensure_alt_b(controller, open_state=True, win=win, lang=lang, timeout_s=2.5):
+    # 1) Сброс
+    _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.5)
+
+    # 2) Открыть и проверить
+    if not _ensure_alt_b(controller, want_open=True, win=win, server=server, lang=lang, timeout_s=2.5):
         _hud_err("[dashboard] Alt+B: не удалось открыть")
         return False, False
     _hud_ok("[dashboard] Alt+B открыт")
 
-    # ---- 3) Анлок при необходимости
-    if not _unlock_if_locked(controller, win, lang, timeout_s=12.0, probe_interval_s=1.0):
-        _hud_err("[dashboard] заблокирован (unlock timeout)")
-        # Закрыть дэш перед выходом
-        _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
+    # 4) Перейти на вкладку баффера — «по аналогии с respawn»: сначала матч, затем явный клик
+    btn = TEMPLATES.get("dashboard_buffer_button")
+    if not btn:
+        _hud_err("[dashboard] не вижу кнопку раздела баффера")
+        _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
 
-    # ---- 4) Открыть вкладку баффера
-    btn_path = _resolve_template(lang, "dashboard_buffer_button")
-    if not btn_path:
-        _hud_err("[dashboard] нет шаблона кнопки баффера")
-        _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
+    pt = match_key_in_zone_single(
+        window=win,
+        zone_ltrb=_zone_ltrb(win, "fullscreen"),
+        server=server,
+        lang=lang,
+        template_parts=btn,
+        threshold=0.85,
+        engine="dashboard",
+    )
+    if not pt:
+        _hud_err("[dashboard] не удалось найти кнопку баффера")
+        _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
 
-    if not _click_by_template(controller, win, btn_path, thr=0.85, delay_s=0.12):
-        _hud_err("[dashboard] не удалось нажать кнопку баффера")
-        _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
-        return False, False
+    _click(controller, pt[0], pt[1], hover_delay_s=0.20, post_delay_s=0.20)
 
-    # ожидаем экран баффера
-    buf_init = _resolve_template(lang, "dashboard_buffer_init")
-    if not buf_init:
-        _hud_err("[dashboard] нет шаблона dashboard_buffer_init")
-        _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
-        return False, False
-
+    # ждать появления экрана баффера (булева проверка наличия ключа)
+    buf_init = TEMPLATES.get("dashboard_buffer_init")
     end = time.time() + 2.0
     opened = False
     while time.time() < end:
-        if _visible(win, buf_init, thr=0.85):
+        pt2 = match_key_in_zone_single(
+            window=win,
+            zone_ltrb=_zone_ltrb(win, "fullscreen"),
+            server=server,
+            lang=lang,
+            template_parts=buf_init or [],
+            threshold=0.85,
+            engine="dashboard",
+        ) if buf_init else None
+        if pt2:
             opened = True
             break
         time.sleep(0.05)
 
     if not opened:
+        # Если экран баффера не появился — только теперь проверяем «доступность»
+        if _dashboard_is_locked(win, server, lang):
+            _hud_err("[dashboard] заблокирован (ждем..)")
+            _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
+            return False, False
+
         _hud_err("[dashboard] баффер не открылся")
-        _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
+        _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
 
     _hud_ok("[dashboard] баффер открыт")
 
-    # ---- 5) Нажать профиль в соответствии с режимом
+    # 5) Нажать профиль
     mode = (pool_get(state, "features.buff.mode", "") or "").strip().lower() or "profile"
-    key_by_mode = {
-        "profile": "dashboard_buffer_profile",
-        "fighter": "dashboard_buffer_fighter",
-        "mage":    "dashboard_buffer_mage",
-        # "archer": шаблон может отсутствовать — обработаем ниже
-        "archer":  "dashboard_buffer_archer",
-    }
-    tpl_key = key_by_mode.get(mode, "dashboard_buffer_profile")
-    tpl_path = _resolve_template(lang, tpl_key)
-
-    # Если конкретного режима нет (например, archer), откатимся на profile
-    if not tpl_path:
-        console.log(f"[dashboard/buffer] template for mode '{mode}' missing → fallback to 'profile'")
-        tpl_path = _resolve_template(lang, "dashboard_buffer_profile")
-
-    if not tpl_path:
-        _hud_err("[dashboard] нет шаблона профиля баффа")
-        _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
+    if not be.click_mode(mode=mode, thr=0.85):
+        _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
 
-    if not _click_by_template(controller, win, tpl_path, thr=0.85, delay_s=0.12):
-        _hud_err(f"[dashboard] не удалось нажать профиль '{mode}'")
-        _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
+    time.sleep(0.5)  # дать анимации времени
+
+    # покажет фото зоны (zone_name) поиска template
+    # checker: List[str] = list(pool_get(state, "features.buff.checker", []) or [])
+    # _debug_open_zone_with_icons(state, win, lang, checker, zone_name="current_buffs", filename_hint="before_verify")
+
+    # 6) Верификация бафа (переписано на respawn-подход)
+    if not be.verify_buff_applied(thr=0.86):
+        _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
 
-    _hud_succ("[dashboard] Бафаемся…")
-
-    # При желании можно подождать 1–2 секунды “каста” — пока без ожиданий
+    # 7) Restore HP и закрыть
+    be.click_restore_hp(thr=0.85)
     time.sleep(0.2)
-
-    # Закрыть дэш, чтобы не мешался (по желанию — можно оставить открыт)
-    _ensure_alt_b(controller, open_state=False, win=win, lang=lang, timeout_s=1.0)
+    _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
 
     return True, True

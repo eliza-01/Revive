@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-13 01:47:37
+Generated: 2025-09-13 06:35:00
 
 Revive
 ├── _archive
@@ -61,6 +61,7 @@ Revive
 │   │   │   ├── app.js
 │   │   │   ├── autofarm.ui.js
 │   │   │   ├── buff.ui.js
+│   │   │   ├── extra.buff.checker.js
 │   │   │   ├── extra.buff.profile.js
 │   │   │   ├── hud.js
 │   │   │   ├── macros.ui.js
@@ -93,6 +94,91 @@ Revive
 │   │   ├── servers.manifest.json
 │   │   └── servers.py
 │   ├── engines
+│   │   ├── autofarm
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       ├── target_blue_dot.png
+│   │   │   │   │   │   │       ├── target_gray_dot.png
+│   │   │   │   │   │   │       └── target_red_dot.png
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── target_init.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       ├── monsters
+│   │   │   │   │   │       │   └── names
+│   │   │   │   │   │       │       ├── василиск_стражник.png
+│   │   │   │   │   │       │       ├── гризли_диона.png
+│   │   │   │   │   │       │       ├── змей.png
+│   │   │   │   │   │       │       ├── людоед_тумран.png
+│   │   │   │   │   │       │       ├── монстроглаз_искатель.png
+│   │   │   │   │   │       │       ├── придорожный_падальщик.png
+│   │   │   │   │   │       │       ├── рейнджер_гноллов.png
+│   │   │   │   │   │       │       └── хобгоблин.png
+│   │   │   │   │   │       └── sys_messages
+│   │   │   │   │   │           └── target_unvisible.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   ├── Dion_1
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Dwarf_village
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   ├── Ruins_of_agony_start
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   │       ├── map.png
+│   │   │   │   │   │   │       ├── spot_north.png
+│   │   │   │   │   │   │       └── spot_south.png
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── rules.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── common
+│   │   │   │   │   ├── skills
+│   │   │   │   │   │   ├── attack.png
+│   │   │   │   │   │   ├── aura_flare.png
+│   │   │   │   │   │   ├── aura_flash.png
+│   │   │   │   │   │   ├── cancellation.png
+│   │   │   │   │   │   ├── curse_fear.png
+│   │   │   │   │   │   ├── dash.png
+│   │   │   │   │   │   ├── freezing_skin.png
+│   │   │   │   │   │   ├── frost_bolt.png
+│   │   │   │   │   │   ├── hydro_blast.png
+│   │   │   │   │   │   ├── ice_dagger.png
+│   │   │   │   │   │   ├── ice_vortex.png
+│   │   │   │   │   │   ├── light_vortex.png
+│   │   │   │   │   │   ├── sleep.png
+│   │   │   │   │   │   ├── solar_flare.png
+│   │   │   │   │   │   ├── stun_shot.png
+│   │   │   │   │   │   └── surrender_to_water.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── professions.json
+│   │   │   │   │   ├── skills_catalog.json
+│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   ├── skill_repo.py
+│   │   │   └── zone_repo.py
 │   │   ├── dashboard
 │   │   │   ├── server
 │   │   │   │   ├── boh
@@ -101,9 +187,21 @@ Revive
 │   │   │   │   │   │   ├── engine.py
 │   │   │   │   │   │   └── rules.py
 │   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── buffer
+│   │   │   │   │   │   │       └── icons
+│   │   │   │   │   │   │           ├── buffs
+│   │   │   │   │   │   │           │   └── mental_shield.png
+│   │   │   │   │   │   │           ├── dances
+│   │   │   │   │   │   │           │   ├── dance_of_concentration.png
+│   │   │   │   │   │   │           │   └── dance_of_siren.png
+│   │   │   │   │   │   │           └── songs
+│   │   │   │   │   │   │               ├── song_of_earth.png
+│   │   │   │   │   │   │               └── song_of_vitality.png
 │   │   │   │   │   │   ├── eng
 │   │   │   │   │   │   ├── rus
 │   │   │   │   │   │   │   ├── buffer
+│   │   │   │   │   │   │   │   ├── dashboard_buffer_archer.png
 │   │   │   │   │   │   │   │   ├── dashboard_buffer_fighter.png
 │   │   │   │   │   │   │   │   ├── dashboard_buffer_init.png
 │   │   │   │   │   │   │   │   ├── dashboard_buffer_mage.png
@@ -137,7 +235,8 @@ Revive
 │   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── dashboard_data.py
-│   │   │   │   │   └── engine.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── rules.py
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
 │   │   │   └── runner.py
@@ -145,14 +244,6 @@ Revive
 │   │   │   ├── __init__.py
 │   │   │   ├── engine.py
 │   │   │   └── ops.py
-│   │   ├── is_charged
-│   │   │   ├── server
-│   │   │   │   └── boh
-│   │   │   │       ├── templates
-│   │   │   │       │   └── resolver.py
-│   │   │   │       └── engine.py
-│   │   │   ├── __init__.py
-│   │   │   └── runner.py
 │   │   ├── macros
 │   │   │   ├── server
 │   │   │   │   └── boh
@@ -215,8 +306,6 @@ Revive
 │   │   ├── restart_manager
 │   │   │   └── __init__.py
 │   │   ├── rows
-│   │   │   └── __init__.py
-│   │   ├── teleport
 │   │   │   └── __init__.py
 │   │   ├── ui_guard
 │   │   │   ├── server

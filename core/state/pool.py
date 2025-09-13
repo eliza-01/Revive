@@ -38,6 +38,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "buff": {
             "enabled": False, "mode": "", "methods": [],
             "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+            "checker": [],
         },
         "macros": {
             "enabled": False, "repeat_enabled": False, "rows": [],
@@ -80,7 +81,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("runtime", {
         "orch": {"busy_until": 0.0, "active": False, "ts": 0.0},
         "debug": {
-            "log": False, "respawn_debug": False, "pipeline_debug": False, "pool_debug": False, "ui_guard_debug": False, "ts": 0.0,
+            "buff_zone": True, "log": False, "respawn_debug": False, "pipeline_debug": False, "pool_debug": False, "ui_guard_debug": False, "ts": 0.0,
         }
     })
     return st

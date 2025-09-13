@@ -39,6 +39,20 @@ class BuffSection(BaseSection):
             self.emit("buff", f"Неизвестный метод бафа: {method}", None)
         pool_write(self.s, "features.buff", {"method": m})
 
+    # --- checker ---
+    def buff_checker_get(self) -> list[str]:
+        return list(pool_get(self.s, "features.buff.checker", []) or [])
+
+    def buff_checker_set(self, items: list[str]) -> bool:
+        try:
+            items = [str(x).strip() for x in (items or []) if x]
+            pool_write(self.s, "features.buff", {"checker": items})
+            self.emit("buff", f"Checker обновлён ({len(items)} шт.)", True)
+            return True
+        except Exception:
+            self.emit("buff", "Ошибка обновления Checker", False)
+            return False
+
     # --- getters ---
     def buff_get_config(self) -> Dict[str, Any]:
         return {
@@ -66,7 +80,9 @@ class BuffSection(BaseSection):
         return {
             "buff_set_enabled": self.buff_set_enabled,
             "buff_set_mode": self.buff_set_mode,
-            "buff_set_method": self.buff_set_method,   # ← добавили
+            "buff_set_method": self.buff_set_method,
             "buff_get_config": self.buff_get_config,
             "buff_run_once": self.buff_run_once,
+            "buff_checker_get": self.buff_checker_get,   # ← добавлено
+            "buff_checker_set": self.buff_checker_set,   # ← добавлено
         }
