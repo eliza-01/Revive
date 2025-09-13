@@ -13,9 +13,14 @@
     sec.dataset.section = 'record';
     sec.innerHTML = `
       <h4>Запись</h4>
-
       <div class="row compact wrap">
-        <label class="mr">Запись:</label>
+        <label class="switch">
+          <input type="checkbox" id="recEnabled">
+          <span class="slider"></span>
+          <span class="slabel">Включить</span>
+        </label>
+
+        <label class="ml mr">Запись:</label>
         <select id="recSelect" class="md"></select>
         <button id="recPlay" class="ml">Запустить сейчас</button>
         <button id="recCreate" class="ml">Создать запись</button>
@@ -32,6 +37,39 @@
 
   buildSection();
 
+  // ----- Checkbox -----
+  const chkEnabled = () => document.getElementById('recEnabled');
+
+  async function refreshState() {
+    const st = await api('record_state');
+    if (!st) return;
+
+    const busy = !!st.busy;
+    const status = String(st.status || 'idle');
+    const focused = st.focused;
+
+    const ce = chkEnabled();
+    if (ce) ce.checked = !!st.enabled;      // ← показать текущее значение
+    disableControls(busy || status === 'playing' || status === 'recording');
+
+    let msg = `Статус: ${status}`;
+    if (busy) msg += ' • занято';
+    if (focused === false) msg += ' • окно без фокуса';
+    setStatus(msg, busy ? 'gray' : 'green');
+  }
+
+  document.addEventListener('change', async (e) => {
+    if (e.target && e.target.id === 'recEnabled') {
+      await api('record_set_enabled', !!e.target.checked);   // ← в пул
+      // статус подтянется поллером
+    }
+    if (e.target && e.target.id === 'recSelect') {
+      const slug = e.target.value || '';
+      if (!slug) return;
+      await api('record_set_current', slug);
+      setStatus('Выбрана запись: ' + e.target.selectedOptions[0].textContent, 'gray');
+    }
+  });
   // ----- Elements -----
   const sel = () => document.getElementById('recSelect');
   const btnPlay = () => document.getElementById('recPlay');

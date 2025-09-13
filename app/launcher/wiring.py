@@ -183,7 +183,9 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     # === Правила оркестратора ===
     rules = [
         make_focus_pause_rule(state, {"grace_seconds": 0.3}),
-        make_pipeline_rule(state, ps_adapter, controller),
+        make_pipeline_rule(state, ps_adapter, controller, helpers={
+            "record_engine": (rec_sec.runner.engine if rec_sec else None)
+        }),
     ]
     loop = OrchestratorLoop(state, ps_adapter, rules, ui.schedule, period_ms=2222)
 

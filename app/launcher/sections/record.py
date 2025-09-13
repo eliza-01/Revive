@@ -208,6 +208,11 @@ class RecordSection:
             console.log(f"[record.ui] record_hotkey error: {e}")
             return {"ok": False}
 
+    def record_set_enabled(self, enabled: bool) -> Dict[str, Any]:
+        val = bool(enabled)
+        pool_write(self.state, "features.record", {"enabled": val})
+        console.log(f"[record.ui] set enabled={val}")
+        return {"ok": True, "enabled": val}
 
     def expose(self) -> dict:
         """Экспорт API в pywebview."""
@@ -218,6 +223,7 @@ class RecordSection:
             "record_set_current": self.record_set_current,
             "record_play_now": self.record_play_now,
             "record_hotkey": self.record_hotkey,
+            "record_set_enabled": self.record_set_enabled,   # ← добавили
         }
 
 # Фабрика для регистратора секций лаунчера

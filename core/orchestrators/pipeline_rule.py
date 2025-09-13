@@ -21,10 +21,11 @@ class PipelineRule:
     Репортов больше нет — сообщения уходим напрямую в HUD через console.hud.
     """
 
-    def __init__(self, state: Dict[str, Any], ps_adapter, controller):
+    def __init__(self, state: Dict[str, Any], ps_adapter, controller, helpers=None):
         self.s = state
         self.ps = ps_adapter
         self.controller = controller
+        self._helpers = helpers or {}
 
         self._active = False
         self._idx = 0
@@ -160,7 +161,7 @@ class PipelineRule:
             "tp": "tp",
             "macros": "macros",
             "autofarm": "autofarm",
-            "record": "record",  # ← ДОБАВИТЬ
+            "record": "record",  # ← добавили
         }.get(step)
         if not feature:
             return True
@@ -326,26 +327,19 @@ class PipelineRule:
         if step == "record":
             _busy_on("record")
             try:
-                from core.engines.record.rules import run_step as record_run_step
-                try:
-                    ok, adv = record_run_step(
-                        state=self.s,
-                        ps_adapter=self.ps,
-                        controller=self.controller,
-                        snap=snap,
-                        helpers={
-                            "state": self.s,
-                            "record_engine": self._record_engine,
-                            "get_window": lambda: pool_get(self.s, "window.info", None),
-                            "get_language": lambda: pool_get(self.s, "config.language", "rus"),
-                            # опц. колбэк ожидания фокуса не обязателен — правила сами смотрят пул
-                        },
-                    )
-                    return bool(ok), bool(adv)
-                except Exception as e:
-                    console.log(f"[RECORD] rules error: {e}")
-                    self._hud_err("[RECORD] ошибка rules — пропуск шага")
-                    return True, True
+                from core.engines.record import rules as rec_rules
+                ok, adv = rec_rules.run_step(
+                    state=self.s,
+                    ps_adapter=self.ps,
+                    controller=self.controller,
+                    snap=snap,
+                    helpers={**self._helpers, "state": self.s},
+                )
+                return bool(ok), bool(adv)
+            except Exception as e:
+                console.log(f"[RECORD] rules error: {e}")
+                self._hud_err("[RECORD] ошибка rules — пропуск шага")
+                return True, True
             finally:
                 _busy_off("record")
 
@@ -439,5 +433,5 @@ class PipelineRule:
         pool_merge(self.s, "pipeline", {"active": False, "idx": 0})
 
 
-def make_pipeline_rule(state, ps_adapter, controller):
-    return PipelineRule(state, ps_adapter, controller)
+def make_pipeline_rule(state, ps_adapter, controller, helpers=None):
+    return PipelineRule(state, ps_adapter, controller, helpers)
