@@ -6,6 +6,7 @@ import importlib
 
 from core.orchestrators.snapshot import Snapshot
 from core.engines.respawn.runner import RespawnRunner
+from core.engines.record.engine import RecordEngine
 
 from core.state.pool import pool_get, pool_merge, pool_write
 from core.logging import console
@@ -20,10 +21,11 @@ class PipelineRule:
     Репортов больше нет — сообщения уходим напрямую в HUD через console.hud.
     """
 
-    def __init__(self, state: Dict[str, Any], ps_adapter, controller):
+    def __init__(self, state: Dict[str, Any], ps_adapter, controller, helpers=None):
         self.s = state
         self.ps = ps_adapter
         self.controller = controller
+        self._helpers = helpers or {}
 
         self._active = False
         self._idx = 0
@@ -35,7 +37,11 @@ class PipelineRule:
             get_window=lambda: pool_get(self.s, "window.info", None),
             get_language=lambda: pool_get(self.s, "config.language", "rus"),
         )
-
+        self._record_engine = RecordEngine(
+            state=self.s,
+            controller=self.controller,
+            get_window=lambda: pool_get(self.s, "window.info", None),
+        )
     # --- util debug / hud ---
     def _dbg(self, msg: str):
         try:
@@ -77,10 +83,9 @@ class PipelineRule:
 
         # Корректный детект смерти
         is_dead = (snap.alive is False) or (snap.hp_ratio is not None and snap.hp_ratio <= 0.001)
-        if is_dead is True:
-            console.hud("att", "Вы мертвы")
-        else:
-            console.hud("att", "")
+
+        # if is_dead is True:
+        #     console.hud("att", "Вы мертвы")
 
         # Тумблер авто-респавна — только из пула
         respawn_on = bool(pool_get(self.s, "features.respawn.enabled", False))
@@ -156,6 +161,7 @@ class PipelineRule:
             "tp": "tp",
             "macros": "macros",
             "autofarm": "autofarm",
+            "record": "record",  # ← добавили
         }.get(step)
         if not feature:
             return True
@@ -318,6 +324,25 @@ class PipelineRule:
             finally:
                 _busy_off("tp")
 
+        if step == "record":
+            _busy_on("record")
+            try:
+                from core.engines.record import rules as rec_rules
+                ok, adv = rec_rules.run_step(
+                    state=self.s,
+                    ps_adapter=self.ps,
+                    controller=self.controller,
+                    snap=snap,
+                    helpers={**self._helpers, "state": self.s},
+                )
+                return bool(ok), bool(adv)
+            except Exception as e:
+                console.log(f"[RECORD] rules error: {e}")
+                self._hud_err("[RECORD] ошибка rules — пропуск шага")
+                return True, True
+            finally:
+                _busy_off("record")
+
         if step == "autofarm":
             # busy автофарма помечает сам сервис, т.к. это долговременный цикл
             fn = self._call_server_rule("autofarm")
@@ -347,9 +372,9 @@ class PipelineRule:
 
     # ---------- utils ----------
     def _order(self) -> List[str]:
-        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "autofarm"]) or [])
+        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "record", "autofarm"]) or [])
         if not raw:
-            raw = ["respawn", "buff", "macros", "autofarm"]
+            raw = ["respawn", "buff", "macros", "record", "autofarm"]
         rest = [x for x in raw if x and x.lower() != "respawn"]
         return ["respawn"] + rest
 
@@ -408,5 +433,5 @@ class PipelineRule:
         pool_merge(self.s, "pipeline", {"active": False, "idx": 0})
 
 
-def make_pipeline_rule(state, ps_adapter, controller):
-    return PipelineRule(state, ps_adapter, controller)
+def make_pipeline_rule(state, ps_adapter, controller, helpers=None):
+    return PipelineRule(state, ps_adapter, controller, helpers)

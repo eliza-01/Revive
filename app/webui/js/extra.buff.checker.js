@@ -1,4 +1,4 @@
-﻿// extra.buff.checker.js
+﻿// app/webui/js/extra.buff.checker.js
 (function () {
   const $ = (sel) => document.querySelector(sel);
 

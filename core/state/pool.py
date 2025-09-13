@@ -48,6 +48,10 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": False, "method": "dashboard", "category": "", "location": "", "row_id": "",
             "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
         },
+        "record": {
+            "enabled": False, "current_record": "", "records": [],
+            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+        },
         "autofarm": {
           "enabled": False,
           "mode": "manual",           # "auto" | "manual"
@@ -64,8 +68,8 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # ---- Пайплайн ----
     st.setdefault("pipeline", {
-        "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
-        "order": ["respawn", "buff", "macros", "autofarm"],
+        "allowed": ["respawn", "buff", "macros", "tp", "record", "autofarm"],
+        "order": ["respawn", "buff", "macros", "tp", "record", "autofarm"],
         "active": False, "idx": 0, "last_step": "", "ts": 0.0,
     })
 
