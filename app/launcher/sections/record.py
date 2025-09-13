@@ -33,6 +33,9 @@ class RecordSection:
         self._hotkey_handle = None
         self._mouse_listener = None
 
+        self._kbd_listener = None
+        self._ctrl_down = False
+
     # ---------- глобальные хуки ----------
     def start_global_hooks(self):
         """Запустить глобальный хоткей Ctrl+R и хук мыши (если есть pynput)."""
@@ -41,23 +44,43 @@ class RecordSection:
             return
 
         # --- Ctrl+R ---
-        if self._hotkey_handle is None:
+        if self._kbd_listener is None:
             try:
-                def _on_ctrl_r():
-                    try:
-                        console.log("[hotkey] CTRL+R pressed (global)")
-                        self.record_hotkey('ctrlR')
-                    except Exception as e:
-                        console.log(f"[hotkey] ctrl+r handler error: {e}")
+                VK_R = 0x52  # виртуальный код клавиши R на Windows
+                CTRL_KEYS = {_hk_keyboard.Key.ctrl, _hk_keyboard.Key.ctrl_l, _hk_keyboard.Key.ctrl_r}
 
-                self._hotkey_handle = _hk_keyboard.GlobalHotKeys({
-                    '<ctrl>+r': _on_ctrl_r,
-                })
-                self._hotkey_handle.start()
-                console.log("[hotkey] GlobalHotKeys started: <ctrl>+r")
+                def _on_press(key):
+                    try:
+                        if key in CTRL_KEYS:
+                            self._ctrl_down = True
+                            return
+                        vk = getattr(key, "vk", None)
+                        ch = getattr(key, "char", None)
+                        # Срабатываем, если зажат Ctrl и нажата физическая клавиша R
+                        # (а также подстрахуемся по символу 'r'/'к' на всякий случай)
+                        if self._ctrl_down and (vk == VK_R or (ch and ch.lower() in ("r", "к"))):
+                            from core.logging import console as _c
+                            _c.log("[hotkey] CTRL+R fired (listener)")
+                            self.record_hotkey("ctrlR")
+                    except Exception as e:
+                        from core.logging import console as _c
+                        _c.log(f"[hotkey] listener press error: {e}")
+
+                def _on_release(key):
+                    try:
+                        if key in CTRL_KEYS:
+                            self._ctrl_down = False
+                    except Exception:
+                        pass
+
+                self._kbd_listener = _hk_keyboard.Listener(
+                    on_press=_on_press, on_release=_on_release
+                )
+                self._kbd_listener.start()
+                console.log("[hotkey] keyboard listener started (VK=0x52)")
             except Exception as e:
-                console.log(f"[hotkey] start error: {e}")
-                self._hotkey_handle = None
+                console.log(f"[hotkey] keyboard listener start error: {e}")
+                self._kbd_listener = None
 
         # --- Mouse listener ---
         if self._mouse_listener is None:
@@ -105,13 +128,15 @@ class RecordSection:
     def stop_global_hooks(self):
         """Остановить глобальные хуки, если они были запущены."""
         try:
-            if self._hotkey_handle:
-                self._hotkey_handle.stop()
-                console.log("[hotkey] GlobalHotKeys stopped")
+            if self._kbd_listener:
+                self._kbd_listener.stop()
+                self._kbd_listener.join(0.5)
+                console.log("[hotkey] keyboard listener stopped")
         except Exception:
             pass
         finally:
-            self._hotkey_handle = None
+            self._kbd_listener = None
+            self._ctrl_down = False
 
         try:
             if self._mouse_listener:
