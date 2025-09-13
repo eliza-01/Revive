@@ -110,7 +110,14 @@
         // отдельная полоса attention (оранжевый текст + мигающий ⚠️ слева)
         if (status === 'att') {
           if (attEl) {
-            attEl.innerHTML = `<span class="att-ico blink">⚠️</span><span class="att-text">${esc(text)}</span>`;
+            if (text && text.trim()) {
+              attEl.innerHTML = `<span class="att-ico blink">⚠️</span><span class="att-text">${esc(text)}</span>`;
+              attEl.style.display = 'flex';
+            } else {
+              // пустая строка — скрыть attention
+              attEl.innerHTML = '';
+              attEl.style.display = 'none';
+            }
           }
           return;
         }

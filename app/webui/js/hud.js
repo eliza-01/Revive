@@ -21,9 +21,16 @@
 
     if (status === 'att'){
       if (attEl){
-        attEl.innerHTML = `<span class="att-ico blink">⚠️</span><span class="att-text"></span>`;
-        const span = attEl.querySelector('.att-text');
-        if (span) span.textContent = text;
+        if (text && text.trim()){
+          attEl.innerHTML = `<span class="att-ico blink">⚠️</span><span class="att-text"></span>`;
+          const span = attEl.querySelector('.att-text');
+          if (span) span.textContent = text;
+          attEl.style.display = 'flex';
+        } else {
+          // пустая строка — скрыть attention
+          attEl.innerHTML = '';
+          attEl.style.display = 'none';
+        }
       }
       return;
     }
@@ -39,7 +46,10 @@
 
   function stop_attention(){
     const attEl = document.getElementById('hudAttention');
-    if (attEl) attEl.textContent = '';
+    if (attEl){
+      attEl.innerHTML = '';
+      attEl.style.display = 'none';
+    }
   }
 
   window.ReviveHUD = { set, push, dump, stop_attention };

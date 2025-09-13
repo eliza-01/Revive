@@ -80,7 +80,7 @@ class PipelineRule:
         if is_dead is True:
             console.hud("att", "Вы мертвы")
         else:
-            ui_bridge.hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.stop_attention()")
+            console.hud("att", "")
 
         # Тумблер авто-респавна — только из пула
         respawn_on = bool(pool_get(self.s, "features.respawn.enabled", False))
