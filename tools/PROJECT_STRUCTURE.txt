@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-13 06:35:00
+Generated: 2025-09-13 13:59:24
 
 Revive
 ├── _archive
@@ -94,207 +94,17 @@ Revive
 │   │   ├── servers.manifest.json
 │   │   └── servers.py
 │   ├── engines
-│   │   ├── autofarm
-│   │   │   ├── server
-│   │   │   │   ├── boh
-│   │   │   │   │   ├── templates
-│   │   │   │   │   │   ├── common
-│   │   │   │   │   │   │   └── interface
-│   │   │   │   │   │   │       ├── target_blue_dot.png
-│   │   │   │   │   │   │       ├── target_gray_dot.png
-│   │   │   │   │   │   │       └── target_red_dot.png
-│   │   │   │   │   │   ├── eng
-│   │   │   │   │   │   │   └── interface
-│   │   │   │   │   │   │       └── target_init.png
-│   │   │   │   │   │   └── rus
-│   │   │   │   │   │       ├── monsters
-│   │   │   │   │   │       │   └── names
-│   │   │   │   │   │       │       ├── василиск_стражник.png
-│   │   │   │   │   │       │       ├── гризли_диона.png
-│   │   │   │   │   │       │       ├── змей.png
-│   │   │   │   │   │       │       ├── людоед_тумран.png
-│   │   │   │   │   │       │       ├── монстроглаз_искатель.png
-│   │   │   │   │   │       │       ├── придорожный_падальщик.png
-│   │   │   │   │   │       │       ├── рейнджер_гноллов.png
-│   │   │   │   │   │       │       └── хобгоблин.png
-│   │   │   │   │   │       └── sys_messages
-│   │   │   │   │   │           └── target_unvisible.png
-│   │   │   │   │   ├── zones
-│   │   │   │   │   │   ├── Dion_1
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   │       ├── map.png
-│   │   │   │   │   │   │       ├── spot_north.png
-│   │   │   │   │   │   │       └── spot_south.png
-│   │   │   │   │   │   ├── Dwarf_village
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   │       ├── map.png
-│   │   │   │   │   │   │       ├── spot_north.png
-│   │   │   │   │   │   │       └── spot_south.png
-│   │   │   │   │   │   ├── Ruins_of_agony_start
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   │       ├── map.png
-│   │   │   │   │   │   │       ├── spot_north.png
-│   │   │   │   │   │   │       └── spot_south.png
-│   │   │   │   │   │   └── Varka_1
-│   │   │   │   │   │       └── gallery
-│   │   │   │   │   │           ├── map.png
-│   │   │   │   │   │           ├── spot_north.png
-│   │   │   │   │   │           └── spot_south.png
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── engine.py
-│   │   │   │   │   ├── rules.py
-│   │   │   │   │   └── zones.json
-│   │   │   │   ├── common
-│   │   │   │   │   ├── skills
-│   │   │   │   │   │   ├── attack.png
-│   │   │   │   │   │   ├── aura_flare.png
-│   │   │   │   │   │   ├── aura_flash.png
-│   │   │   │   │   │   ├── cancellation.png
-│   │   │   │   │   │   ├── curse_fear.png
-│   │   │   │   │   │   ├── dash.png
-│   │   │   │   │   │   ├── freezing_skin.png
-│   │   │   │   │   │   ├── frost_bolt.png
-│   │   │   │   │   │   ├── hydro_blast.png
-│   │   │   │   │   │   ├── ice_dagger.png
-│   │   │   │   │   │   ├── ice_vortex.png
-│   │   │   │   │   │   ├── light_vortex.png
-│   │   │   │   │   │   ├── sleep.png
-│   │   │   │   │   │   ├── solar_flare.png
-│   │   │   │   │   │   ├── stun_shot.png
-│   │   │   │   │   │   └── surrender_to_water.png
-│   │   │   │   │   ├── zones
-│   │   │   │   │   │   └── Varka_1
-│   │   │   │   │   │       └── gallery
-│   │   │   │   │   │           ├── map.png
-│   │   │   │   │   │           ├── spot_north.png
-│   │   │   │   │   │           └── spot_south.png
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── professions.json
-│   │   │   │   │   ├── skills_catalog.json
-│   │   │   │   │   ├── templates_map.py
-│   │   │   │   │   └── zones.json
-│   │   │   │   └── __init__.py
-│   │   │   ├── __init__.py
-│   │   │   ├── runner.py
-│   │   │   ├── service.py
-│   │   │   ├── skill_repo.py
-│   │   │   └── zone_repo.py
-│   │   ├── dashboard
-│   │   │   ├── server
-│   │   │   │   ├── boh
-│   │   │   │   │   ├── buffer
-│   │   │   │   │   │   ├── __init__.py
-│   │   │   │   │   │   ├── engine.py
-│   │   │   │   │   │   └── rules.py
-│   │   │   │   │   ├── templates
-│   │   │   │   │   │   ├── common
-│   │   │   │   │   │   │   └── buffer
-│   │   │   │   │   │   │       └── icons
-│   │   │   │   │   │   │           ├── buffs
-│   │   │   │   │   │   │           │   └── mental_shield.png
-│   │   │   │   │   │   │           ├── dances
-│   │   │   │   │   │   │           │   ├── dance_of_concentration.png
-│   │   │   │   │   │   │           │   └── dance_of_siren.png
-│   │   │   │   │   │   │           └── songs
-│   │   │   │   │   │   │               ├── song_of_earth.png
-│   │   │   │   │   │   │               └── song_of_vitality.png
-│   │   │   │   │   │   ├── eng
-│   │   │   │   │   │   ├── rus
-│   │   │   │   │   │   │   ├── buffer
-│   │   │   │   │   │   │   │   ├── dashboard_buffer_archer.png
-│   │   │   │   │   │   │   │   ├── dashboard_buffer_fighter.png
-│   │   │   │   │   │   │   │   ├── dashboard_buffer_init.png
-│   │   │   │   │   │   │   │   ├── dashboard_buffer_mage.png
-│   │   │   │   │   │   │   │   ├── dashboard_buffer_profile.png
-│   │   │   │   │   │   │   │   ├── dashboard_buffer_restoreHp.png
-│   │   │   │   │   │   │   │   └── target_player_init.png
-│   │   │   │   │   │   │   ├── main
-│   │   │   │   │   │   │   │   ├── dashboard_buffer_button.png
-│   │   │   │   │   │   │   │   ├── dashboard_init.png
-│   │   │   │   │   │   │   │   ├── dashboard_is_locked_1.png
-│   │   │   │   │   │   │   │   ├── dashboard_is_locked_2.png
-│   │   │   │   │   │   │   │   └── dashboard_teleport_button.png
-│   │   │   │   │   │   │   └── teleport
-│   │   │   │   │   │   │       ├── catacombs
-│   │   │   │   │   │   │       │   └── catacombs.png
-│   │   │   │   │   │   │       ├── towns
-│   │   │   │   │   │   │       │   ├── Giran
-│   │   │   │   │   │   │       │   │   ├── DragonValley.png
-│   │   │   │   │   │   │       │   │   └── Giran.png
-│   │   │   │   │   │   │       │   ├── Goddard
-│   │   │   │   │   │   │       │   │   ├── Goddard.png
-│   │   │   │   │   │   │       │   │   └── VarkaSilenosStronghold.png
-│   │   │   │   │   │   │       │   ├── Rune
-│   │   │   │   │   │   │       │   │   ├── PrimevalIsle.png
-│   │   │   │   │   │   │       │   │   └── Rune.png
-│   │   │   │   │   │   │       │   └── towns.png
-│   │   │   │   │   │   │       ├── villages
-│   │   │   │   │   │   │       │   └── villages.png
-│   │   │   │   │   │   │       └── dashboard_teleport_init.png
-│   │   │   │   │   │   ├── __init__.py
-│   │   │   │   │   │   └── resolver.py
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── dashboard_data.py
-│   │   │   │   │   ├── engine.py
-│   │   │   │   │   └── rules.py
-│   │   │   │   └── __init__.py
-│   │   │   ├── __init__.py
-│   │   │   └── runner.py
-│   │   ├── flow
-│   │   │   ├── __init__.py
+│   │   ├── record
 │   │   │   ├── engine.py
-│   │   │   └── ops.py
-│   │   ├── macros
-│   │   │   ├── server
-│   │   │   │   └── boh
-│   │   │   │       ├── engine.py
-│   │   │   │       └── rules.py
-│   │   │   ├── __init__.py
-│   │   │   ├── runner.py
-│   │   │   └── service.py
-│   │   ├── player_state
-│   │   │   ├── server
-│   │   │   │   ├── boh
-│   │   │   │   │   ├── templates
-│   │   │   │   │   │   ├── d0.png
-│   │   │   │   │   │   ├── d1.png
-│   │   │   │   │   │   ├── d2.png
-│   │   │   │   │   │   ├── d3.png
-│   │   │   │   │   │   ├── d4.png
-│   │   │   │   │   │   ├── d5.png
-│   │   │   │   │   │   ├── d6.png
-│   │   │   │   │   │   ├── d7.png
-│   │   │   │   │   │   ├── d8.png
-│   │   │   │   │   │   ├── d9.png
-│   │   │   │   │   │   ├── label_CP.png
-│   │   │   │   │   │   ├── label_HP.png
-│   │   │   │   │   │   ├── label_MP.png
-│   │   │   │   │   │   └── slash.png
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── engine.py
-│   │   │   │   │   └── state_data.py
-│   │   │   │   └── __init__.py
-│   │   │   ├── __init__.py
-│   │   │   ├── runner.py
-│   │   │   ├── service.py
-│   │   │   └── watcher.py
+│   │   │   ├── rules.py
+│   │   │   └── runner.py
 │   │   ├── respawn
 │   │   │   ├── server
 │   │   │   │   ├── boh
 │   │   │   │   │   ├── templates
 │   │   │   │   │   │   ├── eng
 │   │   │   │   │   │   ├── rus
-│   │   │   │   │   │   │   ├── Новая папка
-│   │   │   │   │   │   │   │   ├── accept_button.png
-│   │   │   │   │   │   │   │   ├── decline_button.png
-│   │   │   │   │   │   │   │   ├── reborn_banner.png
-│   │   │   │   │   │   │   │   ├── reborn_banner2.png
-│   │   │   │   │   │   │   │   └── to_village_button.png
-│   │   │   │   │   │   │   ├── accept_button.png
-│   │   │   │   │   │   │   ├── decline_button.png
-│   │   │   │   │   │   │   ├── reborn_banner.png
-│   │   │   │   │   │   │   ├── reborn_banner2.png
-│   │   │   │   │   │   │   └── to_village_button.png
+│   │   │   │   │   │   │   └── Новая папка
 │   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
@@ -314,30 +124,9 @@ Revive
 │   │   │   │       │   ├── rus
 │   │   │   │       │   │   └── interface
 │   │   │   │       │   │       ├── blockers
-│   │   │   │       │   │       │   ├── black_loading_screen.png
-│   │   │   │       │   │       │   ├── disconnect_popup.png
-│   │   │   │       │   │       │   └── wrong_word_popup.png
 │   │   │   │       │   │       ├── buttons
-│   │   │   │       │   │       │   ├── dashboard_close_button.png
-│   │   │   │       │   │       │   ├── default_close_button.png
-│   │   │   │       │   │       │   ├── disconnect_accept_button.png
-│   │   │   │       │   │       │   └── wrong_word_accept_button.png
 │   │   │   │       │   │       ├── pages
-│   │   │   │       │   │       │   ├── actions_page.png
-│   │   │   │       │   │       │   ├── clan_page.png
-│   │   │   │       │   │       │   ├── dashboard_page.png
-│   │   │   │       │   │       │   ├── inventory_page.png
-│   │   │   │       │   │       │   ├── map_page.png
-│   │   │   │       │   │       │   ├── map_page2.png
-│   │   │   │       │   │       │   ├── menu_page.png
-│   │   │   │       │   │       │   ├── quest_page.png
-│   │   │   │       │   │       │   ├── skills_page.png
-│   │   │   │       │   │       │   └── status_page.png
 │   │   │   │       │   │       └── screens
-│   │   │   │       │   │           ├── choose_character_screen.png
-│   │   │   │       │   │           ├── choose_server_screen.png
-│   │   │   │       │   │           ├── loading_screen.png
-│   │   │   │       │   │           └── login_screen.png
 │   │   │   │       │   └── resolver.py
 │   │   │   │       ├── engine.py
 │   │   │   │       └── ui_guard_data.py
@@ -387,9 +176,6 @@ Revive
 │   ├── logging_setup.py
 │   └── updater.py
 ├── debug_af_boh
-│   ├── mask_alive.png
-│   ├── mask_any.png
-│   └── target_zone_bgr.png
 ├── latest_version.txt
 ├── main.py
 └── requirements.txt

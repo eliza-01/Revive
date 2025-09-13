@@ -143,6 +143,14 @@ void processCommand(String cmd) {
     delay(80);
     Keyboard.releaseAll();
 
+  } else if (cmd == "L-press") {
+    Mouse.press(MOUSE_LEFT);
+  } else if (cmd == "L-release") {
+    Mouse.release(MOUSE_LEFT);
+  } else if (cmd == "R-press") {
+    Mouse.press(MOUSE_RIGHT);
+  } else if (cmd == "R-release") {
+    Mouse.release(MOUSE_RIGHT);
   } else if (cmd.length() == 1) {
     char ch = cmd.charAt(0);
     if ((ch >= '1' && ch <= '9') || ch == '0' || ch == '-' || ch == '=') {
@@ -157,10 +165,6 @@ void processCommand(String cmd) {
       Mouse.click(MOUSE_LEFT);
     } else if (ch == 'r') {
       Mouse.click(MOUSE_RIGHT);
-    } else if (ch == 'L') {
-      Mouse.press(MOUSE_LEFT); delay(800); Mouse.release(MOUSE_LEFT);
-    } else if (ch == 'R') {
-      Mouse.press(MOUSE_RIGHT); delay(800); Mouse.release(MOUSE_RIGHT);
     } else if (ch == 'b') {
       typeSlow("b");
     }
