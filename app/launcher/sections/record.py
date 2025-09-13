@@ -1,6 +1,7 @@
 ﻿# app/launcher/sections/record.py
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
+import time, threading
 
 from core.state.pool import pool_get, pool_write
 from core.logging import console
@@ -36,6 +37,10 @@ class RecordSection:
         self._kbd_listener = None
         self._ctrl_down = False
 
+
+        # анти-дребезг для Ctrl + wheel_down
+        self._last_ctrl_wheel_ts = 0.0
+        self._ctrl_wheel_cooldown_s = 1
     # ---------- глобальные хуки ----------
     def start_global_hooks(self):
         """Запустить глобальный хоткей Ctrl+R и хук мыши (если есть pynput)."""
@@ -107,10 +112,20 @@ class RecordSection:
 
                 def _on_scroll(x, y, dx, dy):
                     try:
+                        # Ctrl + wheel_down => «Запустить сейчас» с ожиданием фокуса
+                        if self._ctrl_down and dy < 0:
+                            now = time.time()
+                            if now - self._last_ctrl_wheel_ts >= self._ctrl_wheel_cooldown_s:
+                                self._last_ctrl_wheel_ts = now
+                                console.log("[hotkey] CTRL + wheel_down -> record_play_now(wait focus)")
+                                self._play_now_hotkey()
+                            return  # не писать это в запись
+
+                        # обычная запись колеса
                         if dy > 0:
-                            eng.on_wheel_up()
+                            self.runner.engine.on_wheel_up()
                         elif dy < 0:
-                            eng.on_wheel_down()
+                            self.runner.engine.on_wheel_down()
                     except Exception:
                         pass
 
@@ -149,6 +164,26 @@ class RecordSection:
             self._mouse_listener = None
 
     # ---------- helpers ----------
+    def _wait_focus(self, timeout_s: float = 30.0) -> bool:
+        """
+        Возвращает True, если окно получило фокус в течение timeout_s.
+        Если timeout_s <= 0 — ждём "разумно долго" (60с).
+        """
+        t_end = time.time() + (timeout_s if timeout_s and timeout_s > 0 else 60.0)
+        while time.time() < t_end:
+            try:
+                v = pool_get(self.state, "focus.is_focused", None)
+                if v is not False:  # True или None трактуем как ок
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.05)
+        # финальная проверка
+        try:
+            v = pool_get(self.state, "focus.is_focused", None)
+            return v is not False
+        except Exception:
+            return True
 
     def _focus_now(self) -> Optional[bool]:
         try:
@@ -157,6 +192,15 @@ class RecordSection:
         except Exception:
             return None
 
+    def _play_now_hotkey(self):
+        """Горячий вызов 'Запустить сейчас' в отдельном потоке (не блокировать слушатели)."""
+        def _run():
+            try:
+                r = self.record_play_now()
+                console.log(f"[record.hotkey] Ctrl+wheel_down -> play_now: {r}")
+            except Exception as e:
+                console.log(f"[record.hotkey] play_now error: {e}")
+        threading.Thread(target=_run, daemon=True).start()
     # ---------- API ----------
 
     def record_state(self) -> Dict[str, Any]:
@@ -187,17 +231,24 @@ class RecordSection:
         return {"ok": True}
 
     def record_play_now(self) -> Dict[str, Any]:
-        focused = (self._focus_now() is not False)
-        if focused:
-            ok = self.runner.engine.play(wait_focus_cb=None, countdown_s=2.0)
-            return {"ok": bool(ok), "mode": "played" if ok else "error"}
-        else:
-            try:
-                pool_write(self.state, "features.record", {"enabled": True})
-                console.hud("ok", "[record] нет фокуса — поставлено в очередь")
-            except Exception:
-                return {"ok": False, "mode": "error"}
-            return {"ok": True, "mode": "queued"}
+        """
+        Всегда ждём фокус целевого окна, затем играем запись с отсчётом.
+        Без постановки в пайплайн и без фолбеков.
+        """
+        try:
+            console.hud("ok", "[record] Жду фокус окна…")
+        except Exception:
+            pass
+
+        # ждём фокус до 30 секунд (можно скорректировать)
+        focused = self._wait_focus(timeout_s=30.0)
+        if not focused:
+            console.hud("err", "[record] Нет фокуса окна")
+            return {"ok": False, "mode": "error"}
+
+        # есть фокус — играем сразу, отсчёт внутри play()
+        ok = self.runner.engine.play(wait_focus_cb=lambda timeout_s=0: True, countdown_s=2.0)
+        return {"ok": bool(ok), "mode": "played" if ok else "error"}
 
     def record_hotkey(self, key: str) -> Dict[str, Any]:
         try:
