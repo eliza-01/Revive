@@ -77,6 +77,11 @@ class PipelineRule:
 
         # Корректный детект смерти
         is_dead = (snap.alive is False) or (snap.hp_ratio is not None and snap.hp_ratio <= 0.001)
+        if is_dead is True:
+            console.hud("att", "Вы мертвы")
+        else:
+            ui_bridge.hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.stop_attention()")
+
         # Тумблер авто-респавна — только из пула
         respawn_on = bool(pool_get(self.s, "features.respawn.enabled", False))
         # Единственный _dbg — тик

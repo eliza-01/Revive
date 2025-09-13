@@ -38,6 +38,20 @@
     .hud-line.ok   { color:#e5e7eb; }
     .hud-line.succ { color:#34d399; }
     .hud-line.err  { color:#f87171; }
+
+    /* отдельная полоска внимания внизу */
+    .att{
+      border-top:1px solid rgba(255,255,255,0.12);
+      padding-top:4px;
+      min-height:14px;
+      color:var(--accent);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.95;
+      -webkit-app-region: no-drag;
+      display:flex; align-items:center; gap:6px;
+    }
+    .att-ico{ display:inline-block; }
+    @keyframes blinkAtt { 0%,49%{opacity:1} 50%,100%{opacity:.15} }
+    .blink{ animation: blinkAtt 1s linear infinite; }
   </style>
 </head>
 <body>
@@ -54,11 +68,15 @@
 
     <!-- Многострочный лог -->
     <div id="hudLog" class="log"></div>
+
+    <!-- Полоска внимания (attention) -->
+    <div id="hudAttention" class="att"></div>
   </div>
 
   <script>
     (function(){
       const logEl = document.getElementById('hudLog');
+      const attEl = document.getElementById('hudAttention');
       const pin  = document.getElementById('pin');
       const elHP = document.getElementById('hudHP');
       const elCP = document.getElementById('hudCP');
@@ -84,11 +102,21 @@
         let status = 'ok', text = '';
         if (arg && typeof arg === 'object'){
           status = String(arg.status || 'ok').toLowerCase();
-          if (!['ok','succ','err'].includes(status)) status = 'ok';
           text = String(arg.text ?? '');
         } else {
           text = String(arg ?? '');
         }
+
+        // отдельная полоса attention (оранжевый текст + мигающий ⚠️ слева)
+        if (status === 'att') {
+          if (attEl) {
+            attEl.innerHTML = `<span class="att-ico blink">⚠️</span><span class="att-text">${esc(text)}</span>`;
+          }
+          return;
+        }
+
+        // обычный лог (ok|succ|err)
+        if (!['ok','succ','err'].includes(status)) status = 'ok';
         buf.push({ status, text, ts: Date.now() });
         if (buf.length > MAX_STORE) buf.shift();
         render();
@@ -145,7 +173,10 @@
       window.ReviveHUD = {
         push,                                   // принимает строку или {status,text}
         dump(){ return buf.slice(); },          // для отладки
-        setHP(hp, cp){ setHP(hp, cp); }         // обновление HP/CP
+        setHP(hp, cp){ setHP(hp, cp); },        // обновление HP/CP
+        stop_attention(){
+          if (attEl) attEl.textContent = '';
+        }
       };
 
       document.addEventListener('DOMContentLoaded', boot);
