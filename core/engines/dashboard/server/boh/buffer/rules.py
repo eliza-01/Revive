@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 from core.logging import console
-from core.state.pool import pool_get
+from core.state.pool import pool_get, pool_write
 from core.vision.zones import compute_zone_ltrb
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.matching.template_matcher_2 import (
@@ -134,6 +134,7 @@ def _debug_open_zone_with_icons(
     except Exception as e:
         console.log(f"[dashboard/buffer][dbg] error: {e}")
 
+
 def _focused_now(state: Dict[str, Any]) -> Optional[bool]:
     try:
         v = pool_get(state, "focus.is_focused", None)
@@ -235,6 +236,56 @@ def _dashboard_is_locked(win: Dict, server: str, lang: str) -> bool:
     return False
 
 
+# ---- attempts & alive ----------------------------------------------------
+
+def _player_is_dead(state: Dict[str, Any]) -> bool:
+    try:
+        alive = pool_get(state, "player.alive", None)
+        return (alive is False)
+    except Exception:
+        return False
+
+
+def _get_attempts(state: Dict[str, Any]) -> int:
+    try:
+        return int(pool_get(state, "features.buff.attempts", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _set_attempts(state: Dict[str, Any], n: int) -> None:
+    try:
+        pool_write(state, "features.buff", {"attempts": int(max(0, n))})
+    except Exception:
+        pass
+
+
+def _bump_attempts(state: Dict[str, Any]) -> int:
+    n = _get_attempts(state) + 1
+    _set_attempts(state, n)
+    return n
+
+
+def _reset_attempts(state: Dict[str, Any]) -> None:
+    _set_attempts(state, 0)
+
+
+def _call_stub(controller, helpers: Dict[str, Any]) -> None:
+    # Пытаемся вызвать заглушку через helpers, иначе через контроллер
+    for key in ("buff_stub", "on_buff_attempts_exhausted", "stub"):
+        cb = helpers.get(key)
+        if callable(cb):
+            try:
+                cb()
+                return
+            except Exception:
+                pass
+    try:
+        controller.send("stub")
+    except Exception:
+        pass
+
+
 # ---------------------- public entry (pipeline step) ----------------------
 
 def run_step(
@@ -248,11 +299,15 @@ def run_step(
     Шаг 'buff' через dashboard/buffer:
       1) Закрыть дэш, если открыт (Alt+B).
       2) Открыть дэш (Alt+B) и убедиться, что открыт.
-      3) Если заблокирован — сообщить и выйти (пробуем позже).
-      4) Открыть вкладку баффера.
+      3) Перейти на вкладку баффера.
+      4) Ждать появления экрана баффера; если не появился — проверить доступность (locked).
       5) Нажать профиль (profile|mage|fighter|archer*).
       6) Проверить баф по иконкам (features.buff.checker).
       7) По успеху прожать Restore HP и закрыть дэш.
+
+      Дополнительно:
+      - Если player.alive == False — прекращаем попытку шага сразу.
+      - Если attempts >= 10 — вызываем заглушку и выходим.
     """
 
     # окно и фокус
@@ -263,6 +318,21 @@ def run_step(
     if _focused_now(state) is False:
         console.hud("ok", "[dashboard] пауза: окно без фокуса — жду")
         return False, False
+
+    # если мёртв — прекратить попытки (не тратим время на бафф)
+    if _player_is_dead(state):
+        _hud_err("[dashboard] игрок мёртв — бафф пропущен")
+        return False, True  # прекращаем попытку, даём пайплайну идти дальше
+
+    # лимит попыток
+    attempts = _get_attempts(state)
+    if attempts >= 10:
+        _hud_err("[dashboard] попытки исчерпаны (>=10) — заглушка")
+        _call_stub(controller, helpers)
+        return False, True
+
+    # инкремент перед процедурой шага
+    _bump_attempts(state)
 
     # параметры окружения
     lang = (helpers.get("get_language", lambda: "rus")() or "rus").lower()  # type: ignore
@@ -286,7 +356,7 @@ def run_step(
         return False, False
     _hud_ok("[dashboard] Alt+B открыт")
 
-    # 4) Перейти на вкладку баффера — «по аналогии с respawn»: сначала матч, затем явный клик
+    # 3) Перейти на вкладку баффера — сначала матч, затем явный клик
     btn = TEMPLATES.get("dashboard_buffer_button")
     if not btn:
         _hud_err("[dashboard] не вижу кнопку раздела баффера")
@@ -309,11 +379,17 @@ def run_step(
 
     _click(controller, pt[0], pt[1], hover_delay_s=0.20, post_delay_s=0.20)
 
-    # ждать появления экрана баффера (булева проверка наличия ключа)
+    # 4) Ждать появления экрана баффера; если не появился — проверить доступность
     buf_init = TEMPLATES.get("dashboard_buffer_init")
     end = time.time() + 2.0
     opened = False
     while time.time() < end:
+        # стопим попытки, если игрок умер — выходим сразу
+        if pool_get(state, "player.alive", None) is False:
+            _hud_err("[dashboard] игрок мёртв — выхожу из ожидания")
+            _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
+            return False, True
+
         pt2 = match_key_in_zone_single(
             window=win,
             zone_ltrb=_zone_ltrb(win, "fullscreen"),
@@ -329,7 +405,7 @@ def run_step(
         time.sleep(0.05)
 
     if not opened:
-        # Если экран баффера не появился — только теперь проверяем «доступность»
+        # Только теперь проверяем «доступность»
         if _dashboard_is_locked(win, server, lang):
             _hud_err("[dashboard] заблокирован (ждем..)")
             _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
@@ -349,11 +425,7 @@ def run_step(
 
     time.sleep(0.5)  # дать анимации времени
 
-    # покажет фото зоны (zone_name) поиска template
-    # checker: List[str] = list(pool_get(state, "features.buff.checker", []) or [])
-    # _debug_open_zone_with_icons(state, win, lang, checker, zone_name="current_buffs", filename_hint="before_verify")
-
-    # 6) Верификация бафа (переписано на respawn-подход)
+    # 6) Верификация бафа (подход как в respawn)
     if not be.verify_buff_applied(thr=0.86):
         _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
@@ -363,4 +435,6 @@ def run_step(
     time.sleep(0.2)
     _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
 
+    # успешно — сбрасываем счётчик попыток
+    _reset_attempts(state)
     return True, True
