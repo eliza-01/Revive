@@ -27,14 +27,11 @@ class RecordRunner:
 
     def sync_records_to_pool(self):
         recs = self.engine.list_records()
-        try:
-            pool_write(self.state, "features.record", {"records": recs})
-            # если current пуст — выберем первый
-            cur = pool_get(self.state, "features.record.current_record", "") or ""
-            if not cur and recs:
-                pool_write(self.state, "features.record", {"current_record": recs[0]["slug"]})
-        except Exception:
-            pass
+        pool_write(self.state, "features.record", {"records": recs})
+        console.log(f"[record.runner] synced {len(recs)} record(s) from disk")
+        cur = pool_get(self.state, "features.record.current_record", "") or ""
+        if not cur and recs:
+            pool_write(self.state, "features.record", {"current_record": recs[0]["slug"]})
 
     # ---- API для UI ----
 
