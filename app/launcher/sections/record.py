@@ -164,26 +164,16 @@ class RecordSection:
             self._mouse_listener = None
 
     # ---------- helpers ----------
-    def _wait_focus(self, timeout_s: float = 30.0) -> bool:
-        """
-        Возвращает True, если окно получило фокус в течение timeout_s.
-        Если timeout_s <= 0 — ждём "разумно долго" (60с).
-        """
-        t_end = time.time() + (timeout_s if timeout_s and timeout_s > 0 else 60.0)
-        while time.time() < t_end:
-            try:
-                v = pool_get(self.state, "focus.is_focused", None)
-                if v is not False:  # True или None трактуем как ок
-                    return True
-            except Exception:
-                pass
-            time.sleep(0.05)
-        # финальная проверка
-        try:
+    def _wait_focus(self, timeout_s: float = 6.0) -> bool:
+        end = time.time() + max(0.0, timeout_s)
+        while time.time() < end:
             v = pool_get(self.state, "focus.is_focused", None)
-            return v is not False
-        except Exception:
-            return True
+            if v is not False:   # True или None — считаем, что можно
+                return True
+            time.sleep(0.05)
+        v = pool_get(self.state, "focus.is_focused", None)
+        return v is not False
+
 
     def _focus_now(self) -> Optional[bool]:
         try:
@@ -231,24 +221,15 @@ class RecordSection:
         return {"ok": True}
 
     def record_play_now(self) -> Dict[str, Any]:
-        """
-        Всегда ждём фокус целевого окна, затем играем запись с отсчётом.
-        Без постановки в пайплайн и без фолбеков.
-        """
         try:
-            console.hud("ok", "[record] Жду фокус окна…")
-        except Exception:
-            pass
-
-        # ждём фокус до 30 секунд (можно скорректировать)
-        focused = self._wait_focus(timeout_s=30.0)
-        if not focused:
-            console.hud("err", "[record] Нет фокуса окна")
+            ok = self.runner.engine.play(
+                wait_focus_cb=self._wait_focus,  # ← ждём фокус
+                countdown_s=1.0
+            )
+            return {"ok": bool(ok), "mode": "played" if ok else "error"}
+        except Exception as e:
+            console.log(f"[record.hotkey] play_now error: {e}")
             return {"ok": False, "mode": "error"}
-
-        # есть фокус — играем сразу, отсчёт внутри play()
-        ok = self.runner.engine.play(wait_focus_cb=lambda timeout_s=0: True, countdown_s=2.0)
-        return {"ok": bool(ok), "mode": "played" if ok else "error"}
 
     def record_hotkey(self, key: str) -> Dict[str, Any]:
         try:

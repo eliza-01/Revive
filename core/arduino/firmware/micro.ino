@@ -71,9 +71,29 @@ void loop() {
   }
 }
 
+
 void processCommand(String cmd) {
   while (cmd.length() && (cmd[cmd.length()-1] == '\n' || cmd[cmd.length()-1] == '\r')) {
     cmd.remove(cmd.length()-1);
+  }
+  cmd.trim();
+
+  // --- относительное движение курсора по HID (игры видят Raw Input) ---
+  if (cmd.startsWith("mv ")) {
+    int sp1 = cmd.indexOf(' ', 3);
+    if (sp1 > 0) {
+      long dx = cmd.substring(3, sp1).toInt();
+      long dy = cmd.substring(sp1 + 1).toInt();
+      // Mouse.move принимает -127..127 за тик — нарежем шаги
+      while (dx != 0 || dy != 0) {
+        int stepx = (dx > 127) ? 127 : (dx < -127 ? -127 : (int)dx);
+        int stepy = (dy > 127) ? 127 : (dy < -127 ? -127 : (int)dy);
+        Mouse.move(stepx, stepy, 0);
+        dx -= stepx;
+        dy -= stepy;
+      }
+    }
+    return;
   }
 
   if (cmd == "ping") {

@@ -5,6 +5,7 @@ import os, json, time, threading, re
 
 from core.logging import console
 from core.state.pool import pool_get, pool_write
+import traceback
 
 Point = Tuple[int, int]
 
@@ -57,9 +58,14 @@ class RecordEngine:
     кнопки/колесо — Arduino (send).
     """
 
-    SAMPLE_DT = 0.03  # 30 ms
+    # частота записи и сглаживания
+    SAMPLE_DT = 0.008  # 30 ms между сэмплами
     FORMAT_VERSION = 2
-    CLICK_AFTER_MOVE_S = 0.150  # ← добавь: задержка между move и кликом
+    CLICK_AFTER_MOVE_S = 0.150
+
+    # сгущение записи и сглаживание воспроизведения
+    MIN_SAMPLE_DIST = 2  # px: брать точку, даже если таймер ещё не тикнул
+    PIX_STEP = 2  # px: длина микрошага при интерполяции
 
     def __init__(self, state: Dict[str, Any], controller: Any, get_window):
         self.s = state
@@ -83,8 +89,24 @@ class RecordEngine:
         self._last_sample_ts: float = 0.0
         self._r_start_abs_t: float = 0.0    # абсолютное время R-press
 
+        self._last_sample_pos: Optional[Point] = None  # для дистанционного триггера записи
     # -------- pool helpers --------
+    MV_CHUNK = 1  # максимальная дельта за один HID-шаг
+    SNAP_CURSOR_AFTER_RDRAG = True  # после ПКМ-драга вернуть курсор в записанную конечную точку
 
+    def _send_mv_rel(self, dx: int, dy: int):
+        """Относительное движение через прошивку: 'mv dx dy', с разбиением на мелкие шаги."""
+        try:
+            dx = int(dx);
+            dy = int(dy)
+            while dx != 0 or dy != 0:
+                stepx = max(-self.MV_CHUNK, min(self.MV_CHUNK, dx))
+                stepy = max(-self.MV_CHUNK, min(self.MV_CHUNK, dy))
+                self.controller.send(f"mv {stepx} {stepy}")
+                dx -= stepx;
+                dy -= stepy
+        except Exception:
+            pass
     def _set_busy(self, val: bool):
         try:
             pool_write(self.s, "features.record", {"busy": bool(val), "ts": _now()})
@@ -265,11 +287,12 @@ class RecordEngine:
             self._set_busy(False)
 
     def _play_steps(self, steps: List[Dict[str, Any]]):
-        """Строгая шкала времени: ждём до t каждого события."""
         win = self.get_window() or {}
-        x0 = int(win.get("x", 0)); y0 = int(win.get("y", 0))
+        x0 = int(win.get("x", 0));
+        y0 = int(win.get("y", 0))
 
         def _move_client(cx: int, cy: int):
+            # оставляем для одиночных кликов — позиционирование до клика
             try:
                 self.controller.move(x0 + int(cx), y0 + int(cy))
             except Exception:
@@ -286,32 +309,66 @@ class RecordEngine:
 
         for ev in events:
             t_target = float(ev["t"])
-            # ждать до нужного времени (если опоздали — не компенсируем)
             now_elapsed = time.time() - start_wall
             delay = t_target - now_elapsed
             if delay > 0:
                 time.sleep(delay)
 
-            t = ev.get("type")
-            if t == "lclick":
+            typ = ev.get("type")
+
+            if typ == "lclick":
                 cx, cy = int(ev["x"]), int(ev["y"])
                 _move_client(cx, cy)
-                time.sleep(self.CLICK_AFTER_MOVE_S)  # ← ждём 150 мс после перемещения
+                time.sleep(self.CLICK_AFTER_MOVE_S)  # небольшая пауза перед кликом
                 _send("l")
-            elif t == "rdrag":
+
+
+            elif typ == "rdrag":
+
                 path = list(ev.get("path") or [])
-                dt = float(ev.get("dt"))
-                if not path:
+
+                dt = float(ev["dt"])
+
+                if len(path) < 2:
                     continue
-                _move_client(int(path[0][0]), int(path[0][1]))
+
+                mv_gain = float(pool_get(self.s, "features.record.mv_gain", 1.0))
+
+                # Важно: не позиционируем курсор абсолютом в path[0]
+
                 _send("R-press")
+
+                prevx, prevy = int(path[0][0]), int(path[0][1])
+
                 for (cx, cy) in path[1:]:
-                    _move_client(int(cx), int(cy))
-                    time.sleep(dt if dt > 0 else 0.0)
+
+                    cx = int(cx);
+                    cy = int(cy)
+
+                    dx = int(round((cx - prevx) * mv_gain))
+
+                    dy = int(round((cy - prevy) * mv_gain))
+
+                    if dx or dy:
+                        self._send_mv_rel(dx, dy)
+
+                    prevx, prevy = cx, cy
+
+                    if dt > 0:
+                        time.sleep(dt)
+
                 _send("R-release")
-            elif t == "wheel_up":
+
+                # Чтобы визуально курсор оказался там же, где был в записи (только после отпускания ПКМ)
+
+                if self.SNAP_CURSOR_AFTER_RDRAG:
+                    endx, endy = int(path[-1][0]), int(path[-1][1])
+
+                    _move_client(endx, endy)
+
+            elif typ == "wheel_up":
                 _send("wheel_up")
-            elif t == "wheel_down":
+            elif typ == "wheel_down":
                 _send("wheel_down")
 
     # -------- event feed (to be called by input layer) --------
@@ -336,6 +393,7 @@ class RecordEngine:
         self._last_sample_ts = 0.0
         self._r_start_abs_t = _now()
         self._sample_move(screen_x, screen_y, force=True)
+        self._last_sample_pos = None
 
     def on_mouse_move(self, screen_x: int, screen_y: int):
         if not self._recording or not self._r_down:
@@ -361,16 +419,87 @@ class RecordEngine:
         self._events.append({"type": "wheel_down", "t": round(_now() - self._t0, 4)})
         console.log("[record.engine] wheel_down")
 
+    def _move_rel(self, dx: int, dy: int):
+        try:
+            self.controller.move_rel(int(dx), int(dy))
+        except Exception:
+            pass
+
+    def _r_down(self):
+        try:
+            self.controller.r_down()
+        except Exception:
+            pass
+
+    def _r_up(self):
+        try:
+            self.controller.r_up()
+        except Exception:
+            pass
+
+    def _smooth_rel_segment(self, x1: int, y1: int, x2: int, y2: int, total_dt: float, pix_step: int = 2):
+        dx = x2 - x1
+        dy = y2 - y1
+        dist = max(abs(dx), abs(dy))
+        steps = max(1, int(dist / max(1, pix_step)))
+        sub_dt = (total_dt / steps) if total_dt > 0 else 0.0
+        # равномерная линейная интерполяция, но отправляем ИМЕННО относительные дельты
+        prev_x, prev_y = x1, y1
+        for k in range(1, steps + 1):
+            nx = int(round(x1 + dx * (k / steps)))
+            ny = int(round(y1 + dy * (k / steps)))
+            ddx = nx - prev_x
+            ddy = ny - prev_y
+            if ddx or ddy:
+                self._move_rel(ddx, ddy)
+            prev_x, prev_y = nx, ny
+            if sub_dt > 0:
+                time.sleep(sub_dt)
     # -------- internals --------
+
+    def _move_client(self, cx: int, cy: int):
+        win = self.get_window() or {}
+        x0 = int(win.get("x", 0));
+        y0 = int(win.get("y", 0))
+        try:
+            self.controller.move(x0 + int(cx), y0 + int(cy))
+        except Exception:
+            pass
+
+    def _move_segment_smooth(self, x1: int, y1: int, x2: int, y2: int, total_dt: float):
+        """Линейная интерполяция от (x1,y1) к (x2,y2) с шагом PIX_STEP и равномерной задержкой."""
+        dx, dy = (x2 - x1), (y2 - y1)
+        dist = max(abs(dx), abs(dy))
+        steps = max(1, int(dist / self.PIX_STEP))
+        # равномерная растяжка времени: суммарно total_dt на сегмент
+        sub_dt = total_dt / steps if total_dt > 0 else 0.0
+
+        for k in range(1, steps + 1):
+            x = int(round(x1 + dx * (k / steps)))
+            y = int(round(y1 + dy * (k / steps)))
+            self._move_client(x, y)
+            if sub_dt > 0:
+                time.sleep(sub_dt)
 
     def _sample_move(self, sx: int, sy: int, *, force: bool):
         now = _now()
-        if (not force) and (now - self._last_sample_ts < self.SAMPLE_DT):
-            return
-        self._last_sample_ts = now
         win = self.get_window() or {}
         cx, cy = _client_xy(win, sx, sy)
-        self._r_path.append((int(cx), int(cy)))
+
+        # по времени
+        by_time = (now - self._last_sample_ts) >= self.SAMPLE_DT
+        # по расстоянию
+        if self._last_sample_pos is None:
+            dist_ok = True
+        else:
+            lx, ly = self._last_sample_pos
+            dx, dy = (cx - lx), (cy - ly)
+            dist_ok = (dx*dx + dy*dy) >= (self.MIN_SAMPLE_DIST * self.MIN_SAMPLE_DIST)
+
+        if force or by_time or dist_ok:
+            self._r_path.append((int(cx), int(cy)))
+            self._last_sample_ts = now
+            self._last_sample_pos = (int(cx), int(cy))
 
     def _finalize_rdrag(self):
         if not self._r_path:
@@ -383,4 +512,5 @@ class RecordEngine:
         })
         console.log(f"[record.engine] rdrag captured, points={len(self._r_path)}")
         self._r_path.clear()
+        self._last_sample_pos = None
         self._r_start_abs_t = 0.0

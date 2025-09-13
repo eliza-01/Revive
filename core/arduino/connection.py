@@ -47,6 +47,19 @@ class ReviveController:
         except Exception as e:
             console.log(f"[ctrl] move fail: {e}")
 
+    def move_rel(self, dx: int, dy: int):
+        """Относительное движение мыши через Arduino (сырые HID dx/dy)."""
+        try:
+            self.send(f"mv {int(dx)} {int(dy)}")
+        except Exception:
+            pass
+
+    def r_down(self):
+        self.send("R-press")
+
+    def r_up(self):
+        self.send("R-release")
+
     # ---- arduino-only click ----
     def _click_left_arduino(self) -> bool:
         """

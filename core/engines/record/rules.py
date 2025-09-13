@@ -83,6 +83,7 @@ def run_step(
         console.hud("err", "[record] нет фокуса окна")
         return False, False
 
+    # воспроизведение записи через countdown_s (!нет это не тут)
     ok = bool(engine.play(wait_focus_cb=lambda timeout_s=0: True, countdown_s=3.0))
     console.log(f"[record.rules] play -> ok={ok}")
     pool_write(state, "features.record", {"enabled": False})
