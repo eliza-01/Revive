@@ -1,7 +1,7 @@
 ﻿# core/engines/record/engine.py
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple, Optional
-import os, json, time, math, threading, re
+import os, json, time, threading, re
 
 from core.logging import console
 from core.state.pool import pool_get, pool_write
@@ -23,10 +23,8 @@ _RU2EN = {
 }
 def _slugify(name: str) -> str:
     s = name.strip().lower()
-    # транслит ru->en
-    s = "".join(_RU2EN.get(ch, ch) for ch in s)
-    # заменить всё не буквенно-цифровое на _
-    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = "".join(_RU2EN.get(ch, ch) for ch in s)          # транслит ru->en
+    s = re.sub(r"[^a-z0-9]+", "_", s)                    # не [a-z0-9] -> _
     s = re.sub(r"_+", "_", s).strip("_")
     return s or "record"
 
@@ -52,15 +50,16 @@ def _client_xy(win: Dict[str, Any], sx: int, sy: int) -> Point:
 class RecordEngine:
     """
     Запись/воспроизведение действий мыши в координатах клиентского окна.
-    - ЛКМ: фиксируем точку клика (client x,y).
-    - ПКМ: пишем траекторию (path) каждые 30мс между press/release.
-    - Колёсико: фиксируем разовые события wheel_up / wheel_down (без задержек).
-    Воспроизведение:
-    - Движение курсора — через controller.move()
-    - Всё остальное — через Arduino-команды: wheel_up/down, L-press/release, R-press/release
+    - ЛКМ: фиксируем точку клика (client x,y) + t
+    - ПКМ: пишем траекторию path каждые 30мс между press/release + t(момент press) + dt
+    - Колёсико: wheel_up / wheel_down + t
+    Воспроизведение: жёсткая синхронизация по t; движение — controller.move(),
+    кнопки/колесо — Arduino (send).
     """
 
     SAMPLE_DT = 0.03  # 30 ms
+    FORMAT_VERSION = 2
+    CLICK_AFTER_MOVE_S = 0.150  # ← добавь: задержка между move и кликом
 
     def __init__(self, state: Dict[str, Any], controller: Any, get_window):
         self.s = state
@@ -75,12 +74,14 @@ class RecordEngine:
         self._rec_name: str = ""
         self._rec_slug: str = ""
         self._rec_started_ts: float = 0.0
+        self._t0: float = 0.0               # абсолютное время старта записи
         self._events: List[Dict[str, Any]] = []
 
         # RMB drag capture
         self._r_down = False
         self._r_path: List[Point] = []
         self._last_sample_ts: float = 0.0
+        self._r_start_abs_t: float = 0.0    # абсолютное время R-press
 
     # -------- pool helpers --------
 
@@ -99,7 +100,6 @@ class RecordEngine:
     def _append_record_to_pool(self, name: str, slug: str):
         try:
             recs: List[Dict[str, str]] = list(pool_get(self.s, "features.record.records", []) or [])
-            # избегаем дубликатов slug
             if not any(r.get("slug") == slug for r in recs):
                 recs.append({"name": name, "slug": slug})
             pool_write(self.s, "features.record", {"records": recs, "current_record": slug})
@@ -126,10 +126,6 @@ class RecordEngine:
         return out
 
     def create_record(self, name: str) -> Tuple[str, str]:
-        """
-        Создаёт пустую запись (файл) и делает её current_record.
-        Возвращает (name, slug).
-        """
         base = _slugify(name)
         slug = _unique_slug(base)
         data = {
@@ -137,7 +133,7 @@ class RecordEngine:
             "slug": slug,
             "created_ts": _now(),
             "steps": [],
-            "version": 1,
+            "version": self.FORMAT_VERSION,
         }
         path = os.path.join(_records_dir(), f"{slug}.json")
         with open(path, "w", encoding="utf-8") as f:
@@ -150,13 +146,12 @@ class RecordEngine:
             return
         path = os.path.join(_records_dir(), f"{self._rec_slug}.json")
         try:
-            # если файл уже был (из create_record), то обновим steps/ts
             data = {
                 "name": self._rec_name or self._rec_slug,
                 "slug": self._rec_slug,
                 "created_ts": self._rec_started_ts or _now(),
                 "steps": self._events,
-                "version": 1,
+                "version": self.FORMAT_VERSION,
             }
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -166,7 +161,6 @@ class RecordEngine:
     # -------- recording API --------
 
     def start_recording(self, *, name: Optional[str] = None, countdown_s: float = 0.0):
-        """Запуск записи. Если name пуст — используем current_record из пула или создаём новую."""
         if self._recording or self._playing:
             return False
 
@@ -177,26 +171,27 @@ class RecordEngine:
             _name, slug = self.create_record(nm)
             self._rec_name = _name
         else:
-            # подтянуть name из пула/файла
             self._rec_name = slug
             for r in (pool_get(self.s, "features.record.records", []) or []):
                 if r.get("slug") == slug:
                     self._rec_name = r.get("name") or slug
                     break
 
-        # обратный отсчёт если нужен
+        # необязательный отсчёт до старта записи (не влияет на t)
         if countdown_s and countdown_s > 0:
-            n = int(countdown_s)
-            for i in range(n, 0, -1):
+            for i in range(int(countdown_s), 0, -1):
                 console.hud("att", f"Запись начнётся через {i}")
                 time.sleep(1.0)
 
         self._rec_slug = slug
         self._rec_started_ts = _now()
+        self._t0 = self._rec_started_ts
+
         self._events = []
         self._r_down = False
         self._r_path = []
         self._last_sample_ts = 0.0
+        self._r_start_abs_t = 0.0
 
         self._set_busy(True)
         self._set_status("recording")
@@ -208,21 +203,19 @@ class RecordEngine:
     def stop_recording(self):
         if not self._recording:
             return False
-        # если R было зажато — аккуратно завершим drag
-        if self._r_down and self._r_path:
+        if self._r_down and self._r_path:  # завершить незакрытый drag
             self._finalize_rdrag()
         self._save_current_record()
         self._recording = False
         self._set_status("idle")
         self._set_busy(False)
         console.hud("att", "")
-        console.log("[record.engine] recording stopped and saved")
+        console.log(f"[record.engine] recording stopped and saved steps={len(self._events)}")
         return True
 
     # -------- playback API --------
 
     def play(self, slug: Optional[str] = None, *, wait_focus_cb=None, countdown_s: float = 3.0) -> bool:
-        """Воспроизведение записи. Ждёт фокус (если задан колбэк), отсчёт N..1, затем проигрывает."""
         if self._recording or self._playing:
             return False
 
@@ -244,16 +237,18 @@ class RecordEngine:
             console.hud("err", f"[record] ошибка чтения: {e}")
             return False
 
-        # ожидание фокуса (если передан)
+        # жёстко требуем t у всех событий — без фолбэков
+        if not steps or any("t" not in ev for ev in steps):
+            console.hud("err", "[record] запись старого формата (нет t)")
+            return False
+
         if callable(wait_focus_cb):
             ok = bool(wait_focus_cb(timeout_s=6.0))
             if not ok:
                 console.hud("err", "[record] окно без фокуса")
                 return False
 
-        # обратный отсчёт
-        n = int(countdown_s or 0)
-        for i in range(n, 0, -1):
+        for i in range(int(countdown_s or 0), 0, -1):
             console.hud("att", f"Воспроизведение записи через {i}")
             time.sleep(1.0)
         console.hud("att", "")
@@ -261,7 +256,6 @@ class RecordEngine:
         self._set_busy(True)
         self._set_status("playing")
         self._playing = True
-
         try:
             self._play_steps(steps)
             return True
@@ -271,6 +265,7 @@ class RecordEngine:
             self._set_busy(False)
 
     def _play_steps(self, steps: List[Dict[str, Any]]):
+        """Строгая шкала времени: ждём до t каждого события."""
         win = self.get_window() or {}
         x0 = int(win.get("x", 0)); y0 = int(win.get("y", 0))
 
@@ -286,27 +281,38 @@ class RecordEngine:
             except Exception:
                 pass
 
-        for ev in steps:
+        events = sorted(steps, key=lambda e: float(e["t"]))
+        start_wall = time.time()
+
+        for ev in events:
+            t_target = float(ev["t"])
+            # ждать до нужного времени (если опоздали — не компенсируем)
+            now_elapsed = time.time() - start_wall
+            delay = t_target - now_elapsed
+            if delay > 0:
+                time.sleep(delay)
+
             t = ev.get("type")
             if t == "lclick":
-                _move_client(int(ev["x"]), int(ev["y"]))
-                _send("L-press"); _send("L-release")
+                cx, cy = int(ev["x"]), int(ev["y"])
+                _move_client(cx, cy)
+                time.sleep(self.CLICK_AFTER_MOVE_S)  # ← ждём 150 мс после перемещения
+                _send("l")
             elif t == "rdrag":
                 path = list(ev.get("path") or [])
-                dt = float(ev.get("dt") or self.SAMPLE_DT)
+                dt = float(ev.get("dt"))
                 if not path:
                     continue
                 _move_client(int(path[0][0]), int(path[0][1]))
                 _send("R-press")
                 for (cx, cy) in path[1:]:
                     _move_client(int(cx), int(cy))
-                    time.sleep(max(0.0, dt))
+                    time.sleep(dt if dt > 0 else 0.0)
                 _send("R-release")
             elif t == "wheel_up":
                 _send("wheel_up")
             elif t == "wheel_down":
                 _send("wheel_down")
-            # можно расширять типы при необходимости
 
     # -------- event feed (to be called by input layer) --------
 
@@ -315,7 +321,11 @@ class RecordEngine:
             return
         win = self.get_window() or {}
         cx, cy = _client_xy(win, screen_x, screen_y)
-        self._events.append({"type": "lclick", "x": int(cx), "y": int(cy)})
+        self._events.append({
+            "type": "lclick",
+            "x": int(cx), "y": int(cy),
+            "t": round(_now() - self._t0, 4),
+        })
         console.log(f"[record.engine] lclick at ({cx},{cy})")
 
     def on_mouse_right_press(self, screen_x: int, screen_y: int):
@@ -324,19 +334,16 @@ class RecordEngine:
         self._r_down = True
         self._r_path = []
         self._last_sample_ts = 0.0
+        self._r_start_abs_t = _now()
         self._sample_move(screen_x, screen_y, force=True)
 
     def on_mouse_move(self, screen_x: int, screen_y: int):
-        if not self._recording:
-            return
-        if not self._r_down:
+        if not self._recording or not self._r_down:
             return
         self._sample_move(screen_x, screen_y, force=False)
 
     def on_mouse_right_release(self, screen_x: int, screen_y: int):
-        if not self._recording:
-            return
-        if not self._r_down:
+        if not self._recording or not self._r_down:
             return
         self._sample_move(screen_x, screen_y, force=True)
         self._finalize_rdrag()
@@ -345,13 +352,13 @@ class RecordEngine:
     def on_wheel_up(self):
         if not self._recording:
             return
-        self._events.append({"type": "wheel_up"})
+        self._events.append({"type": "wheel_up", "t": round(_now() - self._t0, 4)})
         console.log("[record.engine] wheel_up")
 
     def on_wheel_down(self):
         if not self._recording:
             return
-        self._events.append({"type": "wheel_down"})
+        self._events.append({"type": "wheel_down", "t": round(_now() - self._t0, 4)})
         console.log("[record.engine] wheel_down")
 
     # -------- internals --------
@@ -368,6 +375,12 @@ class RecordEngine:
     def _finalize_rdrag(self):
         if not self._r_path:
             return
-        self._events.append({"type": "rdrag", "path": self._r_path[:], "dt": self.SAMPLE_DT})
+        self._events.append({
+            "type": "rdrag",
+            "path": self._r_path[:],
+            "dt": self.SAMPLE_DT,
+            "t": round((self._r_start_abs_t or _now()) - self._t0, 4),
+        })
         console.log(f"[record.engine] rdrag captured, points={len(self._r_path)}")
         self._r_path.clear()
+        self._r_start_abs_t = 0.0
