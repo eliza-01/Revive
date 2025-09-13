@@ -10,11 +10,13 @@ from app.api.api_router import APIRouter
 
 api = APIRouter()
 
-_SPLASH_PS = r"""param($gif)
+_SPLASH_PS = r"""param($gif, $ico)
 Add-Type -Name U32 -Namespace Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
 [Win.U32]::SetProcessDPIAware() | Out-Null
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -Namespace Shell -Name AppID -MemberDefinition '[DllImport("shell32.dll")] public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);'
+[Shell.AppID]::SetCurrentProcessExplicitAppUserModelID("Revive.App") | Out-Null
 
 $u = (New-Object System.Uri($gif)).AbsoluteUri
 
@@ -47,6 +49,7 @@ $form.TopMost=$true
 $form.ShowInTaskbar=$true
 $form.Location=New-Object System.Drawing.Point($left,$top)
 $form.Size=New-Object System.Drawing.Size($w,$h)
+$form.Icon = New-Object System.Drawing.Icon($ico)
 
 $wb = New-Object System.Windows.Forms.WebBrowser
 $wb.ScrollBarsEnabled = $false
@@ -65,7 +68,11 @@ def _spawn_splash(gif_path: str):
             f.write(_SPLASH_PS)
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         p = subprocess.Popen(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", ps1, gif_path],
+            [
+                "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-WindowStyle", "Hidden", "-File", ps1, gif_path,  # было так
+                _res_path("webui", "assets", "logo.ico")  # ← добавь второй аргумент
+            ],
             creationflags=flags
         )
         return p, ps1
@@ -86,8 +93,36 @@ def _res_path(*parts: str) -> str:
     base = os.path.join(getattr(sys, "_MEIPASS", ""), "app") if hasattr(sys, "_MEIPASS") else os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return os.path.normpath(os.path.join(base, *parts))
 
+def _set_window_icon(title: str, ico_path: str):
+    try:
+        import os, ctypes
+        if not os.path.isfile(ico_path):
+            return
+        user32 = ctypes.windll.user32
+        LR_LOADFROMFILE = 0x0010
+        IMAGE_ICON = 1
+        WM_SETICON = 0x0080
+        ICON_SMALL = 0
+        ICON_BIG = 1
+
+        hwnd = user32.FindWindowW(None, str(title))
+        if not hwnd:
+            return
+        hbig = user32.LoadImageW(None, str(ico_path), IMAGE_ICON, 32, 32, LR_LOADFROMFILE)
+        hsm  = user32.LoadImageW(None, str(ico_path), IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+        if hbig:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hbig)
+        if hsm:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hsm)
+    except Exception as e:
+        print("[ICON] set icon error:", e)
 
 def launch_gui(local_version: str):
+    # (Опционально, чтобы Windows группировал ярлык красиво)
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Revive.App")
+    except Exception:
+        pass
     # +++ СПЛЭШ +++
     gif_path = _res_path("webui", "assets", "preloader1.gif")
     splash_proc, splash_ps1 = _spawn_splash(gif_path)
@@ -95,6 +130,8 @@ def launch_gui(local_version: str):
     try:
         index_path = _res_path("webui", "index.html")
         hud_path   = _res_path("webui", "hud.html")
+        icon_path = _res_path("webui", "assets", "logo.ico")
+
         if not os.path.exists(index_path):
             raise RuntimeError(f"Не найден UI: {index_path}")
         if not os.path.exists(hud_path):
@@ -121,6 +158,7 @@ def launch_gui(local_version: str):
             on_top=True,               # по умолчанию поверх всех
             background_color="#000000",
         )
+        hud_window.events.shown += (lambda *_: _set_window_icon("Revive HUD", icon_path))
 
         # API для HUD
         def hud_state():
@@ -166,8 +204,9 @@ def launch_gui(local_version: str):
             easy_drag = True,
             on_top = True,  # окно поверх всех после запуска
             background_color="#000000",
-            js_api=api
+            js_api=api,
         )
+        window.events.shown += (lambda *_: _set_window_icon("Revive Launcher", icon_path))
 
         # собрать контейнер и экспортировать методы секций
         c = build_container(window, local_version, hud_window=hud_window)
