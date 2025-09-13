@@ -33,7 +33,7 @@ class PipelineSection(BaseSection):
 
     def pipeline_get_order(self) -> Dict[str, any]:
         return {
-            "order": list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "autofarm"]) or ["respawn"]),
+            "order": list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "record", "autofarm"]) or ["respawn"]),
             "allowed": list(pool_get(self.s, "pipeline.allowed", ALLOWED_STEPS_DEFAULT) or ALLOWED_STEPS_DEFAULT),
         }
 
@@ -47,7 +47,7 @@ class PipelineSection(BaseSection):
         except Exception:
             seq = []
 
-        allowed = {"respawn", "buff", "tp", "macros", "autofarm"}
+        allowed = {"respawn", "buff", "tp", "macros", "record", "autofarm"}
         seen = set()
         seq = [x for x in seq if x in allowed and (x not in seen and not seen.add(x))]
 

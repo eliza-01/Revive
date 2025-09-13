@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-13 13:59:24
+Generated: 2025-09-13 14:54:22
 
 Revive
 ├── _archive
@@ -45,6 +45,7 @@ Revive
 │   │   │   ├── buff.py
 │   │   │   ├── macros.py
 │   │   │   ├── pipeline.py
+│   │   │   ├── record.py
 │   │   │   ├── respawn.py
 │   │   │   ├── state.py
 │   │   │   ├── system.py
@@ -67,6 +68,7 @@ Revive
 │   │   │   ├── macros.ui.js
 │   │   │   ├── pipeline.ui.js
 │   │   │   ├── pooldump.ui.js
+│   │   │   ├── record.js
 │   │   │   ├── respawn.ui.js
 │   │   │   ├── state.poller.js
 │   │   │   ├── state.ui.js
@@ -94,6 +96,105 @@ Revive
 │   │   ├── servers.manifest.json
 │   │   └── servers.py
 │   ├── engines
+│   │   ├── autofarm
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       ├── monsters
+│   │   │   │   │   │       │   └── names
+│   │   │   │   │   │       └── sys_messages
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   ├── Dion_1
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   ├── Dwarf_village
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   ├── Ruins_of_agony_start
+│   │   │   │   │   │   │   └── gallery
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── rules.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   ├── common
+│   │   │   │   │   ├── skills
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── professions.json
+│   │   │   │   │   ├── skills_catalog.json
+│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── zones.json
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   ├── skill_repo.py
+│   │   │   └── zone_repo.py
+│   │   ├── dashboard
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── buffer
+│   │   │   │   │   │   ├── __init__.py
+│   │   │   │   │   │   ├── engine.py
+│   │   │   │   │   │   └── rules.py
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── common
+│   │   │   │   │   │   │   └── buffer
+│   │   │   │   │   │   │       └── icons
+│   │   │   │   │   │   │           ├── buffs
+│   │   │   │   │   │   │           ├── dances
+│   │   │   │   │   │   │           └── songs
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   ├── rus
+│   │   │   │   │   │   │   ├── buffer
+│   │   │   │   │   │   │   ├── main
+│   │   │   │   │   │   │   └── teleport
+│   │   │   │   │   │   │       ├── catacombs
+│   │   │   │   │   │   │       ├── towns
+│   │   │   │   │   │   │       │   ├── Giran
+│   │   │   │   │   │   │       │   ├── Goddard
+│   │   │   │   │   │   │       │   └── Rune
+│   │   │   │   │   │   │       └── villages
+│   │   │   │   │   │   ├── __init__.py
+│   │   │   │   │   │   └── resolver.py
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── dashboard_data.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── rules.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   └── runner.py
+│   │   ├── flow
+│   │   │   ├── __init__.py
+│   │   │   ├── engine.py
+│   │   │   └── ops.py
+│   │   ├── macros
+│   │   │   ├── server
+│   │   │   │   └── boh
+│   │   │   │       ├── engine.py
+│   │   │   │       └── rules.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   └── service.py
+│   │   ├── player_state
+│   │   │   ├── server
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── templates
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── state_data.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── runner.py
+│   │   │   ├── service.py
+│   │   │   └── watcher.py
 │   │   ├── record
 │   │   │   ├── engine.py
 │   │   │   ├── rules.py

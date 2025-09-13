@@ -6,6 +6,7 @@ import importlib
 
 from core.orchestrators.snapshot import Snapshot
 from core.engines.respawn.runner import RespawnRunner
+from core.engines.record.engine import RecordEngine
 
 from core.state.pool import pool_get, pool_merge, pool_write
 from core.logging import console
@@ -35,7 +36,11 @@ class PipelineRule:
             get_window=lambda: pool_get(self.s, "window.info", None),
             get_language=lambda: pool_get(self.s, "config.language", "rus"),
         )
-
+        self._record_engine = RecordEngine(
+            state=self.s,
+            controller=self.controller,
+            get_window=lambda: pool_get(self.s, "window.info", None),
+        )
     # --- util debug / hud ---
     def _dbg(self, msg: str):
         try:
@@ -156,6 +161,7 @@ class PipelineRule:
             "tp": "tp",
             "macros": "macros",
             "autofarm": "autofarm",
+            "record": "record",  # ← ДОБАВИТЬ
         }.get(step)
         if not feature:
             return True
@@ -318,6 +324,32 @@ class PipelineRule:
             finally:
                 _busy_off("tp")
 
+        if step == "record":
+            _busy_on("record")
+            try:
+                from core.engines.record.rules import run_step as record_run_step
+                try:
+                    ok, adv = record_run_step(
+                        state=self.s,
+                        ps_adapter=self.ps,
+                        controller=self.controller,
+                        snap=snap,
+                        helpers={
+                            "state": self.s,
+                            "record_engine": self._record_engine,
+                            "get_window": lambda: pool_get(self.s, "window.info", None),
+                            "get_language": lambda: pool_get(self.s, "config.language", "rus"),
+                            # опц. колбэк ожидания фокуса не обязателен — правила сами смотрят пул
+                        },
+                    )
+                    return bool(ok), bool(adv)
+                except Exception as e:
+                    console.log(f"[RECORD] rules error: {e}")
+                    self._hud_err("[RECORD] ошибка rules — пропуск шага")
+                    return True, True
+            finally:
+                _busy_off("record")
+
         if step == "autofarm":
             # busy автофарма помечает сам сервис, т.к. это долговременный цикл
             fn = self._call_server_rule("autofarm")
@@ -347,9 +379,9 @@ class PipelineRule:
 
     # ---------- utils ----------
     def _order(self) -> List[str]:
-        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "autofarm"]) or [])
+        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "record", "autofarm"]) or [])
         if not raw:
-            raw = ["respawn", "buff", "macros", "autofarm"]
+            raw = ["respawn", "buff", "macros", "record", "autofarm"]
         rest = [x for x in raw if x and x.lower() != "respawn"]
         return ["respawn"] + rest
 

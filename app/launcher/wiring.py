@@ -24,6 +24,7 @@ from .sections.macros import MacrosSection
 from .sections.tp import TPSection
 from .sections.autofarm import AutofarmSection
 from .sections.pipeline import PipelineSection
+from .sections.record import RecordSection
 
 # оркестратор
 from core.orchestrators.pipeline_rule import make_pipeline_rule
@@ -43,6 +44,12 @@ from app.launcher.infra.services import ServicesBundle
 # новый логгер
 from core.logging import console
 
+try:
+    from pynput import keyboard as _hk_keyboard
+    from pynput import mouse as _hk_mouse
+    _HK_AVAILABLE = True
+except Exception as _e:
+    _HK_AVAILABLE = False
 
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
@@ -104,6 +111,15 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     })
     pool_write(state, "features.tp", {"enabled": False, "status": "idle", "methods": tp_methods})
     pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
+    # pool_write(state, "features.record", {
+    #     "enabled": False,
+    #     "current_record": "",
+    #     "records": [],
+    #     "status": "idle",
+    #     "busy": False,
+    #     "waiting": False,
+    #     "ts": 0.0,
+    # })
     # pool_write(state, "pipeline", {
     #     "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
     #     "order": ["respawn", "macros", "autofarm"],
@@ -130,7 +146,16 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         TPSection(window, controller, ps_adapter, state, ui.schedule),
         AutofarmSection(window, controller, ps_adapter, state, ui.schedule),
         PipelineSection(window, state),
+        RecordSection(state=state, controller=controller, get_window=lambda: pool_get(state, "window.info", None)),
     ]
+
+    # запустить глобальные хуки записи
+    rec_sec = next((s for s in sections if isinstance(s, RecordSection)), None)
+    if rec_sec:
+        try:
+            rec_sec.start_global_hooks()
+        except Exception as e:
+            console.log(f"[wiring] record hooks start error: {e}")
 
     exposed: Dict[str, Any] = {}
     for sec in sections:
@@ -175,6 +200,14 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             services.stop()
         except Exception:
             pass
+
+        # остановить хуки записи
+        try:
+            if rec_sec:
+                rec_sec.stop_global_hooks()
+        except Exception:
+            pass
+
         try:
             controller.close()
         except Exception as e:
