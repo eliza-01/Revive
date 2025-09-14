@@ -47,7 +47,7 @@ class PlayerStateService:
                     except Exception:
                         # глушим исключения цикла опроса и пробуем перезапуститься
                         pass
-                    time.sleep(0.05)  # пауза между перезапусками
+                    time.sleep(0.5)  # пауза между перезапусками
             finally:
                 self._run = False
 

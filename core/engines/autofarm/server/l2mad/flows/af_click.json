@@ -2,7 +2,7 @@
   {
     "op": "wait",
     "zone": "fullscreen",
-    "tpl": ["interface", "autofarm.png"],
+    "teleportl": ["interface", "autofarm.png"],
     "timeout_ms": 2000,
     "thr": 0.87,
     "retry_count": 3,
@@ -12,7 +12,7 @@
   {
     "op": "click_in",
     "zone": "fullscreen",
-    "tpl": ["interface", "autofarm.png"],
+    "teleportl": ["interface", "autofarm.png"],
     "timeout_ms": 2000,
     "thr": 0.87
   }

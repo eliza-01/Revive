@@ -1,4 +1,4 @@
-# tools/test_hid_move.py
+﻿# tools/drag.py
 import time
 from core.arduino.connection import ReviveController
 

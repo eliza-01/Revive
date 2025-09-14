@@ -33,7 +33,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         "respawn": {
             "enabled": False, "wait_enabled": False, "wait_seconds": 120,
             "click_threshold": 0.70, "confirm_timeout_s": 6.0,
-            "status": "idle", "busy": False, "waiting": False, "last_respawn": { "type": "" }, "ts": 0.0,
+            "status": "idle", "busy": False, "waiting": False, "last_respawn": {"type": ""}, "ts": 0.0,
         },
         "buff": {
             "enabled": False, "mode": "", "methods": [],
@@ -44,32 +44,40 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": False, "repeat_enabled": False, "rows": [],
             "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
         },
-        "tp": {
-            "enabled": False, "method": "dashboard", "category": "", "location": "", "row_id": "",
+        "teleport": {
+            "enabled": False,
+            "method": "dashboard",
+            "category": "",
+            "location": "",
             "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+        },
+        "stabilize": {
+            "enabled": False,
+            "busy": False,
+            "status": "idle"
         },
         "record": {
             "enabled": False, "current_record": "", "records": [],
             "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
         },
         "autofarm": {
-          "enabled": False,
-          "mode": "manual",           # "auto" | "manual"
-          "status": "idle", "busy": False, "waiting": False,
-          "config": {
-            "profession": "",
-            "skills": [{"key":"1","slug":"", "cast_ms":1100}],
-            "zone": "",
-            "monsters": []
-          },
-          "ts": 0.0
+            "enabled": False,
+            "mode": "manual",           # "auto" | "manual"
+            "status": "idle", "busy": False, "waiting": False,
+            "config": {
+                "profession": "",
+                "skills": [{"key": "1", "slug": "", "cast_ms": 1100}],
+                "zone": "",
+                "monsters": []
+            },
+            "ts": 0.0
         }
     })
 
     # ---- Пайплайн ----
     st.setdefault("pipeline", {
-        "allowed": ["respawn", "buff", "macros", "tp", "record", "autofarm"],
-        "order": ["respawn", "buff", "macros", "tp", "record", "autofarm"],
+        "allowed": ["respawn", "buff", "macros", "teleport", "record", "autofarm"],
+        "order":   ["respawn", "buff", "macros", "teleport", "record", "autofarm"],
         "active": False, "idx": 0, "last_step": "", "ts": 0.0,
     })
 
@@ -85,11 +93,11 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("runtime", {
         "orch": {"busy_until": 0.0, "active": False, "ts": 0.0},
         "debug": {
-            "buff_zone": True, "log": False, "respawn_debug": False, "pipeline_debug": False, "pool_debug": False, "ui_guard_debug": False, "ts": 0.0,
+            "buff_zone": True, "log": False, "respawn_debug": False,
+            "pipeline_debug": False, "pool_debug": False, "ui_guard_debug": False, "ts": 0.0,
         }
     })
     return st
-
 
 
 def _walk(d: Dict[str, Any], path: Iterable[str]) -> Dict[str, Any]:
@@ -147,6 +155,7 @@ def _round_numbers(v: Any) -> Any:
         return tuple(_round_numbers(x) for x in v)
     return v
 
+
 def _json_sanitize(x: Any) -> Any:
     if isinstance(x, (str, int, float, bool)) or x is None:
         return x
@@ -155,6 +164,7 @@ def _json_sanitize(x: Any) -> Any:
     if isinstance(x, (list, tuple)):
         return [_json_sanitize(v) for v in x]
     return f"<{x.__class__.__name__}>"
+
 
 def dump_pool(state: Dict[str, Any], *, compact: bool = True) -> Dict[str, Any]:
     """

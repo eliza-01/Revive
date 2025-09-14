@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List
 from _archive.servers.registry import (
     BUFF_METHOD_DASHBOARD, BUFF_METHOD_NPC,
-    TP_METHOD_DASHBOARD, )
+    Teleport_METHOD_DASHBOARD, )
 
 def _server_id() -> str:
     try:
@@ -19,9 +19,9 @@ class ServerProfile:
     def __init__(self):
         self._buff_mode = BUFF_METHOD_DASHBOARD  # дефолт
 
-    # --- TP ---
-    def tp_supported_methods(self) -> List[str]:
-        return [TP_METHOD_DASHBOARD]
+    # --- Teleport ---
+    def teleport_supported_methods(self) -> List[str]:
+        return [Teleport_METHOD_DASHBOARD]
 
     # --- Buff ---
     def buff_supported_methods(self) -> List[str]:

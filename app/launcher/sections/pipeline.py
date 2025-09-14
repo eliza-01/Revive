@@ -4,7 +4,7 @@ from typing import Dict, List
 from ..base import BaseSection
 from core.state.pool import pool_write, pool_get
 
-ALLOWED_STEPS_DEFAULT = ["respawn", "buff", "macros", "tp", "autofarm"]
+ALLOWED_STEPS_DEFAULT = ["respawn", "buff", "macros", "teleport", "autofarm"]
 
 class PipelineSection(BaseSection):
     def __init__(self, window, state: Dict[str, any]):
@@ -39,7 +39,7 @@ class PipelineSection(BaseSection):
 
     def pipeline_set_order(self, order):
         """
-        order: список шагов из UI (например: ["respawn","buff","tp","macros"])
+        order: список шагов из UI (например: ["respawn","buff","teleport","macros"])
         Храним как есть; PipelineRule всё равно зафиксирует respawn вверху.
         """
         try:
@@ -47,7 +47,7 @@ class PipelineSection(BaseSection):
         except Exception:
             seq = []
 
-        allowed = {"respawn", "buff", "tp", "macros", "record", "autofarm"}
+        allowed = {"respawn", "buff", "teleport", "macros", "record", "autofarm"}
         seen = set()
         seq = [x for x in seq if x in allowed and (x not in seen and not seen.add(x))]
 

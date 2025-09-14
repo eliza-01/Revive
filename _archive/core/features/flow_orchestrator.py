@@ -28,7 +28,7 @@ class FlowOrchestrator:
         checker,                   # core.checks.charged.ChargeChecker
         watcher,                   # core.runtime.state_watcher.StateWatcher
         to_village,                # core.features.to_village.ToVillage
-        postrow_runner,            # core.features.post_tp_row.PostTPRowRunner
+        postrow_runner,            # core.features.post_teleport_row.PostTeleportRowRunner
         restart_manager,           # core.features.restart_manager.RestartManager
 
         # геттеры окружения
@@ -56,10 +56,10 @@ class FlowOrchestrator:
         self._macros_ui_get_duration_s: Callable[[], float] = lambda: 0.0
         self._macros_run_once: Callable[[], bool] = lambda: False
 
-        self._tp_is_enabled: Callable[[], bool] = lambda: False
-        self._tp_teleport_now_selected: Callable[[], bool] = lambda: False
-        self._tp_get_selected_destination: Callable[[], tuple[str, str]] = lambda: ("", "")
-        self._tp_get_selected_row_id: Callable[[], str] = lambda: ""
+        self._teleport_is_enabled: Callable[[], bool] = lambda: False
+        self._teleport_teleport_now_selected: Callable[[], bool] = lambda: False
+        self._teleport_get_selected_destination: Callable[[], tuple[str, str]] = lambda: ("", "")
+        self._teleport_get_selected_row_id: Callable[[], str] = lambda: ""
 
         # флаг UI «поднимать после смерти»
         self._respawn_ui_is_enabled: Callable[[], bool] = lambda: False
@@ -68,9 +68,9 @@ class FlowOrchestrator:
         self._alive_flag: bool = True
         self._charged_flag: Optional[bool] = None
         self._buff_was_success: bool = False
-        self._tp_success: bool = False
+        self._teleport_success: bool = False
 
-        self._tp_after_death = False
+        self._teleport_after_death = False
         self._revive_decided = True
 
         self._flow_interrupted = False
@@ -87,8 +87,8 @@ class FlowOrchestrator:
                 "buff_if_needed": self._flow_step_buff_if_needed,
                 "macros_after_buff": self._flow_step_macros_after_buff,
                 "recheck_charged": self._flow_step_recheck_charged,
-                "tp_if_ready": self._flow_step_tp_if_ready,
-                "post_tp_row": self._flow_step_post_tp_row,
+                "teleport_if_ready": self._flow_step_teleport_if_ready,
+                "post_teleport_row": self._flow_step_post_teleport_row,
             },
             order=PRIORITY,
         )
@@ -106,10 +106,10 @@ class FlowOrchestrator:
         macros_ui_get_duration_s: Callable[[], float],
         macros_run_once: Callable[[], bool],
         # ТП
-        tp_is_enabled: Callable[[], bool],
-        tp_teleport_now_selected: Callable[[], bool],
-        tp_get_selected_destination: Callable[[], tuple[str, str]],
-        tp_get_selected_row_id: Callable[[], str],
+        teleport_is_enabled: Callable[[], bool],
+        teleport_teleport_now_selected: Callable[[], bool],
+        teleport_get_selected_destination: Callable[[], tuple[str, str]],
+        teleport_get_selected_row_id: Callable[[], str],
         # «в деревню» UI-флаг
         respawn_ui_is_enabled: Callable[[], bool],
     ):
@@ -121,10 +121,10 @@ class FlowOrchestrator:
         self._macros_ui_get_duration_s = macros_ui_get_duration_s
         self._macros_run_once = macros_run_once
 
-        self._tp_is_enabled = tp_is_enabled
-        self._tp_teleport_now_selected = tp_teleport_now_selected
-        self._tp_get_selected_destination = tp_get_selected_destination
-        self._tp_get_selected_row_id = tp_get_selected_row_id
+        self._teleport_is_enabled = teleport_is_enabled
+        self._teleport_teleport_now_selected = teleport_teleport_now_selected
+        self._teleport_get_selected_destination = teleport_get_selected_destination
+        self._teleport_get_selected_row_id = teleport_get_selected_row_id
 
         self._respawn_ui_is_enabled = respawn_ui_is_enabled
 
@@ -133,7 +133,7 @@ class FlowOrchestrator:
         self._cycle_success_marked = False
         self._alive_flag = False
         self._charged_flag = None
-        self._tp_success = False
+        self._teleport_success = False
         self._log("[state] death detected → charged=None")
         try:
             self.checker.invalidate()
@@ -234,61 +234,61 @@ class FlowOrchestrator:
         except Exception as e:
             self._log(f"[flow] recheck_charged error: {e}")
 
-    def _flow_step_tp_if_ready(self):
-        tp_enabled = bool(self._tp_is_enabled())
-        if not tp_enabled:
-            self._log("[flow] tp_if_ready → skip (disabled)")
-            self._tp_success = False
-            self._mark_cycle_success("tp_disabled")
+    def _flow_step_teleport_if_ready(self):
+        teleport_enabled = bool(self._teleport_is_enabled())
+        if not teleport_enabled:
+            self._log("[flow] teleport_if_ready → skip (disabled)")
+            self._teleport_success = False
+            self._mark_cycle_success("teleport_disabled")
             return
 
         if self._charged_flag is not True:
-            self._log(f"[flow] tp_if_ready → skip (not charged: {self._charged_flag})")
-            self._tp_success = False
-            self._reset_and_run(reason="not_charged_for_tp")
+            self._log(f"[flow] teleport_if_ready → skip (not charged: {self._charged_flag})")
+            self._teleport_success = False
+            self._reset_and_run(reason="not_charged_for_teleport")
             return
 
-        self._tp_success = bool(self._tp_teleport_now_selected())
-        self._log(f"[flow] tp_if_ready → {self._tp_success}")
-        self._tp_after_death = False
+        self._teleport_success = bool(self._teleport_teleport_now_selected())
+        self._log(f"[flow] teleport_if_ready → {self._teleport_success}")
+        self._teleport_after_death = False
 
-        if not self._tp_success:
-            self._reset_and_run(reason="tp_failed")
+        if not self._teleport_success:
+            self._reset_and_run(reason="teleport_failed")
             return
 
-        if self._tp_success and not self._is_row_selected():
-            self._mark_cycle_success("tp_only")
+        if self._teleport_success and not self._is_row_selected():
+            self._mark_cycle_success("teleport_only")
 
-    def _flow_step_post_tp_row(self):
+    def _flow_step_post_teleport_row(self):
         try:
-            if not self._tp_success:
-                self._log("[rows] skip (tp not successful)")
+            if not self._teleport_success:
+                self._log("[rows] skip (teleport not successful)")
                 return
 
-            cat, loc = self._tp_get_selected_destination()
-            row_id = self._tp_get_selected_row_id()
+            cat, loc = self._teleport_get_selected_destination()
+            row_id = self._teleport_get_selected_row_id()
 
             if not (cat and loc):
                 self._log("[rows] no destination → treat as success")
-                self._mark_cycle_success("tp_only")
+                self._mark_cycle_success("teleport_only")
                 return
 
             if not row_id:
                 self._log("[rows] no row selected → treat as success")
-                self._mark_cycle_success("tp_no_row")
+                self._mark_cycle_success("teleport_no_row")
                 return
 
             ok = bool(self.postrow.run_row(cat, loc, row_id))
             self._log(f"[rows] run → {ok}")
             if ok:
-                self._mark_cycle_success("post_tp_row")
+                self._mark_cycle_success("post_teleport_row")
             else:
                 self._reset_and_run("row_failed")
         except Exception as e:
             self._log(f"[rows] error: {e}")
             self._reset_and_run("row_exception")
         finally:
-            self._tp_success = False
+            self._teleport_success = False
 
     # --- хуки автофарма ---
     def set_autofarm_start(self, start_fn):
@@ -312,18 +312,18 @@ class FlowOrchestrator:
         try:
             ok = bool(self.to_village.run_once(timeout_ms=4000))
             self._log(f"[to_village] run: {ok}")
-            self._tp_after_death = ok
+            self._teleport_after_death = ok
             if not ok:
                 self._reset_and_run(reason="to_village_failed")
         except Exception as e:
             self._log(f"[to_village] error in thread: {e}")
-            self._tp_after_death = False
+            self._teleport_after_death = False
         finally:
             self._revive_decided = True
 
     def _is_row_selected(self) -> bool:
         try:
-            return bool(self._tp_get_selected_row_id())
+            return bool(self._teleport_get_selected_row_id())
         except Exception:
             return False
 
@@ -373,7 +373,7 @@ class FlowOrchestrator:
             self._log(f"[reset] revive retry error: {e}")
 
         # 3) метки и перезапуск цикла
-        self._tp_success = False
+        self._teleport_success = False
         self._buff_was_success = False
         self._flow_interrupted = True
         if not self._awaiting_alive_restart:

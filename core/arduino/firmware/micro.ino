@@ -73,10 +73,16 @@ void loop() {
 
 
 void processCommand(String cmd) {
+  // убрать \n\r в конце
   while (cmd.length() && (cmd[cmd.length()-1] == '\n' || cmd[cmd.length()-1] == '\r')) {
     cmd.remove(cmd.length()-1);
   }
-  cmd.trim();
+
+  // БЫЛО: cmd.trim();    // <-- это срезало нужный пробел после "/target "
+  // СТАЛО: тримаем только слева, чтобы не терять хвостовые пробелы в payload
+  while (cmd.length() && (cmd[0] == ' ' || cmd[0] == '\t')) {
+    cmd.remove(0, 1);
+  }
 
   // --- относительное движение курсора по HID (игры видят Raw Input) ---
   if (cmd.startsWith("mv ")) {

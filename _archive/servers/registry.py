@@ -8,8 +8,8 @@ from typing import List, Protocol, Optional
 import _archive.servers as _servers_pkg
 
 # --- публичные константы (как раньше) ---
-TP_METHOD_DASHBOARD = "dashboard"
-TP_METHOD_GATEKEEPER = "gatekeeper"
+Teleport_METHOD_DASHBOARD = "dashboard"
+Teleport_METHOD_GATEKEEPER = "gatekeeper"
 
 BUFF_METHOD_DASHBOARD = "dashboard"
 BUFF_METHOD_NPC = "npc"
@@ -19,7 +19,7 @@ class ServerProfileProto(Protocol):
     id: str
     name: str
 
-    def tp_supported_methods(self) -> List[str]: ...
+    def teleport_supported_methods(self) -> List[str]: ...
     def buff_supported_methods(self) -> List[str]: ...
     def supports_buffing(self) -> bool: ...
     def set_buff_mode(self, mode: str) -> None: ...

@@ -3,15 +3,15 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from typing import Callable, Optional, Tuple
 
-from _archive.core.features.tp_after_respawn import (
-    TPAfterDeathWorker,
-    TP_METHOD_DASHBOARD,
-    TP_METHOD_GATEKEEPER,
+from _archive.core.features.teleport_after_respawn import (
+    TeleportAfterDeathWorker,
+    Teleport_METHOD_DASHBOARD,
+    Teleport_METHOD_GATEKEEPER,
 )
 from _archive.servers import get_categories, get_locations
 
 
-class TPControls:
+class TeleportControls:
     def __init__(
             self,
             parent: tk.Widget,
@@ -29,7 +29,7 @@ class TPControls:
         self._check_is_dead = check_is_dead
 
         self.enabled_var = tk.BooleanVar(value=False)
-        self.method_var = tk.StringVar(value=TP_METHOD_DASHBOARD)
+        self.method_var = tk.StringVar(value=Teleport_METHOD_DASHBOARD)
         self.category_var = tk.StringVar(value="")  # stores category_id
         self.location_var = tk.StringVar(value="")  # stores location_id
 
@@ -55,8 +55,8 @@ class TPControls:
             row,
             self.method_var,
             self.method_var.get(),
-            TP_METHOD_DASHBOARD,
-            TP_METHOD_GATEKEEPER,
+            Teleport_METHOD_DASHBOARD,
+            Teleport_METHOD_GATEKEEPER,
             command=lambda *_: None,
         )
         self.method_menu.pack(side="left", padx=(6, 16))
@@ -85,7 +85,7 @@ class TPControls:
         self.status.pack(anchor="w", pady=(4, 2))
 
         self._fill_categories()
-        self._worker: Optional[TPAfterDeathWorker] = None
+        self._worker: Optional[TeleportAfterDeathWorker] = None
 
     # ------- public API used by launcher -------
 
@@ -118,7 +118,7 @@ class TPControls:
 
     # ------- internals -------
 
-    def _ensure_worker(self) -> TPAfterDeathWorker:
+    def _ensure_worker(self) -> TeleportAfterDeathWorker:
         if self._worker is None:
             def _status(text, ok=None):
                 try:
@@ -129,7 +129,7 @@ class TPControls:
                 except Exception:
                     print(text)
 
-            self._worker = TPAfterDeathWorker(
+            self._worker = TeleportAfterDeathWorker(
                 controller=self.controller,
                 window_info=self.get_window_info(),
                 get_language=self.get_language,

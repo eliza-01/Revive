@@ -39,7 +39,7 @@ class BuffAfterRespawnWorker:
         m = (method or "dashboard").lower()
         self._method = m if m in ("dashboard", "npc") else "dashboard"
 
-    def _mode_tpl_key(self) -> str:
+    def _mode_teleportl_key(self) -> str:
         return {
             BUFF_MODE_PROFILE: "buffer_mode_profile",
             BUFF_MODE_MAGE: "buffer_mode_mage",
@@ -87,7 +87,7 @@ class BuffAfterRespawnWorker:
             get_language=self._get_language,
             zones=zones,
             templates=templates,
-            extras={"mode_key_provider": lambda: self._mode_tpl_key()},
+            extras={"mode_key_provider": lambda: self._mode_teleportl_key()},
         )
         execu = FlowOpExecutor(ctx)
         ok = run_flow(flow, execu)

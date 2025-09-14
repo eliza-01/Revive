@@ -57,38 +57,38 @@ ren "dist\ReviveLauncher.exe" "%FINAL_EXE_NAME%" || (
   exit /b 1
 )
 
-REM Чтение FTP-данных (формат: host=..., user=..., pass=..., remote_path=/path/)
-for /f "usebackq tokens=1,2 delims==" %%a in ("deploy\ftp_credentials.txt") do (
+REM Чтение FTeleport-данных (формат: host=..., user=..., pass=..., remote_path=/path/)
+for /f "usebackq tokens=1,2 delims==" %%a in ("deploy\fteleport_credentials.txt") do (
     set "%%a=%%b"
 )
 
-if not defined host  echo [!!] host не задан в deploy\ftp_credentials.txt & exit /b 1
-if not defined user  echo [!!] user не задан в deploy\ftp_credentials.txt & exit /b 1
-if not defined pass  echo [!!] pass не задан в deploy\ftp_credentials.txt & exit /b 1
-if not defined remote_path echo [!!] remote_path не задан в deploy\ftp_credentials.txt & exit /b 1
+if not defined host  echo [!!] host не задан в deploy\fteleport_credentials.txt & exit /b 1
+if not defined user  echo [!!] user не задан в deploy\fteleport_credentials.txt & exit /b 1
+if not defined pass  echo [!!] pass не задан в deploy\fteleport_credentials.txt & exit /b 1
+if not defined remote_path echo [!!] remote_path не задан в deploy\fteleport_credentials.txt & exit /b 1
 
 REM Нормализуем remote_path завершая слешем
 if not "%remote_path:~-1%"=="/" set "remote_path=%remote_path%/"
 
 REM Генерация скрипта WinSCP
-del "deploy\ftp_upload_script.txt" 2>nul
+del "deploy\fteleport_upload_script.txt" 2>nul
 (
   echo option batch abort
   echo option confirm off
-  echo open ftp://%user%:%pass%@%host%
+  echo open fteleport://%user%:%pass%@%host%
   echo binary
   echo put "latest_version.txt" "%remote_path%latest_version.txt"
   echo put "dist\%FINAL_EXE_NAME%" "%remote_path%%FINAL_EXE_NAME%"
   echo exit
-) > "deploy\ftp_upload_script.txt"
+) > "deploy\fteleport_upload_script.txt"
 
-echo [>>] Загрузка файлов на FTP...
+echo [>>] Загрузка файлов на FTeleport...
 if not exist "C:\Program Files (x86)\WinSCP\WinSCP.com" (
   echo [!!] WinSCP.com не найден по пути "C:\Program Files (x86)\WinSCP\WinSCP.com"
   exit /b 1
 )
 
-"C:\Program Files (x86)\WinSCP\WinSCP.com" /script="deploy\ftp_upload_script.txt"
+"C:\Program Files (x86)\WinSCP\WinSCP.com" /script="deploy\fteleport_upload_script.txt"
 set "ERR=%ERRORLEVEL%"
 
 if not "%ERR%"=="0" (

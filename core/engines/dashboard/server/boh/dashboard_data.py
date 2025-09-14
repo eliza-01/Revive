@@ -29,18 +29,33 @@ TEMPLATES: Dict[str, List[str]] = {
     "dashboard_buffer_restoreHp": ["<lang>", "buffer", "dashboard_buffer_restoreHp.png"],
     "target_player_init": ["<lang>", "buffer", "target_player_init.png"],
     # dashboard_teleport
-    "dashboard_teleport": ["<lang>", "teleport", "dashboard_teleport_init.png"],
+    "dashboard_teleport_init": ["<lang>", "teleport", "dashboard_teleport_init.png"],
+}
+TELEPORT_CATEGORIES: Dict[str, List[str]] = {
     # dashboard_teleport_towns
-    "dashboard_teleport_towns": ["<lang>", "teleport", "towns", "towns.png"],
+    "towns": ["<lang>", "teleport", "towns.png"],
+    "villages": ["<lang>", "teleport", "villages.png"],
+}
+TELEPORT_TOWNS: Dict[str, List[str]] = {
+    "towns_init": ["<lang>", "teleport", "towns", "towns_init.png"],
+    # кнопки разделов города
+    "Goddard": ["<lang>", "teleport", "towns", "Goddard.png"],
+    "Rune": ["<lang>", "teleport", "towns", "Rune.png"],
+    "Giran": ["<lang>", "teleport", "towns", "Giran.png"],
+}
+TELEPORT_VILLAGES: Dict[str, List[str]] = {
+    "villages_init": ["<lang>", "teleport", "villages", "villages_init.png"],
+    "TalkingIsland": ["<lang>", "teleport", "villages", "TalkingIsland.png"],
+}
+TELEPORT_LOCATIONS: Dict[str, List[str]] = {
+    # кнопки перемещения в город
+    "Goddard": ["<lang>", "teleport", "towns", "Goddard", "Goddard.png"],
+    "Rune": ["<lang>", "teleport", "towns", "Rune", "Rune.png"],
+    "Giran": ["<lang>", "teleport", "towns", "Giran", "Giran.png"],
     # dashboard_teleport_towns_Goddard
-    "dashboard_teleport_Goddard": ["<lang>", "teleport", "towns", "Goddard", "Goddard.png"],
-    "dashboard_teleport_VarkaSilenosStronghold": ["<lang>", "teleport", "towns", "Goddard", "VarkaSilenosStronghold.png"],
-    # dashboard_teleport_towns_Rune
-    "dashboard_teleport_Rune": ["<lang>", "teleport", "towns", "Rune", "Rune.png"],
-    "dashboard_teleport_PrimevalIsle": ["<lang>", "teleport", "towns", "Rune", "PrimevalIsle.png"],
-    # dashboard_teleport_towns_Giran
-    "dashboard_teleport_Giran": ["<lang>", "teleport", "towns", "Giran", "Giran.png"],
-    "dashboard_teleport_DragonValley": ["<lang>", "teleport", "towns", "Giran", "DragonValley.png"],
+    "VarkaSilenosStronghold": ["<lang>", "teleport", "towns", "Goddard", "VarkaSilenosStronghold.png"],
+    "PrimevalIsle": ["<lang>", "teleport", "towns", "Rune", "PrimevalIsle.png"],
+    "DragonValley": ["<lang>", "teleport", "towns", "Giran", "DragonValley.png"],
 }
 # Разделы бафов
 BUFFS: Dict[str, List[str]] = {

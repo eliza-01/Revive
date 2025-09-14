@@ -14,8 +14,8 @@ def make_focus_pause_rule(state: Dict[str, Any], cfg: Optional[Dict[str, Any]] =
 
     Своё состояние хранит ТОЛЬКО в пуле:
       runtime.focus_pause.active: bool
-      runtime.focus_pause.saved:      {respawn,buff,macros,tp,autofarm} -> bool
-      runtime.focus_pause.saved_busy: {respawn,buff,macros,tp,autofarm} -> bool
+      runtime.focus_pause.saved:      {respawn,buff,macros,teleport,autofarm} -> bool
+      runtime.focus_pause.saved_busy: {respawn,buff,macros,teleport,autofarm} -> bool
     """
     return _FocusPauseRule(state, cfg or {})
 
@@ -39,7 +39,7 @@ class _FocusPauseRule:
             "respawn":  bool(pool_get(self.s, "features.respawn.enabled", False)),
             "buff":     bool(pool_get(self.s, "features.buff.enabled", False)),
             "macros":   bool(pool_get(self.s, "features.macros.enabled", False)),
-            "tp":       bool(pool_get(self.s, "features.tp.enabled", False)),
+            "teleport":       bool(pool_get(self.s, "features.teleport.enabled", False)),
             "autofarm": bool(pool_get(self.s, "features.autofarm.enabled", False)),
         }
 
@@ -48,7 +48,7 @@ class _FocusPauseRule:
             "respawn":  bool(pool_get(self.s, "features.respawn.busy",  False)),
             "buff":     bool(pool_get(self.s, "features.buff.busy",     False)),
             "macros":   bool(pool_get(self.s, "features.macros.busy",   False)),
-            "tp":       bool(pool_get(self.s, "features.tp.busy",       False)),
+            "teleport":       bool(pool_get(self.s, "features.teleport.busy",       False)),
             "autofarm": bool(pool_get(self.s, "features.autofarm.busy", False)),
         }
 
@@ -83,7 +83,7 @@ class _FocusPauseRule:
         except Exception:
             pass
 
-        # Buff/TP/Respawn — одношаговые; ими займётся пайплайн на ближайшем тике.
+        # Buff/Teleport/Respawn — одношаговые; ими займётся пайплайн на ближайшем тике.
 
     # --- rule API ---
     def when(self, snap) -> bool:

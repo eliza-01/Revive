@@ -119,10 +119,10 @@ SECTIONS: Dict[str, List[str]] = {
         "_archive/core/features/buff_after_respawn.py",
         "_archive/core/features/dashboard_reset.py",
         "_archive/core/features/flow_actions.py",
-        "_archive/core/features/post_tp_row.py",
+        "_archive/core/features/post_teleport_row.py",
         "_archive/core/features/restart_manager.py",
         "_archive/core/features/to_village.py",
-        "_archive/core/features/tp_after_respawn.py",
+        "_archive/core/features/teleport_after_respawn.py",
         # player_state — берем актуальный из core/engines/player_state (если он есть),
         # а из _archive только при необходимости:
         "_archive/core/features/archive/player_state.py",
@@ -290,7 +290,7 @@ def main():
     # ЕДИНЫЙ МАНИФЕСТ (с разделителями по секторам)
     manifest_path = out_dir / args.manifest_name
     with io.open(manifest_path, "w", encoding="utf-8", newline="\n") as mf:
-        mf.write("# section\tstatus\tpath\n")
+        mf.write("# section\tstatus\teleportath\n")
         for l in letters:
             if l not in all_entries_by_section:
                 continue
@@ -299,7 +299,7 @@ def main():
             for line in all_entries_by_section[l]:
                 mf.write(line + "\n")
 
-    print(f"[done] output: {out_dir}")
+    print(f"[done] outeleportut: {out_dir}")
     print(f"[manifest] {manifest_path.name}: {sum(len(v) for v in all_entries_by_section.values())} entries")
 
 if __name__ == "__main__":

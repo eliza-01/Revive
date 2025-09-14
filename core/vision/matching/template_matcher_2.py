@@ -67,11 +67,11 @@ def match_key_in_zone_single(
     else:
         zone_gray = zone_img_bgr
 
-    tpath = _resolve_path(server, (lang or "rus").lower(), template_parts, engine=engine)
-    if not tpath:
+    teleportath = _resolve_path(server, (lang or "rus").lower(), template_parts, engine=engine)
+    if not teleportath:
         return None
 
-    templ = _load_template_abs(tpath)
+    templ = _load_template_abs(teleportath)
     if templ is None:
         return None
 
@@ -133,23 +133,23 @@ def match_multi_in_zone(
         parts = templates_map.get(key)
         if not parts:
             continue
-        tpath = _resolve_path(server, (lang or "rus").lower(), parts, engine=engine)
-        if not tpath:
+        teleportath = _resolve_path(server, (lang or "rus").lower(), parts, engine=engine)
+        if not teleportath:
             if debug:
                 console.log(f"[tm2] no template path for key={key} (server={server}, engine={engine})")
             continue
 
-        tpl = _load_template_abs(tpath)
-        if tpl is None or tpl.size == 0:
+        teleportl = _load_template_abs(teleportath)
+        if teleportl is None or teleportl.size == 0:
             if debug:
-                console.log(f"[tm2] failed to read template: {tpath}")
+                console.log(f"[tm2] failed to read template: {teleportath}")
             continue
 
         for s in scales:
-            tw = max(1, int(round(tpl.shape[1] * s)))
-            th = max(1, int(round(tpl.shape[0] * s)))
+            tw = max(1, int(round(teleportl.shape[1] * s)))
+            th = max(1, int(round(teleportl.shape[0] * s)))
             t = cv2.resize(
-                tpl,
+                teleportl,
                 (tw, th),
                 interpolation=cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC
             )

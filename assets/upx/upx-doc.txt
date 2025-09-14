@@ -92,7 +92,7 @@ OPTIONS
 
     -q -q (or -qq): be very quiet, suppress errors
 
-    -q -q -q (or -qqq): produce no output at all
+    -q -q -q (or -qqq): produce no outeleportut at all
 
     --help: prints the help
 
@@ -107,7 +107,7 @@ OPTIONS
 
     -k: keep backup files
 
-    -o file: write output to file
+    -o file: write outeleportut to file
 
     [ ...more docs need to be written... - type `upx --help' for now ]
 
@@ -290,7 +290,7 @@ NOTES FOR THE SUPPORTED EXECUTABLE FORMATS
 
     Extra options available for this executable format:
 
-      --coff              Produce COFF output instead of EXE. By default
+      --coff              Produce COFF outeleportut instead of EXE. By default
                           UPX keeps your current stub.
 
       --all-methods       Compress the program several times, using all
@@ -706,7 +706,7 @@ NOTES FOR THE SUPPORTED EXECUTABLE FORMATS
 
     Extra options available for this executable format:
 
-      --le                Produce an unbound LE output instead of
+      --le                Produce an unbound LE outeleportut instead of
                           keeping the current stub.
 
   NOTES FOR WIN32/PE

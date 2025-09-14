@@ -17,7 +17,7 @@ class Snapshot:
     # единообразные флаги фич
     respawn_enabled: bool
     buff_enabled: bool
-    tp_enabled: bool
+    teleport_enabled: bool
     macros_enabled: bool
     autofarm_enabled: bool
 
@@ -60,7 +60,7 @@ def build_snapshot(state: Dict[str, Any], _ps_adapter=None) -> Snapshot:
     respawn_enabled = bool(pool_get(state, "features.respawn.enabled", False))
     macros_enabled = bool(pool_get(state, "features.macros.enabled", False))
     buff_enabled = bool(pool_get(state, "features.buff.enabled", False))
-    tp_enabled = bool(pool_get(state, "features.tp.enabled", False))
+    teleport_enabled = bool(pool_get(state, "features.teleport.enabled", False))
     autofarm_enabled = bool(pool_get(state, "features.autofarm.enabled", False))
 
     return Snapshot(
@@ -71,7 +71,7 @@ def build_snapshot(state: Dict[str, Any], _ps_adapter=None) -> Snapshot:
         focus_unfocused_for_s=unfocused_for,
         respawn_enabled=respawn_enabled,
         buff_enabled=buff_enabled,
-        tp_enabled=tp_enabled,
+        teleport_enabled=teleport_enabled,
         macros_enabled=macros_enabled,
         autofarm_enabled=autofarm_enabled,
     )

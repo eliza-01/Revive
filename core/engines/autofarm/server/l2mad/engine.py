@@ -24,9 +24,9 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     execu = FlowOpExecutor(fctx)
 
     flow = [
-        {"op": "wait",     "zone": "fullscreen", "tpl": ["interface","autofarm.png"],
+        {"op": "wait",     "zone": "fullscreen", "teleportl": ["interface","autofarm.png"],
          "timeout_ms": 2000, "thr": 0.87},
-        {"op": "click_in", "zone": "fullscreen", "tpl": ["interface","autofarm.png"],
+        {"op": "click_in", "zone": "fullscreen", "teleportl": ["interface","autofarm.png"],
          "timeout_ms": 2000, "thr": 0.87},
     ]
     return bool(run_flow(flow, execu))

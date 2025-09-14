@@ -65,7 +65,7 @@ rem === 7) сборка (включаем HTML-лаунчер и Tk-фолбэк
   --hidden-import webview.platforms.edgechromium ^
   --collect-submodules webview ^
   --collect-data webview ^
-  --workpath "%CD%\build" --distpath "%CD%\dist" --specpath "%CD%"
+  --workpath "%CD%\build" --disteleportath "%CD%\dist" --specpath "%CD%"
 if errorlevel 1 (echo [FAIL] build failed & pause & exit /b 1)
 
 rem === 8) результат ===

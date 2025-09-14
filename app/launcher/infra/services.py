@@ -108,7 +108,7 @@ class ServicesBundle:
                     "respawn": bool(pool_get(self.state, "features.respawn.busy", False)),
                     "buff": bool(pool_get(self.state, "features.buff.busy", False)),
                     "macros": bool(pool_get(self.state, "features.macros.busy", False)),
-                    "tp": bool(pool_get(self.state, "features.tp.busy", False)),
+                    "teleport": bool(pool_get(self.state, "features.teleport.busy", False)),
                     "autofarm": bool(pool_get(self.state, "features.autofarm.busy", False)),
                 }
                 # сохраняем снимок, чтобы правило паузы не «перезаписало» его уже обнулёнными флагами

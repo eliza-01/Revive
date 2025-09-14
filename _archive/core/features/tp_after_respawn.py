@@ -6,15 +6,15 @@ from typing import Callable, Optional, Dict
 
 from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 
-TP_METHOD_DASHBOARD = "dashboard"
-TP_METHOD_GATEKEEPER = "gatekeeper"
+Teleport_METHOD_DASHBOARD = "dashboard"
+Teleport_METHOD_GATEKEEPER = "gatekeeper"
 
 
-class TPAfterDeathWorker:
+class TeleportAfterDeathWorker:
     """
     Телепорт после смерти с выбором метода:
-      - flows: core.servers.<server>.flows.tp_<method>  (fallback: flows.tp)
-      - zones: core.servers.<server>.zones.tp_<method>  (fallback: zones.tp)
+      - flows: core.servers.<server>.flows.teleport_<method>  (fallback: flows.teleport)
+      - zones: core.servers.<server>.zones.teleport_<method>  (fallback: zones.teleport)
     Сервер не хардкодится: задаётся в конструкторе или через set_server().
     """
     def __init__(
@@ -41,7 +41,7 @@ class TPAfterDeathWorker:
 
         # состояние
         self._server = (server or "l2mad").lower()
-        self._method = TP_METHOD_DASHBOARD
+        self._method = Teleport_METHOD_DASHBOARD
         self._category_id: str = ""
         self._location_id: str = ""
 
@@ -62,10 +62,10 @@ class TPAfterDeathWorker:
         self._window_info = win  # _get_window читает это поле
 
     def set_method(self, method: str):
-        m = (method or TP_METHOD_DASHBOARD).lower()
-        self._method = m if m in (TP_METHOD_DASHBOARD, TP_METHOD_GATEKEEPER) else TP_METHOD_DASHBOARD
+        m = (method or Teleport_METHOD_DASHBOARD).lower()
+        self._method = m if m in (Teleport_METHOD_DASHBOARD, Teleport_METHOD_GATEKEEPER) else Teleport_METHOD_DASHBOARD
 
-    def configure(self, category_id: str, location_id: str, method: str = TP_METHOD_DASHBOARD):
+    def configure(self, category_id: str, location_id: str, method: str = Teleport_METHOD_DASHBOARD):
         self._category_id = (category_id or "").strip()
         self._location_id = (location_id or "").strip()
         self.set_method(method)
@@ -93,7 +93,7 @@ class TPAfterDeathWorker:
             self.set_method(method)
 
         if not (cat and loc):
-            self._on_status("[tp] destination not selected", False)
+            self._on_status("[teleport] destination not selected", False)
             return False
 
         self._wait_until_alive(self._wait_alive_timeout_s)
@@ -105,31 +105,31 @@ class TPAfterDeathWorker:
             rmod = importlib.import_module(f"core.servers.{server}.templates.resolver")
             resolver = getattr(rmod, "resolve")
         except Exception as e:
-            self._on_status(f"[tp] resolver load error: {e}", False)
+            self._on_status(f"[teleport] resolver load error: {e}", False)
             return False
 
         # ---- flows ----
         try:
             try:
-                fmod = importlib.import_module(f"core.servers.{server}.flows.tp_{self._method}")
+                fmod = importlib.import_module(f"core.servers.{server}.flows.teleport_{self._method}")
             except Exception:
                 # откат на старое имя файла
-                fmod = importlib.import_module(f"core.servers.{server}.flows.tp")
+                fmod = importlib.import_module(f"core.servers.{server}.flows.teleport")
             flow = list(getattr(fmod, "FLOW", []))
         except Exception as e:
-            self._on_status(f"[tp] flow load error: {e}", False)
+            self._on_status(f"[teleport] flow load error: {e}", False)
             return False
 
         # ---- zones/templates ----
         try:
             try:
-                zmod = importlib.import_module(f"core.servers.{server}.zones.tp_{self._method}")
+                zmod = importlib.import_module(f"core.servers.{server}.zones.teleport_{self._method}")
             except Exception:
-                zmod = importlib.import_module(f"core.servers.{server}.zones.tp")
+                zmod = importlib.import_module(f"core.servers.{server}.zones.teleport")
             zones = dict(getattr(zmod, "ZONES", {}))
             templates = dict(getattr(zmod, "TEMPLATES", {}))
         except Exception as e:
-            self._on_status(f"[tp] zones load error: {e}", False)
+            self._on_status(f"[teleport] zones load error: {e}", False)
             return False
 
         # ---- запуск ----
@@ -148,5 +148,5 @@ class TPAfterDeathWorker:
         )
         execu = FlowOpExecutor(ctx, on_status=self._on_status, logger=lambda m: print(m))
         ok = run_flow(flow, execu)
-        self._on_status(f"[tp] run → {ok}", ok)
+        self._on_status(f"[teleport] run → {ok}", ok)
         return bool(ok)

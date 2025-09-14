@@ -12,12 +12,8 @@ from core.updater import get_remote_version, is_newer_version
 
 # новая конфигурация через manifest
 from core.config.servers import (
-    list_servers,
-    get_languages,
-    get_section_flags,
-    get_buff_methods,
-    get_buff_modes,
-    get_tp_methods,
+    list_servers, get_languages, get_section_flags,
+    get_buff_methods, get_buff_modes, get_teleport_methods,
 )
 
 from core.state.pool import pool_write, pool_get, ensure_pool
@@ -60,7 +56,7 @@ class SystemSection(BaseSection):
             "profiles": servers
         })
 
-        # respawn defaults (если кто-то не выставил раньше)
+        # respawn defaults
         pool_write(self.s, "features.respawn", {
             "enabled": bool(pool_get(self.s, "features.respawn.enabled", True)),
             "wait_enabled": bool(pool_get(self.s, "features.respawn.wait_enabled", False)),
@@ -69,10 +65,9 @@ class SystemSection(BaseSection):
             "confirm_timeout_s": float(pool_get(self.s, "features.respawn.confirm_timeout_s", 6.0)),
         })
 
-        # buff/tp methods from manifest
+        # -------- BUFF из манифеста --------
         buff_methods = get_buff_methods(server)
         buff_modes = get_buff_modes(server)
-        tp_methods = get_tp_methods(server)
 
         cur_mode = pool_get(self.s, "features.buff.mode", (buff_modes[0] if buff_modes else ""))
         if cur_mode and cur_mode not in buff_modes:
@@ -88,9 +83,32 @@ class SystemSection(BaseSection):
             "mode": cur_mode,
             "method": cur_method,
         })
-        pool_write(self.s, "features.tp", {"methods": tp_methods})
 
-        # сразу прокинем списки/текущие значения в фронт
+        # -------- TELEPORT --------
+        # В пул НЕ кладём списки категорий/локаций — только текущий выбор.
+        tp_methods = get_teleport_methods(server)
+        tp_cur_method = pool_get(self.s, "features.teleport.method", (tp_methods[0] if tp_methods else "dashboard"))
+        if tp_methods and tp_cur_method not in tp_methods:
+            tp_cur_method = tp_methods[0] if tp_methods else "dashboard"
+
+        pool_write(self.s, "features.teleport", {
+            "enabled": bool(pool_get(self.s, "features.teleport.enabled", False)),
+            "method": tp_cur_method,
+            "category": str(pool_get(self.s, "features.teleport.category", "")),
+            "location": str(pool_get(self.s, "features.teleport.location", "")),
+            "status": str(pool_get(self.s, "features.teleport.status", "idle")),
+            "busy": bool(pool_get(self.s, "features.teleport.busy", False)),
+            "waiting": bool(pool_get(self.s, "features.teleport.waiting", False)),
+        })
+
+        # -------- STABILIZE — независимая фича в пуле --------
+        pool_write(self.s, "features.stabilize", {
+            "enabled": bool(pool_get(self.s, "features.stabilize.enabled", False)),
+            "busy": bool(pool_get(self.s, "features.stabilize.busy", False)),
+            "status": pool_get(self.s, "features.stabilize.status", "idle"),
+        })
+
+        # сразу прокинем списки/текущие значения в фронт (BUFF)
         try:
             self.window.evaluate_js(
                 f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(buff_methods)}, {json.dumps(cur_method)})"
@@ -127,21 +145,18 @@ class SystemSection(BaseSection):
     # ---------- helpers ----------
     def _apply_server(self, server: str):
         server = (server or "").lower()
-        # обновляем сервер и зависящие настройки
         pool_write(self.s, "config", {"server": server})
 
         l2_langs = get_languages(server)
-        # если текущий язык L2 не входит — переключим на первый из разрешённых
         cur_lang = pool_get(self.s, "config.language", None)
         if not l2_langs:
             pool_write(self.s, "config", {"language": "rus"})
         elif cur_lang not in l2_langs:
             pool_write(self.s, "config", {"language": l2_langs[0]})
 
-        # buff/tp
+        # BUFF
         buff_methods = get_buff_methods(server)
         buff_modes = get_buff_modes(server)
-        tp_methods = get_tp_methods(server)
 
         cur_mode = pool_get(self.s, "features.buff.mode", "")
         if cur_mode not in buff_modes:
@@ -157,8 +172,20 @@ class SystemSection(BaseSection):
             "mode": cur_mode,
             "method": cur_method,
         })
-        pool_write(self.s, "features.tp", {"methods": tp_methods})
 
+        # TELEPORT — только метод и текущие выборы, списки не в пул
+        tp_methods = get_teleport_methods(server)
+        tp_cur_method = pool_get(self.s, "features.teleport.method", (tp_methods[0] if tp_methods else "dashboard"))
+        if tp_methods and tp_cur_method not in tp_methods:
+            tp_cur_method = tp_methods[0] if tp_methods else "dashboard"
+
+        pool_write(self.s, "features.teleport", {
+            "method": tp_cur_method,
+            "category": str(pool_get(self.s, "features.teleport.category", "")),
+            "location": str(pool_get(self.s, "features.teleport.location", "")),
+        })
+
+        # ui: обновить методы/режимы бафа через событие
         try:
             self.window.evaluate_js(
                 f"window.ReviveUI && window.ReviveUI.onBuffMethods({json.dumps(buff_methods)}, {json.dumps(cur_method)})"
@@ -172,7 +199,7 @@ class SystemSection(BaseSection):
         # sections
         pool_write(self.s, "ui.sections", get_section_flags(server))
 
-        # Сбросить пользовательские настройки, как просили (макросы/флаги)
+        # Reset пользовательских флагов, как раньше
         pool_write(self.s, "features.macros", {
             "enabled": False, "repeat_enabled": False, "rows": [],
             "run_always": False, "delay_s": 1.0, "duration_s": 2.0,
@@ -212,7 +239,6 @@ class SystemSection(BaseSection):
         servers = list_servers()
         cur_server = pool_get(self.s, "config.server", servers[0])
 
-        # Проводим ping здесь и формируем driver_status напрямую (без ui_status)
         try:
             self.controller.send("ping")
             ok = (self.controller.read() == "pong")
@@ -220,21 +246,20 @@ class SystemSection(BaseSection):
         except Exception as e:
             driver_status = {"text": f"[×] Ошибка связи с Arduino: {e}", "ok": False}
 
-        # данные для UI из манифеста
         l2_langs = get_languages(cur_server)
-        tp_methods = get_tp_methods(cur_server)
         buff_methods = get_buff_methods(cur_server)
         buff_modes = get_buff_modes(cur_server)
         sections = get_section_flags(cur_server)
+        tp_methods = get_teleport_methods(cur_server)
 
         return {
             "version": pool_get(self.s, "app.version", ""),
-            "app_language": pool_get(self.s, "app.lang", "ru"),  # язык программы (ru/en)
-            "language": pool_get(self.s, "config.language", (l2_langs[0] if l2_langs else "rus")),  # язык L2
-            "system_languages": l2_langs,  # доступные языки L2 для сервера
+            "app_language": pool_get(self.s, "app.lang", "ru"),
+            "language": pool_get(self.s, "config.language", (l2_langs[0] if l2_langs else "rus")),
+            "system_languages": l2_langs,
             "server": cur_server,
             "servers": servers,
-            "sections": sections,          # видимость секций
+            "sections": sections,
             "window_found": bool(pool_get(self.s, "window.found", False)),
             "monitoring": bool(self.ps.is_running() if hasattr(self.ps, "is_running") else False),
 
@@ -242,9 +267,18 @@ class SystemSection(BaseSection):
             "buff_modes": buff_modes,
             "buff_current": pool_get(self.s, "features.buff.mode", ""),
             "buff_method_current": pool_get(self.s, "features.buff.method", (buff_methods[0] if buff_methods else "")),
-            "tp_methods": tp_methods,
 
-            # driver_status теперь формируется локально, без ui_status
+            "teleport_methods": tp_methods,
+            "teleport_method_current": pool_get(self.s, "features.teleport.method", (tp_methods[0] if tp_methods else "")),
+            "teleport_category_current": pool_get(self.s, "features.teleport.category", ""),
+            "teleport_location_current": pool_get(self.s, "features.teleport.location", ""),
+
+            "stabilize": {
+                "enabled": bool(pool_get(self.s, "features.stabilize.enabled", False)),
+                "status": pool_get(self.s, "features.stabilize.status", "idle"),
+                "busy": bool(pool_get(self.s, "features.stabilize.busy", False)),
+            },
+
             "driver_status": driver_status,
             "respawn": {
                 "enabled": bool(pool_get(self.s, "features.respawn.enabled", False)),
@@ -254,12 +288,10 @@ class SystemSection(BaseSection):
         }
 
     def set_program_language(self, lang: str):
-        # локальная настройка UI приложения (не язык L2)
         lang = (lang or "ru").lower()
         pool_write(self.s, "app", {"lang": lang})
 
     def set_language(self, lang: str):
-        # язык интерфейса L2
         lang = (lang or "rus").lower()
         pool_write(self.s, "config", {"language": lang})
         try:
@@ -274,7 +306,7 @@ class SystemSection(BaseSection):
         except Exception:
             pass
 
-        # ui: обновить методы/режимы бафа через событие (повторно — на случай, если фронт не поймал вызовы из _apply_server)
+        # ui: обновить методы/режимы бафа через событие
         methods = pool_get(self.s, "features.buff.methods", [])
         modes   = pool_get(self.s, "features.buff.modes", [])
         cur_mode = pool_get(self.s, "features.buff.mode", "")
@@ -308,7 +340,6 @@ class SystemSection(BaseSection):
         return {"found": False}
 
     def test_connect(self) -> str:
-        # Arduino ping status
         try:
             self.controller.send("ping")
             ok = (self.controller.read() == "pong")
@@ -371,8 +402,8 @@ class SystemSection(BaseSection):
     def expose(self) -> dict:
         return {
             "get_init_state": self.get_init_state,
-            "set_program_language": self.set_program_language,  # язык программы (ru/en)
-            "set_language": self.set_language,                  # язык интерфейса L2 (rus/eng)
+            "set_program_language": self.set_program_language,
+            "set_language": self.set_language,
             "set_server": self.set_server,
             "find_window": self.find_window,
             "test_connect": self.test_connect,

@@ -53,11 +53,11 @@ def match_in_zone(
     # путь к шаблону — только через серверный resolver
     if not engine:
         return None  # явное требование: без имени движка не резолвим
-    tpath = _resolve_path(server, lang, template_parts, engine=engine)
-    if not tpath:
+    teleportath = _resolve_path(server, lang, template_parts, engine=engine)
+    if not teleportath:
         return None
 
-    templ = _load_template_abs(tpath)
+    templ = _load_template_abs(teleportath)
     if templ is None:
         return None
 

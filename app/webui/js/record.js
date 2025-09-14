@@ -1,10 +1,11 @@
-﻿(function () {
+﻿// app/webui/js/record.js
+(function () {
   // ----- DOM build -----
   function buildSection() {
     const grid = document.querySelector('main.container.grid');
     if (!grid || document.getElementById('sec-record')) return;
 
-    const tp = document.getElementById('sec-tp');
+    const teleport = document.getElementById('sec-teleport');
     const sec = document.createElement('section');
     sec.className = 'card';
     sec.id = 'sec-record';
@@ -29,7 +30,7 @@
         <span id="status-record" class="status gray">—</span>
       </div>
     `;
-    if (tp && tp.nextSibling) grid.insertBefore(sec, tp.nextSibling);
+    if (teleport && teleport.nextSibling) grid.insertBefore(sec, teleport.nextSibling);
     else grid.appendChild(sec);
   }
   buildSection();

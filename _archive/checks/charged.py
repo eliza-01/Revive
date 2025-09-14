@@ -30,7 +30,7 @@ class BuffTemplateProbe(Probe):
             get_window: Callable[[], Optional[Dict]],
             get_language: Callable[[], str],
             zone_key: str,
-            tpl_keys: List[str],
+            teleportl_keys: List[str],
             threshold: float = 0.83,
             debug: bool = False,
     ):
@@ -39,7 +39,7 @@ class BuffTemplateProbe(Probe):
         self._get_window = get_window
         self._get_language = get_language
         self.zone_key = zone_key
-        self.tpl_keys = list(tpl_keys)
+        self.teleportl_keys = list(teleportl_keys)
         self.threshold = float(threshold)
         self.debug = bool(debug)
 
@@ -80,8 +80,8 @@ class BuffTemplateProbe(Probe):
             return (l, t, l+w, t+h)
         return (0, 0, int(win.get("width", 0)), int(win.get("height", 0)))
 
-    def _is_visible(self, win: Dict, zone_key: str, tpl_key: str, thr: float) -> bool:
-        zone = self._zones.get(zone_key); parts = self._templates.get(tpl_key)
+    def _is_visible(self, win: Dict, zone_key: str, teleportl_key: str, thr: float) -> bool:
+        zone = self._zones.get(zone_key); parts = self._templates.get(teleportl_key)
         if not zone or not parts: return False
         ltrb = self._zone_ltrb(win, zone)
         return match_in_zone(win, ltrb, (self._get_server() or "l2mad"), self._lang(), parts, thr) is not None
@@ -91,7 +91,7 @@ class BuffTemplateProbe(Probe):
         win = self._get_window() or {}
         if not win: return None
         # пробуем по списку иконок
-        for key in self.tpl_keys:
+        for key in self.teleportl_keys:
             if self._is_visible(win, self.zone_key, key, self.threshold):
                 if self.debug: print(f"[charged] probe '{self.name}': hit {key}")
                 return True

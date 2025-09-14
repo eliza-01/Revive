@@ -158,10 +158,10 @@ class PipelineRule:
         feature = {
             "respawn": "respawn",
             "buff": "buff",
-            "tp": "tp",
             "macros": "macros",
+            "teleport": "teleport",
+            "record": "record",
             "autofarm": "autofarm",
-            "record": "record",  # ← добавили
         }.get(step)
         if not feature:
             return True
@@ -295,8 +295,8 @@ class PipelineRule:
             finally:
                 _busy_off("buff")
 
-        if step == "tp":
-            _busy_on("tp")
+        if step == "teleport":
+            _busy_on("teleport")
             try:
                 # если появится dashboard/teleport.rules — подцепится автоматически
                 fn = self._call_dashboard_rule("teleport", func="run_step")
@@ -314,15 +314,15 @@ class PipelineRule:
                         )
                         return bool(ok), bool(adv)
                     except Exception as e:
-                        console.log(f"[TP] dashboard/teleport rules error: {e}")
-                        self._hud_err("[TP] ошибка dashboard/teleport rules — пропуск шага")
+                        console.log(f"[Teleport] dashboard/teleport rules error: {e}")
+                        self._hud_err("[Teleport] ошибка dashboard/teleport rules — пропуск шага")
                         return True, True
                 # временный заглушечный успех
-                self._hud_succ("[TP] выполнено (stub)")
-                console.log("[TP] stub ok (rules not found)")
+                self._hud_succ("[Teleport] выполнено (stub)")
+                console.log("[Teleport] stub ok (rules not found)")
                 return True, True
             finally:
-                _busy_off("tp")
+                _busy_off("teleport")
 
         if step == "record":
             _busy_on("record")

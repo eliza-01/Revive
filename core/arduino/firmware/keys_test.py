@@ -58,7 +58,7 @@ def main():
             # Многие Arduino перезагружаются при открытии порта
             time.sleep(1.5)
             ser.reset_input_buffer()
-            ser.reset_output_buffer()
+            ser.reset_outeleportut_buffer()
 
             # 1) ping → ждём pong
             print("[>] ping")

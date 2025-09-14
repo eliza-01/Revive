@@ -9,23 +9,34 @@
             "section": true,
             "languages": ["rus", "eng"]
           },
-          "stream": {
-            "section": true
-          },
-          "respawn": {
-            "section": true
-          },
+          "stream": { "section": true },
+          "respawn": { "section": true },
           "buff": {
             "section": true,
             "methods": ["dashboard"],
             "modes": ["profile", "mage", "fighter", "archer"]
           },
-          "macros": {
-            "section": true
-          },
-          "tp": {
-            "section": false,
-            "methods": ["dashboard"]
+          "macros": { "section": true },
+          "teleport": {
+            "section": true,
+            "methods": ["dashboard"],
+            "categories": {
+              "towns": {
+                "locations": [
+                  "VarkaSilenosStronghold",
+                  "PrimevalIsle",
+                  "DragonValley",
+                  "Goddard",
+                  "Giran",
+                  "Rune"
+                ]
+              },
+              "villages": {
+                "locations": [
+                  "TalkingIsland"
+                ]
+              }
+            }
           },
           "autofarm": {
             "section": true,
@@ -34,28 +45,28 @@
         },
 
         "l2mad": {
-          "name": "boh",
+          "name": "l2mad",
           "system": {
             "section": true,
             "languages": ["rus", "eng"]
           },
-          "stream": {
-            "section": true
-          },
-          "respawn": {
-            "section": true
-          },
+          "stream": { "section": true },
+          "respawn": { "section": false },
           "buff": {
             "section": true,
             "methods": ["dashboard"],
             "modes": ["profile", "mage", "fighter"]
           },
-          "macros": {
-            "section": false
-          },
-          "tp": {
+          "macros": { "section": false },
+          "teleport": {
             "section": false,
-            "methods": ["dashboard"]
+            "methods": ["dashboard"],
+            "categories": ["towns"],
+            "locations": [
+              "Giran",
+              "Goddard",
+              "Rune"
+            ]
           },
           "autofarm": {
             "section": false,
