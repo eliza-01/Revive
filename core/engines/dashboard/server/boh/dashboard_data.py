@@ -32,23 +32,24 @@ TEMPLATES: Dict[str, List[str]] = {
     "dashboard_teleport_init": ["<lang>", "teleport", "dashboard_teleport_init.png"],
 }
 TELEPORT_CATEGORIES: Dict[str, List[str]] = {
-    # dashboard_teleport_towns
+    # кнопки перехода в раздел с городами/деревнями
     "towns": ["<lang>", "teleport", "towns.png"],
     "villages": ["<lang>", "teleport", "villages.png"],
 }
 TELEPORT_TOWNS: Dict[str, List[str]] = {
     "towns_init": ["<lang>", "teleport", "towns", "towns_init.png"],
-    # кнопки разделов города
+    # кнопки перехода в раздел конкретного города
     "Goddard": ["<lang>", "teleport", "towns", "Goddard.png"],
     "Rune": ["<lang>", "teleport", "towns", "Rune.png"],
     "Giran": ["<lang>", "teleport", "towns", "Giran.png"],
 }
 TELEPORT_VILLAGES: Dict[str, List[str]] = {
     "villages_init": ["<lang>", "teleport", "villages", "villages_init.png"],
+    # кнопки перехода в раздел конкретной деревни
     "TalkingIsland": ["<lang>", "teleport", "villages", "TalkingIsland.png"],
 }
 TELEPORT_LOCATIONS: Dict[str, List[str]] = {
-    # кнопки перемещения в город
+    # кнопки перемещения в город, как локацию
     "Goddard": ["<lang>", "teleport", "towns", "Goddard", "Goddard.png"],
     "Rune": ["<lang>", "teleport", "towns", "Rune", "Rune.png"],
     "Giran": ["<lang>", "teleport", "towns", "Giran", "Giran.png"],
