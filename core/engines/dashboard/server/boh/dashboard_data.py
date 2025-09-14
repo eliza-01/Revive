@@ -40,13 +40,17 @@ TELEPORT_TOWNS: Dict[str, List[str]] = {
     "towns_init": ["<lang>", "teleport", "towns", "towns_init.png"],
     # кнопки перехода в раздел конкретного города
     "Goddard": ["<lang>", "teleport", "towns", "Goddard.png"],
+    "Goddard_init": ["<lang>", "teleport", "towns", "Goddard", "Goddard_init.png"],
     "Rune": ["<lang>", "teleport", "towns", "Rune.png"],
+    "Rune_init": ["<lang>", "teleport", "towns", "Rune", "Rune_init.png"],
     "Giran": ["<lang>", "teleport", "towns", "Giran.png"],
+    "Giran_init": ["<lang>", "teleport", "towns", "Giran", "Giran_init.png"],
 }
 TELEPORT_VILLAGES: Dict[str, List[str]] = {
     "villages_init": ["<lang>", "teleport", "villages", "villages_init.png"],
     # кнопки перехода в раздел конкретной деревни
     "TalkingIsland": ["<lang>", "teleport", "villages", "TalkingIsland.png"],
+    "TalkingIsland_init": ["<lang>", "teleport", "villages", "TalkingIsland", "TalkingIsland.png"],
 }
 TELEPORT_LOCATIONS: Dict[str, List[str]] = {
     # кнопки перемещения в город, как локацию
