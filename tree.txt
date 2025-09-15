@@ -1,8 +1,96 @@
-Root: C:\Projects\Revive
-Generated: 2025-09-15 10:34:33
-
 Revive
+├── app
+│   ├── api
+│   │   ├── api_router.py
+│   │   └── image_access.py
+│   ├── dep
+│   ├── launcher
+│   │   ├── infra
+│   │   │   ├── expose.py
+│   │   │   ├── orchestrator_loop.py
+│   │   │   ├── services.py
+│   │   │   └── ui_bridge.py
+│   │   ├── sections
+│   │   │   ├── autofarm.py
+│   │   │   ├── buff.py
+│   │   │   ├── macros.py
+│   │   │   ├── pipeline.py
+│   │   │   ├── record.py
+│   │   │   ├── respawn.py
+│   │   │   ├── state.py
+│   │   │   ├── system.py
+│   │   │   └── teleport.py
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── main.py
+│   │   └── wiring.py
+│   ├── webui
+│   │   ├── assets
+│   │   │   ├── buff-icons
+│   │   │   │   ├── buffs
+│   │   │   │   │   └── mental_shield.png
+│   │   │   │   ├── dances
+│   │   │   │   │   ├── dance_of_concentration.png
+│   │   │   │   │   └── dance_of_siren.png
+│   │   │   │   └── songs
+│   │   │   │       ├── song_of_earth.png
+│   │   │   │       └── song_of_vitality.png
+│   │   │   ├── icon.png
+│   │   │   ├── logo.ico
+│   │   │   └── preloader1.gif
+│   │   ├── css
+│   │   │   ├── hud.css
+│   │   │   └── style.css
+│   │   ├── js
+│   │   │   ├── app.js
+│   │   │   ├── autofarm.ui.js
+│   │   │   ├── buff.ui.js
+│   │   │   ├── extra.buff.checker.js
+│   │   │   ├── extra.buff.profile.js
+│   │   │   ├── hud.js
+│   │   │   ├── macros.ui.js
+│   │   │   ├── pipeline.ui.js
+│   │   │   ├── pooldump.ui.js
+│   │   │   ├── record.js
+│   │   │   ├── respawn.ui.js
+│   │   │   ├── state.poller.js
+│   │   │   ├── state.ui.js
+│   │   │   └── teleport.ui.js
+│   │   ├── hud.html
+│   │   └── index.html
+│   ├── __init__.py
+│   ├── __main__.py
+│   └── launcher_bootstrap.py
+├── assets
+│   ├── upx
+│   │   ├── COPYING
+│   │   ├── LICENSE
+│   │   ├── NEWS
+│   │   ├── README
+│   │   ├── THANKS.txt
+│   │   ├── upx-doc.html
+│   │   ├── upx-doc.txt
+│   │   ├── upx.1
+│   │   └── upx.exe
+│   └── icon.ico
+├── collected
 ├── core
+│   ├── arduino
+│   │   ├── firmware
+│   │   │   ├── __init__.py
+│   │   │   ├── keys_test.py
+│   │   │   └── micro.ino
+│   │   ├── __init__.py
+│   │   ├── connection.py
+│   │   ├── connection_test.py
+│   │   ├── safe_serial.py
+│   │   ├── send_command.py
+│   │   ├── send_safe.py
+│   │   └── serial_port.py
+│   ├── config
+│   │   ├── __init__.py
+│   │   ├── servers.manifest.json
+│   │   └── servers.py
 │   ├── engines
 │   │   ├── autofarm
 │   │   │   ├── server
@@ -81,7 +169,25 @@ Revive
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── professions.json
 │   │   │   │   │   ├── skills_catalog.json
-│   │   │   │   │   ├── templates_map.py
+│   │   │   │   │   └── templates_map.py
+│   │   │   │   ├── l2mad
+│   │   │   │   │   ├── flows
+│   │   │   │   │   │   └── af_click.json
+│   │   │   │   │   ├── templates
+│   │   │   │   │   │   ├── eng
+│   │   │   │   │   │   │   └── interface
+│   │   │   │   │   │   │       └── autofarm.png
+│   │   │   │   │   │   └── rus
+│   │   │   │   │   │       └── interface
+│   │   │   │   │   │           └── autofarm.png
+│   │   │   │   │   ├── zones
+│   │   │   │   │   │   └── Varka_1
+│   │   │   │   │   │       └── gallery
+│   │   │   │   │   │           ├── map.png
+│   │   │   │   │   │           ├── spot_north.png
+│   │   │   │   │   │           └── spot_south.png
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
 │   │   │   │   │   └── zones.json
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
@@ -208,6 +314,10 @@ Revive
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
 │   │   │   │   │   └── state_data.py
+│   │   │   │   ├── l2mad
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── state_data.py
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
 │   │   │   ├── runner.py
@@ -226,19 +336,27 @@ Revive
 │   │   │   │   │   │   │   ├── Новая папка
 │   │   │   │   │   │   │   │   ├── accept_button.png
 │   │   │   │   │   │   │   │   ├── decline_button.png
-│   │   │   │   │   │   │   │   ├── reborn_banner.png
 │   │   │   │   │   │   │   │   ├── reborn_banner2.png
+│   │   │   │   │   │   │   │   ├── reborn_banner.png
 │   │   │   │   │   │   │   │   └── to_village_button.png
 │   │   │   │   │   │   │   ├── accept_button.png
 │   │   │   │   │   │   │   ├── decline_button.png
-│   │   │   │   │   │   │   ├── reborn_banner.png
 │   │   │   │   │   │   │   ├── reborn_banner2.png
+│   │   │   │   │   │   │   ├── reborn_banner.png
 │   │   │   │   │   │   │   └── to_village_button.png
 │   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
 │   │   │   │   │   ├── respawn_data.py
 │   │   │   │   │   └── rules.py
+│   │   │   │   ├── l2mad
+│   │   │   │   │   └── templates
+│   │   │   │   │       ├── rus
+│   │   │   │   │       │   ├── accept_button.png
+│   │   │   │   │       │   ├── decline_button.png
+│   │   │   │   │       │   ├── reborn_window.png
+│   │   │   │   │       │   └── to_village_button.png
+│   │   │   │   │       └── resolver.py
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
 │   │   │   └── runner.py
@@ -266,8 +384,8 @@ Revive
 │   │   │   │       │   │       │   ├── clan_page.png
 │   │   │   │       │   │       │   ├── dashboard_page.png
 │   │   │   │       │   │       │   ├── inventory_page.png
-│   │   │   │       │   │       │   ├── map_page.png
 │   │   │   │       │   │       │   ├── map_page2.png
+│   │   │   │       │   │       │   ├── map_page.png
 │   │   │   │       │   │       │   ├── menu_page.png
 │   │   │   │       │   │       │   ├── quest_page.png
 │   │   │   │       │   │       │   ├── skills_page.png
@@ -332,7 +450,34 @@ Revive
 │   ├── mask_alive.png
 │   ├── mask_any.png
 │   └── target_zone_bgr.png
+├── documents
+│   ├── test_cases
+│   │   ├── revive_buff_macro_tp.md
+│   │   └── revive_buff_marco_tp.txt
+│   ├── autofarm_settings_window.png
+│   ├── README.old.md
+│   └── Общие положения.txt
+├── tools
+│   ├── rec
+│   ├── average_rgb.py
+│   ├── drag.py
+│   ├── dump.py
+│   ├── headers.py
+│   ├── hotkey.py
+│   ├── list_project_files.py
+│   ├── PRO_STRUC.txt
+│   ├── PROJECT_STRUCTURE.txt
+│   ├── rectest.py
+│   └── tree.py
 ├── 4.4
+├── .gitignore
+├── build.bat
+├── files.json
+├── files.txt
 ├── latest_version.txt
 ├── main.py
-└── requirements.txt
+├── release.bat
+├── requirements.build.txt
+├── requirements.txt
+├── Revive.spec
+└── tree.txt

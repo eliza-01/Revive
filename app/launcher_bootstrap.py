@@ -1,6 +1,7 @@
 # app/launcher_bootstrap.py
 from __future__ import annotations
 import os, sys, glob, tempfile, subprocess, struct
+import importlib
 
 # ---- импорт пакета app ----
 PROJ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -14,7 +15,8 @@ DOWNLOAD_URL = os.getenv("WV2_URL") or \
     "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0d95f327-a869-4d28-9746-2212baa3228f/MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 FORCE_INSTALL = os.getenv("WV2_FORCE") == "1"
 
-# ВАЖНО: точка входа нового HTML-лаунчера (структура с секциями)
+# Основная точка входа нового HTML-лаунчера
+# (оставляем кортеж для обратной совместимости, но дальше используем расширенный список кандидатов)
 HTML_LAUNCH_FN = ("app.launcher.main", "launch_gui")
 
 # ---- поиск WebView2 / Edge ----
@@ -61,10 +63,11 @@ def _download(url: str, dst_path: str):
                     f.write(chunk)
 
 def _is_signature_valid(path: str) -> bool:
+    # PowerShell-проверка подписи (не критично — используется как best-effort)
     cmd = "(Get-AuthenticodeSignature '{}').Status".format(path.replace("'", "''"))
     ps = ["powershell","-NoProfile","-ExecutionPolicy","Bypass", cmd]
     try:
-        out = subprocess.check_outeleportut(ps, stderr=subprocess.STDOUT, text=True, timeout=20)
+        out = subprocess.check_output(ps, stderr=subprocess.STDOUT, text=True, timeout=20)  # <-- фикс опечатки
         return "Valid" in out
     except Exception:
         return False
@@ -93,10 +96,8 @@ def _ensure_webview2_installed() -> None:
         installer = os.path.join(tmp, "MicrosoftEdgeWebView2RuntimeInstallerX64.exe")
         _download(DOWNLOAD_URL, installer)
 
-    # Подпись (не критично, просто логика проверки)
-    if not _is_signature_valid(installer):
-        # продолжаем, просто без fail-fast
-        pass
+    # Подпись (best-effort)
+    _is_signature_valid(installer)  # результат не критичен
 
     code = _run_installer(installer, repair=False)
     if code != 0:
@@ -118,9 +119,38 @@ def start_html_ui(local_version: str) -> None:
     except Exception as e:
         raise RuntimeError(f"Модуль 'webview' недоступен: {e}")
 
-    mod_name, fn_name = HTML_LAUNCH_FN
-    mod = __import__(mod_name, fromlist=[fn_name])
-    getattr(mod, fn_name)(local_version)
+    # Сценарии импорта: поддерживаем разные названия модулей/функций.
+    candidates: list[tuple[str, str]] = [
+        (HTML_LAUNCH_FN[0], HTML_LAUNCH_FN[1]),     # ("app.launcher.main","launch_gui") — исторический
+        ("app.launcher.main", "start"),             # возможная новая сигнатура
+        ("app.launcher_html", "start"),             # старый HTML-лаунчер
+        ("app.launcher", "start"),                  # пакет с функцией start
+    ]
+
+    mod = None
+    fn = None
+    last_err: Exception | None = None
+
+    for mod_name, fn_name in candidates:
+        try:
+            mod = importlib.import_module(mod_name)
+            fn = getattr(mod, fn_name, None)
+            if callable(fn):
+                break
+            last_err = RuntimeError(f"Module '{mod_name}' has no callable '{fn_name}'")
+            mod = None
+            fn = None
+        except Exception as e:
+            last_err = e
+            mod = None
+            fn = None
+
+    if not (mod and callable(fn)):
+        tried = ", ".join(f"{m}.{f}" for m, f in candidates)
+        raise ModuleNotFoundError(f"UI launcher module not found; tried: {tried}. Last error: {last_err}")
+
+    # Запуск
+    fn(local_version)
 
 # ---- публичная точка ----
 def launch_universal(local_version: str):

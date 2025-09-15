@@ -7,12 +7,14 @@ from typing import Dict, Any, List, Tuple, Optional
 import cv2
 import numpy as np
 from pathlib import Path
+import sys
 
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.utils.colors import mask_for_colors_bgr, biggest_horizontal_band
 # ↓ было: from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 from core.engines.flow.ops import FlowCtx, FlowOpExecutor, run_flow
 from core.logging import console
+from core.engines.autofarm.zone_repo import _read_zones_map  # наверх файла можно
 
 # локальный счётчик перезапусков именно АФ-цикла (НЕ общий рестарт менеджера)
 _RESTART_STREAK = 0
@@ -23,8 +25,11 @@ excluded_targets: set[str] = set()
 
 USER32 = ctypes.windll.user32
 
-
+# AF_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # -------- helpers (чисто низкоуровневые) --------
+def _res_path(*parts):
+    base = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    return os.path.join(base, *parts)
 
 def _slugify_name_py(s: str) -> str:
     s = (s or "").lower()
@@ -110,14 +115,18 @@ def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
     return alive
 
 def _zone_monsters_raw(server: str, zone_id: str):
+    """
+    Возвращает секцию 'monsters' для зоны из zones.json.
+    Работает и в dev, и в onefile, т.к. читает через zone_repo.
+    """
     try:
-        p = os.path.join("core", "engines", "autofarm", "server", server, "zones.json")
-        with open(p, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = _read_zones_map(server) or {}
         z = data.get(zone_id) or {}
         mons = z.get("monsters")
         return mons if isinstance(mons, dict) else None
-    except Exception:
+    except Exception as e:
+        # один раз подсветит реальную причину, если JSON/ключи кривые
+        console.log(f"[autofarm] zones read error (server={server}, zone={zone_id}): {e}")
         return None
 
 def _pick_lang_list(raw: dict, lang: str, kind: str) -> List[str]:
@@ -424,7 +433,8 @@ def _press_silent_cancel(ex: FlowOpExecutor):
         pass
 
 def _check_target_visibility(ex: FlowOpExecutor, server: str, lang: str, win: Dict, zone_id: str) -> bool:
-    img_path = os.path.join("core","engines","autofarm","server",server,"templates",lang,"sys_messages","target_unvisible.png")
+    img_path = _res_path("core", "engines", "autofarm", "server", server, "templates", lang, "sys_messages",
+                         "target_unvisible.png")
     target_img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
     if target_img is None:
         return False

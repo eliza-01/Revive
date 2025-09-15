@@ -20,6 +20,37 @@ REM Опционально укажем UPX, только если устано�
 set "UPX_FLAG="
 if exist "C:\Tools\upx" set "UPX_FLAG=--upx-dir=C:\Tools\upx"
 
+REM === ДАННЫЕ ДЛЯ PyInstaller ===
+set "DATA_OPTS="
+
+REM 1) Шаблоны vision (как было)
+set "DATA_OPTS=!DATA_OPTS! --add-data core\vision\templates\*.png;core\vision\templates"
+
+REM 2) AutoFarm: professions.json (server/common)
+if exist core\engines\autofarm\server\common\professions.json (
+  set "DATA_OPTS=!DATA_OPTS! --add-data core\engines\autofarm\server\common\professions.json;core\engines\autofarm\server\common"
+)
+
+REM 3) AutoFarm: собрать ВСЕ zones.json по всем серверам (без хардкода)
+for /f "delims=" %%F in ('dir /s /b "core\engines\autofarm\server\*\zones.json" 2^>nul') do (
+  set "ABS=%%~fF"
+  set "DIR=%%~dpF"
+  set "REL=!DIR:%CD%\=!"
+  set "REL=!REL:~0,-1!"
+  set "DATA_OPTS=!DATA_OPTS! --add-data "!ABS!";"!REL!""
+)
+
+REM === HIDDEN-IMPORT для всех серверов respawn (rules, engine) ===
+set "HIDS="
+for /d %%S in (core\engines\respawn\server\*) do (
+  set "SRV=%%~nS"
+  set "HIDS=!HIDS! --hidden-import core.engines.respawn.server.!SRV!.rules"
+  set "HIDS=!HIDS! --hidden-import core.engines.respawn.server.!SRV!.engine"
+)
+
+echo [DBG] DATA_OPTS: !DATA_OPTS!
+echo [DBG] HIDS: !HIDS!
+
 echo [>>] Компиляция .exe...
 pyinstaller ^
   --onefile ^
@@ -27,7 +58,10 @@ pyinstaller ^
   --noconsole ^
   --icon="assets\icon.ico" ^
   --name="ReviveLauncher" ^
-  --add-data "core\vision\templates\*.png;core\vision\templates" ^
+  !DATA_OPTS! ^
+  --collect-submodules core.engines.respawn ^
+  --collect-submodules core.engines.respawn.server ^
+  !HIDS! ^
   %UPX_FLAG% ^
   "main.py"
 
@@ -57,38 +91,38 @@ ren "dist\ReviveLauncher.exe" "%FINAL_EXE_NAME%" || (
   exit /b 1
 )
 
-REM Чтение FTeleport-данных (формат: host=..., user=..., pass=..., remote_path=/path/)
-for /f "usebackq tokens=1,2 delims==" %%a in ("deploy\fteleport_credentials.txt") do (
+REM Чтение FTP-данных (формат: host=..., user=..., pass=..., remote_path=/path/)
+for /f "usebackq tokens=1,2 delims==" %%a in ("deploy\ftp_credentials.txt") do (
     set "%%a=%%b"
 )
 
-if not defined host  echo [!!] host не задан в deploy\fteleport_credentials.txt & exit /b 1
-if not defined user  echo [!!] user не задан в deploy\fteleport_credentials.txt & exit /b 1
-if not defined pass  echo [!!] pass не задан в deploy\fteleport_credentials.txt & exit /b 1
-if not defined remote_path echo [!!] remote_path не задан в deploy\fteleport_credentials.txt & exit /b 1
+if not defined host  echo [!!] host не задан в deploy\ftp_credentials.txt & exit /b 1
+if not defined user  echo [!!] user не задан в deploy\ftp_credentials.txt & exit /b 1
+if not defined pass  echo [!!] pass не задан в deploy\ftp_credentials.txt & exit /b 1
+if not defined remote_path echo [!!] remote_path не задан в deploy\ftp_credentials.txt & exit /b 1
 
 REM Нормализуем remote_path завершая слешем
 if not "%remote_path:~-1%"=="/" set "remote_path=%remote_path%/"
 
-REM Генерация скрипта WinSCP
-del "deploy\fteleport_upload_script.txt" 2>nul
+REM Генерация скрипта WinSCP (FTP)
+del "deploy\ftp_upload_script.txt" 2>nul
 (
   echo option batch abort
   echo option confirm off
-  echo open fteleport://%user%:%pass%@%host%
+  echo open ftp://%user%:%pass%@%host%
   echo binary
   echo put "latest_version.txt" "%remote_path%latest_version.txt"
   echo put "dist\%FINAL_EXE_NAME%" "%remote_path%%FINAL_EXE_NAME%"
   echo exit
-) > "deploy\fteleport_upload_script.txt"
+) > "deploy\ftp_upload_script.txt"
 
-echo [>>] Загрузка файлов на FTeleport...
+echo [>>] Загрузка файлов на FTP...
 if not exist "C:\Program Files (x86)\WinSCP\WinSCP.com" (
   echo [!!] WinSCP.com не найден по пути "C:\Program Files (x86)\WinSCP\WinSCP.com"
   exit /b 1
 )
 
-"C:\Program Files (x86)\WinSCP\WinSCP.com" /script="deploy\fteleport_upload_script.txt"
+"C:\Program Files (x86)\WinSCP\WinSCP.com" /script="deploy\ftp_upload_script.txt"
 set "ERR=%ERRORLEVEL%"
 
 if not "%ERR%"=="0" (
