@@ -139,7 +139,7 @@
       setStatus('Выбрана запись: ' + e.target.selectedOptions[0].textContent, 'gray');
     }
     if (e.target && e.target.id === 'chkRecord') {
-      await api('record_enable', !!e.target.checked);
+      await api('record_set_enabled', !!e.target.checked);
       setStatus(e.target.checked ? 'Автовоспроизведение: вкл' : 'Автовоспроизведение: выкл', 'gray');
     }
   });

@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple, Optional
 import os, json, time, threading, re
+import ctypes
 
 from core.logging import console
 from core.state.pool import pool_get, pool_write
@@ -42,6 +43,18 @@ def _client_xy(win: Dict[str, Any], sx: int, sy: int) -> Point:
         return int(sx - int(win.get("x", 0))), int(sy - int(win.get("y", 0)))
     except Exception:
         return int(sx), int(sy)
+
+def _get_cursor_screen_xy() -> Point:
+    """Экраные координаты курсора (Windows only)."""
+    try:
+        class _POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+        pt = _POINT()
+        if ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
+            return int(pt.x), int(pt.y)
+    except Exception:
+        pass
+    return 0, 0
 
 # RAWINPUT flags we use (дублируем, чтобы не импортировать модуль)
 RI_MOUSE_RIGHT_BUTTON_DOWN = 0x0004
@@ -84,6 +97,7 @@ class RecordEngine:
         # старые координатные сборщики для ПКМ не используем
         self._r_path: List[Point] = []
 
+        self._raw_start_xy: Optional[Point] = None
     # -------- pool helpers --------
     def _set_busy(self, val: bool):
         try:
@@ -247,9 +261,10 @@ class RecordEngine:
         self._set_busy(True)
         self._set_status("playing")
         self._playing = True
+        self._last_stop_reason = None  # <-- сброс причины
         try:
-            self._play_steps(steps)
-            return True
+            ok = self._play_steps(steps)   # <-- теперь bool
+            return bool(ok)
         finally:
             self._playing = False
             self._set_status("idle")
@@ -267,6 +282,12 @@ class RecordEngine:
             self._raw_start_abs_t = ts
             self._raw_last_ts = ts
             self._raw_deltas = []
+
+            # NEW: зафиксировать стартовые клиентские координаты курсора
+            win = self.get_window() or {}
+            sx, sy = _get_cursor_screen_xy()
+            cx, cy = _client_xy(win, sx, sy)
+            self._raw_start_xy = (int(cx), int(cy))
             return
 
         if self._raw_r_down:
@@ -294,15 +315,31 @@ class RecordEngine:
         if not self._raw_deltas:
             return
         t_rel = round((self._raw_start_abs_t or _now()) - self._t0, 4)
-        # компактно сохраняем deltas: [dx,dy,dt]...
-        deltas = [[int(dx), int(dy), float(dt)] for (dx,dy,dt) in self._raw_deltas]
-        self._events.append({"type": "rdrag_raw", "deltas": deltas, "t": t_rel})
+        deltas = [[int(dx), int(dy), float(dt)] for (dx, dy, dt) in self._raw_deltas]
+        ev = {"type": "rdrag_raw", "deltas": deltas, "t": t_rel}
+
+        # NEW: стартовые координаты, если удалось снять
+        if self._raw_start_xy is not None:
+            ev["x"], ev["y"] = int(self._raw_start_xy[0]), int(self._raw_start_xy[1])
+
+        self._events.append(ev)
+        self._raw_start_xy = None  # сбросить после использования
         console.log(f"[record.engine] rdrag_raw captured, steps={len(deltas)}")
 
     # -------- playback impl --------
-    def _play_steps(self, steps: List[Dict[str, Any]]):
+    def _play_steps(self, steps: List[Dict[str, Any]]) -> bool:
         win = self.get_window() or {}
-        x0 = int(win.get("x", 0)); y0 = int(win.get("y", 0))
+        x0 = int(win.get("x", 0));
+        y0 = int(win.get("y", 0))
+
+        def _has_focus() -> bool:
+            v = pool_get(self.s, "focus.is_focused", None)
+            return v is not False  # None считаем допустимым
+
+        # если фокуса нет — сразу выходим
+        if not _has_focus():
+            self._last_stop_reason = "focus_lost"
+            return False
 
         def _move_client(cx: int, cy: int):
             try:
@@ -317,23 +354,47 @@ class RecordEngine:
                 pass
 
         def _send_mv_rel(dx: int, dy: int):
-            # дробим на шаги по MV_CHUNK
-            dx = int(dx); dy = int(dy)
+            dx = int(dx);
+            dy = int(dy)
             while dx != 0 or dy != 0:
                 stepx = max(-self.MV_CHUNK, min(self.MV_CHUNK, dx))
                 stepy = max(-self.MV_CHUNK, min(self.MV_CHUNK, dy))
                 _send(f"mv {stepx} {stepy}")
-                dx -= stepx; dy -= stepy
+                dx -= stepx;
+                dy -= stepy
 
+        # события по времени
         events = sorted(steps, key=lambda e: float(e["t"]))
+
+        # 1) Один раз переместиться в первую абсолютную точку записи (если есть x,y)
+        start_pos = None
+        for ev in events:
+            if "x" in ev and "y" in ev:
+                start_pos = (int(ev["x"]), int(ev["y"]))
+                break
+        if start_pos is not None:
+            _move_client(start_pos[0], start_pos[1])
+            time.sleep(self.CLICK_AFTER_MOVE_S)
+
         start_wall = time.time()
 
         for ev in events:
+            # до наступления времени события — «умный» сон с проверкой фокуса
             t_target = float(ev["t"])
-            now_elapsed = time.time() - start_wall
-            delay = t_target - now_elapsed
-            if delay > 0:
-                time.sleep(delay)
+            while True:
+                now_elapsed = time.time() - start_wall
+                delay = t_target - now_elapsed
+                if delay <= 0:
+                    break
+                chunk = 0.10 if delay > 0.10 else delay
+                time.sleep(chunk)
+                if not _has_focus():
+                    self._last_stop_reason = "focus_lost"
+                    return False
+
+            if not _has_focus():
+                self._last_stop_reason = "focus_lost"
+                return False
 
             typ = ev.get("type")
 
@@ -344,21 +405,44 @@ class RecordEngine:
                 _send("l")
 
             elif typ == "rdrag_raw":
+                # Если событие содержит стартовые координаты — перейти туда перед R-press
+                sx = ev.get("x");
+                sy = ev.get("y")
+                if sx is not None and sy is not None:
+                    _move_client(int(sx), int(sy))
+                    time.sleep(self.CLICK_AFTER_MOVE_S)
+
                 deltas = list(ev.get("deltas") or [])
                 if not deltas:
                     continue
+
                 _send("R-press")
                 for dx, dy, dt in deltas:
+                    if not _has_focus():
+                        self._last_stop_reason = "focus_lost"
+                        return False
                     if dx or dy:
                         _send_mv_rel(dx, dy)
                     if dt and dt > 0:
-                        time.sleep(float(dt))
+                        # сон внутри драга — тоже с проверкой фокуса
+                        end_ts = time.time() + float(dt)
+                        while True:
+                            if not _has_focus():
+                                self._last_stop_reason = "focus_lost"
+                                return False
+                            now = time.time()
+                            if now >= end_ts:
+                                break
+                            time.sleep(min(0.08, end_ts - now))
                 _send("R-release")
 
             elif typ == "wheel_up":
                 _send("wheel_up")
+
             elif typ == "wheel_down":
                 _send("wheel_down")
+
+        return True
 
     # -------- legacy UI feed (ЛКМ/колесо остаются как есть) --------
     def on_mouse_left_click(self, screen_x: int, screen_y: int):

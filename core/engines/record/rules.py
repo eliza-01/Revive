@@ -86,5 +86,16 @@ def run_step(
     # воспроизведение записи через countdown_s (!нет это не тут)
     ok = bool(engine.play(wait_focus_cb=lambda timeout_s=0: True, countdown_s=3.0))
     console.log(f"[record.rules] play -> ok={ok}")
-    pool_write(state, "features.record", {"enabled": False})
+    # выключаем тумблер только если НЕ потеряли фокус
+    try:
+        reason = engine.last_stop_reason() if hasattr(engine, "last_stop_reason") else None
+    except Exception:
+        reason = None
+
+    if reason == "focus_lost":
+        console.hud("att", "[record] остановлено: потерян фокус")
+        # не трогаем features.record.enabled
+    # else:
+        # pool_write(state, "features.record", {"enabled": False})
+
     return ok, True
