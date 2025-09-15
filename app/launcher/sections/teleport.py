@@ -1,9 +1,14 @@
 ﻿# app/launcher/sections/teleport.py
 from __future__ import annotations
 from typing import Any, Dict, List
+import importlib
+import os
+import json
+
 from ..base import BaseSection
 from core.state.pool import pool_get, pool_write
 from core.config.servers import get_teleport_categories, get_teleport_locations
+
 
 class TeleportSection(BaseSection):
     """
@@ -35,6 +40,44 @@ class TeleportSection(BaseSection):
         stab.setdefault("status", "idle")
         pool_write(self.s, "features.stabilize", stab)
 
+    # ---------- helpers ----------
+    def _anchors_json_path(self) -> str | None:
+        """
+        anchors.json без хардкода сервера:
+        core.engines.dashboard.server.<server>.teleport.stabilize/anchors.json
+        """
+        server = (pool_get(self.s, "config.server", "") or "").strip().lower()
+        if not server:
+            return None
+        try:
+            mod = importlib.import_module(f"core.engines.dashboard.server.{server}.teleport.stabilize")
+            base = os.path.dirname(getattr(mod, "__file__", "") or "")
+            if not base:
+                return None
+            path = os.path.join(base, "anchors.json")
+            return path if os.path.isfile(path) else None
+        except Exception:
+            return None
+
+    def _has_optional_stabilize(self, location: str) -> bool:
+        """
+        True, если для локации есть якорь (rus/eng) в anchors.json.
+        """
+        path = self._anchors_json_path()
+        if not path:
+            return False
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+            locs = (data.get("location") or {}) if isinstance(data, dict) else {}
+            node = locs.get(str(location or "")) or {}
+            anchor = (node.get("anchor") or {}) if isinstance(node, dict) else {}
+            rus = str(anchor.get("rus", "")).strip()
+            eng = str(anchor.get("eng", "")).strip()
+            return bool(rus or eng)
+        except Exception:
+            return False
+
     # ---------- setters ----------
     def teleport_set_enabled(self, enabled: bool):
         pool_write(self.s, "features.teleport", {"enabled": bool(enabled)})
@@ -48,6 +91,10 @@ class TeleportSection(BaseSection):
 
     def teleport_set_location(self, loc: str):
         pool_write(self.s, "features.teleport", {"location": str(loc or "")})
+        # Авто-синхронизация стабилизации по якорю локации
+        has_opt = self._has_optional_stabilize(loc)
+        pool_write(self.s, "features.stabilize", {"enabled": bool(has_opt)})
+        # UI всё равно сам скрывает/показывает чекбокс, но пул сразу консистентен
 
     def teleport_set_stabilize(self, flag: bool):
         pool_write(self.s, "features.stabilize", {"enabled": bool(flag)})
@@ -72,6 +119,10 @@ class TeleportSection(BaseSection):
     def teleport_list_locations(self, category: str) -> List[str]:
         server = str(pool_get(self.s, "config.server", ""))
         return get_teleport_locations(server, category)
+
+    # ---------- optional stabilize availability ----------
+    def teleport_has_optional_stabilize(self, location: str) -> bool:
+        return self._has_optional_stabilize(location)
 
     # ---------- manual run ----------
     def teleport_run_now(self) -> Dict[str, Any]:
@@ -101,5 +152,6 @@ class TeleportSection(BaseSection):
             "teleport_get_config": self.teleport_get_config,
             "teleport_list_categories": self.teleport_list_categories,
             "teleport_list_locations": self.teleport_list_locations,
+            "teleport_has_optional_stabilize": self.teleport_has_optional_stabilize,
             "teleport_run_now": self.teleport_run_now,
         }
