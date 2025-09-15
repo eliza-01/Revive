@@ -26,7 +26,6 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("window", {"info": None, "found": False, "title": "", "ts": 0.0})
     st.setdefault("focus", {"is_focused": None, "ts": 0.0})
     st.setdefault("player", {"alive": None, "hp_ratio": None, "cp_ratio": None, "ts": 0.0})
-    st.setdefault("ui_guard", {"enabled": False, "tracker": "empty", "ts": 0.0})
 
     # ---- Фичи ----
     st.setdefault("features", {
@@ -55,6 +54,11 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": False,
             "busy": False,
             "status": "idle"
+        },
+        "ui_guard": {
+            "busy": False,
+            "report": "empty",
+            "ts": 0.0
         },
         "record": {
             "enabled": False, "current_record": "", "records": [],

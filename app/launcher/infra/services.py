@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 import json
+import importlib  # ← ДОБАВЛЕНО
 
 from core.state.pool import pool_get, pool_write
 from core.engines.player_state.service import PlayerStateService
@@ -10,6 +11,8 @@ from core.engines.macros.service import MacrosRepeatService
 from core.engines.autofarm.service import AutoFarmService
 
 from core.logging import console
+from core.engines.ui_guard.runner import UIGuardRunner  # ← ДОБАВЛЕНО
+
 
 class PSAdapter:
     """Лёгкий адаптер поверх пула для оркестратора/секций."""
@@ -60,13 +63,100 @@ class ServicesBundle:
             console.log(f"[MACROS] {msg}")
             console.hud(_status_map(ok), f"Повтор макроса: {msg}")
 
+        # =======================
+        # UI GUARD интеграция
+        # =======================
+        self._ui_guard_runner: Optional[UIGuardRunner] = None  # лениво создаём
+
+        def _ensure_ui_guard_runner() -> Optional[UIGuardRunner]:
+            if self._ui_guard_runner is not None:
+                return self._ui_guard_runner
+            try:
+                srv = str(pool_get(self.state, "config.server", "boh") or "boh").lower()
+                mod = importlib.import_module(f"core.engines.ui_guard.server.{srv}.engine")
+                EngineCls = getattr(mod, "UIGuardEngine", None)
+                if EngineCls is None:
+                    console.log("[UI_GUARD] Engine class not found")
+                    return None
+                eng = EngineCls(
+                    server=srv,
+                    controller=self.controller,
+                )
+                runner = UIGuardRunner(
+                    engine=eng,
+                    get_window=lambda: pool_get(self.state, "window.info", None),
+                    get_language=lambda: pool_get(self.state, "config.language", "rus"),
+                    is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
+                    state=self.state,  # ← ВАЖНО: передаём пул внутрь раннера
+                )
+                # Инициализируем узел в пуле (на всякий случай)
+                pool_write(self.state, "features.ui_guard", {"busy": False, "report": "empty"})
+                self._ui_guard_runner = runner
+                return runner
+            except Exception as e:
+                console.log(f"[UI_GUARD] init error: {e}")
+                return None
+
+        def _mask_hp_unknown_and_hud():
+            """Пока экран перекрыт или UI-страж занят — HP/CP считаем неизвестными ('--')."""
+            pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
+            try:
+                if self.hud_window and pool_get(self.state, "focus.is_focused"):
+                    self.hud_window.evaluate_js(
+                        "window.ReviveHUD && window.ReviveHUD.setHP('--','')"
+                    )
+            except Exception:
+                pass
+
+        def _maybe_warn_overlay(report_val: str):
+            """Сообщения в HUD при перекрытии индикатора HP."""
+            if str(report_val or "").lower() == "empty":
+                return
+            af_busy = bool(pool_get(self.state, "features.autofarm.busy", False))
+            tp_busy = bool(pool_get(self.state, "features.teleport.busy", False))
+            bf_busy = bool(pool_get(self.state, "features.buff.busy", False))
+            if af_busy:
+                console.hud("att", "Индикатор HP чем-то перекрыт. Избегайте таких ситуаций на фарме.")
+            elif tp_busy or bf_busy:
+                console.hud("att", "Вероятно, Alt B перекрыло индикатор HP")
+
         # --- Player State service ---
         def _on_ps_update(data: Dict[str, Any]):
             hp = data.get("hp_ratio")
+
             # не трогаем vitals, если нет фокуса
             if pool_get(self.state, "focus.is_focused") is False:
                 return
 
+            # 0) Если прямо сейчас UI-страж что-то видит/чинит — виталы считаем неизвестными
+            ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
+            ui_report = str(pool_get(self.state, "features.ui_guard.report", "empty") or "empty")
+            if ui_busy or ui_report != "empty":
+                _mask_hp_unknown_and_hud()
+                _maybe_warn_overlay(ui_report)
+                return
+
+            # 1) Если HP "кончился" (мы бы поставили alive=False) — сначала запускаем UI-страж
+            if hp is not None and float(hp) <= 0.001:
+                runner = _ensure_ui_guard_runner()
+                if runner is not None:
+                    try:
+                        # run_once сам крутится до «чистого» экрана либо до неудачи,
+                        # и обновляет features.ui_guard.{busy,report}
+                        runner.run_once()
+                    except Exception as e:
+                        console.log(f"[UI_GUARD] run_once error: {e}")
+
+                # после прогона проверяем состояние — если всё ещё не empty → виталы неизвестны
+                ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
+                ui_report = str(pool_get(self.state, "features.ui_guard.report", "empty") or "empty")
+                if ui_busy or ui_report != "empty":
+                    _mask_hp_unknown_and_hud()
+                    _maybe_warn_overlay(ui_report)
+                    return
+                # если экран чист — продолжим обычной логикой (ниже)
+
+            # 2) Обычная запись виталов и HUD, когда ничего не перекрыто
             alive = None if hp is None else bool(hp > 0.001)
             pool_write(self.state, "player", {
                 "alive": alive,

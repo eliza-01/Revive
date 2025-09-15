@@ -117,6 +117,57 @@ def _set_window_icon(title: str, ico_path: str):
     except Exception as e:
         print("[ICON] set icon error:", e)
 
+def _try_set_titlebar_colors(title: str,
+                             caption_hex: str = "#2B2F36",
+                             text_hex: str = "#D7DAE0",
+                             border_hex: str | None = "#2B2F36"):
+    """
+    Окраска системного заголовка через DwmSetWindowAttribute (Win11 22000+).
+    На Win10 просто тихо проигнорируется (оставим тёмный режим, если можно).
+    """
+    try:
+        user32 = ctypes.windll.user32
+        dwmapi = ctypes.windll.dwmapi
+
+        hwnd = user32.FindWindowW(None, str(title))
+        if not hwnd:
+            return
+
+        def _COLORREF(hexrgb: str) -> ctypes.c_uint:
+            s = hexrgb.lstrip("#")
+            r = int(s[0:2], 16); g = int(s[2:4], 16); b = int(s[4:6], 16)
+            # COLORREF = 0x00BBGGRR (B<<16 | G<<8 | R)
+            return ctypes.c_uint((b << 16) | (g << 8) | r)
+
+        # 1) тёмный заголовок, если поддерживается
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        val_dark = ctypes.c_int(1)
+        try:
+            dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                         ctypes.byref(val_dark), ctypes.sizeof(val_dark))
+        except Exception:
+            pass  # на старых системах просто не применится
+
+        # 2) Win11+: явные цвета
+        DWMWA_BORDER_COLOR  = 34
+        DWMWA_CAPTION_COLOR = 35
+        DWMWA_TEXT_COLOR    = 36
+
+        cap = _COLORREF(caption_hex)
+        dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR,
+                                     ctypes.byref(cap), ctypes.sizeof(cap))
+
+        if text_hex:
+            txt = _COLORREF(text_hex)
+            dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR,
+                                         ctypes.byref(txt), ctypes.sizeof(txt))
+        if border_hex:
+            brd = _COLORREF(border_hex)
+            dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR,
+                                         ctypes.byref(brd), ctypes.sizeof(brd))
+    except Exception as e:
+        print("[TITLEBAR] set colors failed:", e)
+
 def launch_gui(local_version: str):
     # (Опционально, чтобы Windows группировал ярлык красиво)
     try:
@@ -199,14 +250,20 @@ def launch_gui(local_version: str):
             url=index_path,
             width=820,
             height=900,
-            resizable = True,  # не работает)
-            frameless = True,  # перетаскивание за любое место тела
-            easy_drag = True,
-            on_top = True,  # окно поверх всех после запуска
+            resizable=True,
+            frameless=False,  # своё «безрамочное» окно
+            easy_drag=True,  # включаем поддержку drag-областей
+            on_top=True,
             background_color="#000000",
             js_api=api,
         )
         window.events.shown += (lambda *_: _set_window_icon("Revive Launcher", icon_path))
+        window.events.shown += (lambda *_: _try_set_titlebar_colors(
+            "Revive Launcher",
+            caption_hex="#2B2F36",
+            text_hex="#D7DAE0",
+            border_hex="#2B2F36",
+        ))
 
         # собрать контейнер и экспортировать методы секций
         c = build_container(window, local_version, hud_window=hud_window)
@@ -223,40 +280,6 @@ def launch_gui(local_version: str):
                 return {"ok": False, "error": str(e)}
 
         window.expose(exit_app)
-
-        def ui_minimize():
-            try:
-                window.minimize()
-                return {"ok": True}
-            except Exception as e:
-                return {"ok": False, "error": str(e)}
-
-        window.expose(ui_minimize)
-
-        # --- Инжект небольшой кнопки «свернуть» в правый верх ---
-        def _inject_minimize_button(*_):
-            try:
-                js = r"""
-                (function(){
-                  const ID='__rv_min_btn__';
-                  if (document.getElementById(ID)) return;
-                  const b=document.createElement('button');
-                  b.id=ID;
-                  b.textContent='–';
-                  b.title='Свернуть';
-                  b.style.cssText='position:fixed;top:8px;right:8px;width:28px;height:28px;'
-                    +'line-height:26px;text-align:center;border:none;border-radius:6px;'
-                    +'background:#1f2937;color:#fff;opacity:.9;cursor:pointer;z-index:2147483647;';
-                  b.onmouseenter=()=>b.style.opacity='1';
-                  b.onmouseleave=()=>b.style.opacity='.9';
-                  b.addEventListener('click',()=>{ try{ pywebview.api.ui_minimize(); }catch(e){} });
-                  document.body.appendChild(b);
-                })();
-                """
-                window.evaluate_js(js)
-            except Exception:
-                pass
-        window.events.loaded += _inject_minimize_button
 
         # закрыть сплэш при загрузке UI
         def _close_splash(*_):

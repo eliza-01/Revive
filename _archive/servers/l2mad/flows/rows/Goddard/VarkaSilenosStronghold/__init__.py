@@ -1,1 +1,0 @@
-﻿# _archive/servers/l2mad/flows/rows/Goddard/VarkaSilenosStronghold/__init__.py

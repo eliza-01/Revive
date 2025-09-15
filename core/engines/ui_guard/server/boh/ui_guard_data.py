@@ -21,12 +21,12 @@ PAGES: Dict[str, str] = {
     "clan_page": "clan_page.png",
     "menu_page": "menu_page.png",
     "actions_page": "actions_page.png",
+    "macros_page": "macros_page.png",
     # добавляй по мере появления ассетов
 }
 
 BLOCKERS: Dict[str, str] = {
     "wrong_word_popup": "wrong_word_popup.png",
-    "black_loading_screen": "black_loading_screen.png",
     "disconnect_popup": "disconnect_popup.png",
 }
 
@@ -37,6 +37,4 @@ CLOSE_BUTTONS: Dict[str, str] = {
     "dashboard_close_button": "dashboard_close_button.png",
     "wrong_word_accept_button": "wrong_word_accept_button.png",
     "disconnect_accept_button": "disconnect_accept_button.png",
-
-
 }

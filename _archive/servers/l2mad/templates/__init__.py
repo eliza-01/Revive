@@ -1,1 +1,0 @@
-﻿# _archive/servers/l2mad/templates/__init__.py
