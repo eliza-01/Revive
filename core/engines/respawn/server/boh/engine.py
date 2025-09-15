@@ -9,7 +9,7 @@ from core.vision.matching.template_matcher_2 import (
     match_key_in_zone_single,
 )
 from .respawn_data import ZONES, TEMPLATES
-from .templates import resolver as teleportlresolver
+from .templates import resolver as tplresolver
 from core.logging import console
 from core.state.pool import pool_get
 
@@ -103,7 +103,7 @@ class RespawnEngine:
                 if not parts:
                     self._dbg(f"нет parts для ключа '{k}'")
                     continue
-                p = teleportlresolver.resolve((lang or "rus").lower(), *parts)
+                p = tplresolver.resolve((lang or "rus").lower(), *parts)
                 if not p:
                     self._dbg(f"не найден файл шаблона для '{k}' (lang={lang})")
 

@@ -108,13 +108,13 @@ class FlowCtx:
 
         return (0, 0, int(self._win().get("width", 0)), int(self._win().get("height", 0)))
 
-    def _parts(self, teleportl_key_or_parts: Sequence[str] | str) -> Optional[List[str]]:
-        if isinstance(teleportl_key_or_parts, str):
-            return self.templates.get(teleportl_key_or_parts)
-        return list(teleportl_key_or_parts or [])
+    def _parts(self, tpl_key_or_parts: Sequence[str] | str) -> Optional[List[str]]:
+        if isinstance(tpl_key_or_parts, str):
+            return self.templates.get(tpl_key_or_parts)
+        return list(tpl_key_or_parts or [])
 
-    def wait(self, zone_key: str, teleportl_key: str, timeout_ms: int, thr: float) -> bool:
-        zone = self.zones.get(zone_key); parts = self._parts(teleportl_key)
+    def wait(self, zone_key: str, tpl_key: str, timeout_ms: int, thr: float) -> bool:
+        zone = self.zones.get(zone_key); parts = self._parts(tpl_key)
         if not zone or not parts:
             return False
         ltrb = self._zone_ltrb(zone); win = self._win()
@@ -125,8 +125,8 @@ class FlowCtx:
             time.sleep(0.05)
         return False
 
-    def _click_in(self, zone_key: str, teleportl_key_or_parts: Sequence[str] | str, timeout_ms: int, thr: float) -> bool:
-        zone = self.zones.get(zone_key); parts = self._parts(teleportl_key_or_parts)
+    def _click_in(self, zone_key: str, tpl_key_or_parts: Sequence[str] | str, timeout_ms: int, thr: float) -> bool:
+        zone = self.zones.get(zone_key); parts = self._parts(tpl_key_or_parts)
         if not zone or not parts:
             return False
         ltrb = self._zone_ltrb(zone); win = self._win()
@@ -143,8 +143,8 @@ class FlowCtx:
             time.sleep(0.05)
         return False
 
-    def _visible(self, zone_key: str, teleportl_key_or_parts, thr: float) -> bool:
-        zone = self.zones.get(zone_key); parts = self._parts(teleportl_key_or_parts)
+    def _visible(self, zone_key: str, tpl_key_or_parts, thr: float) -> bool:
+        zone = self.zones.get(zone_key); parts = self._parts(tpl_key_or_parts)
         if not zone or not parts:
             return False
         ltrb = self._zone_ltrb(zone); win = self._win()
@@ -184,12 +184,12 @@ class FlowOpExecutor:
 
         try:
             if op == "wait":
-                ok = self.ctx.wait(step["zone"], step["teleportl"], int(step["timeout_ms"]), thr)
+                ok = self.ctx.wait(step["zone"], step["tpl"], int(step["timeout_ms"]), thr)
 
             elif op == "wait_optional":
                 # Мягкое ожидание с внутренними ретраями
                 zone = step["zone"]
-                teleportl  = step["teleportl"]
+                tpl  = step["tpl"]
                 timeout_ms = int(step.get("timeout_ms", 2000))
                 thr = float(step.get("thr", thr))
                 retries = int(step.get("retry_count", 0))
@@ -198,28 +198,28 @@ class FlowOpExecutor:
                 found = False
                 total_tries = max(1, retries + 1)
                 for attempt in range(total_tries):
-                    if self.ctx.wait(zone, teleportl, timeout_ms, thr):
+                    if self.ctx.wait(zone, tpl, timeout_ms, thr):
                         found = True
                         break
                     if attempt < total_tries - 1 and delay_ms > 0:
                         time.sleep(delay_ms / 1000.0)
 
                 if not found:
-                    self._log(f"[flow] wait_optional: '{teleportl}' not found after {total_tries} tries → continue")
+                    self._log(f"[flow] wait_optional: '{tpl}' not found after {total_tries} tries → continue")
                 ok = True
 
             elif op == "click_in":
-                teleportl = step["teleportl"]
-                if teleportl == "{mode_key}":
-                    teleportl = self.ctx.extras.get("mode_key_provider", lambda: None)() or "buffer_mode_profile"
-                ok = self.ctx._click_in(step["zone"], teleportl, int(step["timeout_ms"]), thr)
+                tpl = step["tpl"]
+                if tpl == "{mode_key}":
+                    tpl = self.ctx.extras.get("mode_key_provider", lambda: None)() or "buffer_mode_profile"
+                ok = self.ctx._click_in(step["zone"], tpl, int(step["timeout_ms"]), thr)
 
             elif op == "click_any":
                 ok = False
                 deadline = time.time() + int(step["timeout_ms"]) / 1000.0
                 while time.time() < deadline and not ok:
                     for zk in tuple(step["zones"]):
-                        ok = self.ctx._click_in(zk, step["teleportl"], 1, thr)
+                        ok = self.ctx._click_in(zk, step["tpl"], 1, thr)
                         if ok:
                             break
                     time.sleep(0.05)
@@ -227,9 +227,9 @@ class FlowOpExecutor:
             elif op == "click_optional":
                 # Мягкий клик с внутренними ретраями
                 zone = step["zone"]
-                teleportl  = step["teleportl"]
-                if teleportl == "{mode_key}":
-                    teleportl = self.ctx.extras.get("mode_key_provider", lambda: None)() or "buffer_mode_profile"
+                tpl  = step["tpl"]
+                if tpl == "{mode_key}":
+                    tpl = self.ctx.extras.get("mode_key_provider", lambda: None)() or "buffer_mode_profile"
 
                 timeout_ms = int(step.get("timeout_ms", 800))
                 thr = float(step.get("thr", thr))
@@ -239,21 +239,21 @@ class FlowOpExecutor:
                 success = False
                 total_tries = max(1, retries + 1)
                 for attempt in range(total_tries):
-                    if self.ctx._click_in(zone, teleportl, timeout_ms, thr):
+                    if self.ctx._click_in(zone, tpl, timeout_ms, thr):
                         success = True
                         break
                     if attempt < total_tries - 1 and delay_ms > 0:
                         time.sleep(delay_ms / 1000.0)
 
                 if not success:
-                    self._log(f"[flow] click_optional: '{teleportl}' not clicked after {total_tries} tries → continue")
+                    self._log(f"[flow] click_optional: '{tpl}' not clicked after {total_tries} tries → continue")
                 ok = True
 
             elif op == "enter_pincode":
                 # МЯГКИЙ PIN
                 zone = step.get("zone", "fullscreen")
-                visible_teleportl = step.get("visible_teleportl", "enter_pincode")
-                if not self.ctx._visible(zone, visible_teleportl, thr):
+                visible_tpl = step.get("visible_tpl", "enter_pincode")
+                if not self.ctx._visible(zone, visible_tpl, thr):
                     ok = True
                 else:
                     acc = self.ctx.extras.get("account") or {}
@@ -264,8 +264,8 @@ class FlowOpExecutor:
                         digit_delay = int(step.get("digit_delay_ms", 120))
                         ok = True
                         for d in pin:
-                            teleportl_key = f"num{d}"
-                            if not self.ctx._click_in(zone, teleportl_key, int(step.get("timeout_ms", 1500)), thr):
+                            tpl_key = f"num{d}"
+                            if not self.ctx._click_in(zone, tpl_key, int(step.get("timeout_ms", 1500)), thr):
                                 ok = False
                                 break
                             if digit_delay > 0:
@@ -335,6 +335,10 @@ class FlowOpExecutor:
 
             elif op == "press_enter":
                 self.ctx.controller.send("press_enter")
+                ok = True
+
+            elif op == "press_esc":
+                self.ctx.controller.send("esc")
                 ok = True
 
             elif op == "send_message":
@@ -408,11 +412,11 @@ class FlowOpExecutor:
         return ok
 
     def _dashboard_is_locked(self, step: Dict, thr: float) -> bool:
-        zone_key = step["zone"]; teleportl_key = step["teleportl"]
+        zone_key = step["zone"]; tpl_key = step["tpl"]
         timeout_ms = int(step.get("timeout_ms", 12000)); interval_s = float(step.get("probe_interval_s", 1.0))
         start = time.time(); next_probe = 0.0
         while (time.time() - start) * 1000.0 < timeout_ms:
-            if not self.ctx._visible(zone_key, teleportl_key, thr):
+            if not self.ctx._visible(zone_key, tpl_key, thr):
                 return True
             now = time.time()
             if now >= next_probe:
@@ -426,13 +430,13 @@ class FlowOpExecutor:
         return False
 
     def _while_visible_send(self, step: Dict, thr: float) -> bool:
-        """Пока виден teleportl в zone — отправлять cmd (например, 'b')."""
-        zone_key = step["zone"]; teleportl_key = step["teleportl"]
+        """Пока виден tpl в zone — отправлять cmd (например, 'b')."""
+        zone_key = step["zone"]; tpl_key = step["tpl"]
         cmd = step.get("cmd", "b")
         timeout_ms = int(step.get("timeout_ms", 10000)); interval_s = float(step.get("probe_interval_s", 0.5))
         start = time.time(); next_probe = 0.0
         while (time.time() - start) * 1000.0 < timeout_ms:
-            if not self.ctx._visible(zone_key, teleportl_key, thr):
+            if not self.ctx._visible(zone_key, tpl_key, thr):
                 return True
             now = time.time()
             if now >= next_probe:
@@ -442,7 +446,7 @@ class FlowOpExecutor:
                     pass
                 next_probe = now + interval_s
             time.sleep(0.05)
-        console.log(f"[flow] still visible: {teleportl_key}")
+        console.log(f"[flow] still visible: {tpl_key}")
         return False
 
     def _click_by_resolver(self, zone_key: str, which: str, step: Dict, thr: float) -> bool:

@@ -44,15 +44,15 @@
       const cfg = await pywebview.api.teleport_get_config?.();
       const cats = await pywebview.api.teleport_list_categories?.();
       fillSelect($("#teleportCat"), cats || [], cfg?.category || "");
-      await refreshTeleportLocs(cfg?.location || "");
+      await refreshtplocs(cfg?.location || "");
     } catch (_) {}
   }
 
-  async function refreshTeleportLocs(currentLoc) {
+  async function refreshtplocs(currentLoc) {
     try {
       const cat = $("#teleportCat")?.value || "";
       const locs = await pywebview.api.teleport_list_locations?.(cat);
-      fillSelect($("#teleportLoc"), locs || [], currentLoc || "");
+      fillSelect($("#tploc"), locs || [], currentLoc || "");
     } catch (_) {}
   }
 
@@ -72,12 +72,12 @@
       try {
         const cat = $("#teleportCat")?.value || "";
         await pywebview.api.teleport_set_category?.(cat);
-        await refreshTeleportLocs(""); // без автоселекта локации
+        await refreshtplocs(""); // без автоселекта локации
       } catch (_){}
     });
 
     // локация
-    $("#teleportLoc")?.addEventListener("change", (e) => {
+    $("#tploc")?.addEventListener("change", (e) => {
       try { pywebview.api.teleport_set_location?.(String(e.target.value || "")); } catch (_){}
     });
 

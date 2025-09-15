@@ -1,5 +1,6 @@
 ﻿# core/engines/dashboard/server/boh/teleport/engine.py
 from __future__ import annotations
+import time
 from typing import Any, Dict, Optional, Tuple, List
 
 from core.logging import console
@@ -14,15 +15,18 @@ from ..dashboard_data import (
     TELEPORT_VILLAGES,
     TELEPORT_LOCATIONS,
 )
+from ..templates.resolver import resolve as tpl_resolve
 
 
 class TeleportEngine:
     """
     Низкоуровневые операции вкладки Teleport:
-      - открыть кнопку Teleport в Dashboard и дождаться init
-      - открыть категорию (towns/villages) и дождаться *_init
-      - открыть «контейнер» (город/деревню) и дождаться <Container>_init
-      - клик по локации (по карте TELEPORT_LOCATIONS)
+      - переход на вкладку
+      - открытие категории (towns|villages)
+      - открытие контейнера города (если требуется)
+      - клик локации (с Esc перед кликом)
+      - подтверждение удачного старта (dashboard исчез)
+    Предполагается, что Dashboard уже открыт.
     """
 
     def __init__(self, state: Dict[str, Any], server: str, controller: Any, get_window, get_language):
@@ -52,234 +56,228 @@ class TeleportEngine:
         except Exception:
             return None
 
-    def _zone_ltrb(self, win: Dict, name: str) -> Tuple[int, int, int, int]:
+    def _zone(self, name: str) -> Tuple[int, int, int, int]:
+        win = self._win()
+        if not win:
+            return (0, 0, 0, 0)
         decl = ZONES.get(name, ZONES.get("fullscreen", {"fullscreen": True}))
         l, t, r, b = compute_zone_ltrb(win, decl)
         return (int(l), int(t), int(r), int(b))
 
-    def _click(self, x: int, y: int, *, hover_delay_s: float = 0.20, post_delay_s: float = 0.20) -> None:
+    def _visible(self, tpl_key: str, zone_name: str = "fullscreen", thr: float = 0.87) -> bool:
+        win = self._win()
+        if not win:
+            return False
+        parts = TEMPLATES.get(tpl_key)
+        if not parts:
+            return False
+        return match_key_in_zone_single(
+            window=win,
+            zone_ltrb=self._zone(zone_name),
+            server=self.server,
+            lang=self._lang(),
+            template_parts=parts,
+            threshold=thr,
+            engine="dashboard",
+        ) is not None
+
+    def _click_template(self, parts: List[str], zone: str = "fullscreen", thr: float = 0.86, timeout_s: float = 2.5) -> bool:
+        """Как в respawn: сперва матч, потом явный клик по найденной точке."""
+        win = self._win()
+        if not win or not parts:
+            return False
+        end = time.time() + max(0.2, timeout_s)
+        while time.time() < end:
+            pt = match_key_in_zone_single(
+                window=win,
+                zone_ltrb=self._zone(zone),
+                server=self.server,
+                lang=self._lang(),
+                template_parts=parts,
+                threshold=thr,
+                engine="dashboard",
+            )
+            if pt:
+                try:
+                    self.controller.send(f"click:{pt[0]},{pt[1]}")
+                except Exception:
+                    pass
+                time.sleep(0.1)
+                return True
+            time.sleep(0.05)
+        return False
+
+    def _press_esc(self, delay_s: float = 0.10):
         try:
-            if hasattr(self.controller, "move"):
-                self.controller.move(int(x), int(y))
-            import time as _t
-            _t.sleep(max(0.0, float(hover_delay_s)))
-            if hasattr(self.controller, "_click_left_arduino"):
-                self.controller._click_left_arduino()
-            else:
-                self.controller.send("l")
-            _t.sleep(max(0.0, float(post_delay_s)))
+            self.controller.send("esc")
+        except Exception:
+            pass
+        if delay_s > 0:
+            time.sleep(delay_s)
+
+
+    # 0) Esc (сбросить )
+    # self._press_esc(delay_s=0.10)
+    # --- actions ----------------------------------------------------------
+
+    def open_tab(self, *, thr_btn: float = 0.86, thr_init: float = 0.86, timeout_s: float = 2.5) -> bool:
+        """Клик по кнопке Teleport и ожидание инициализации вкладки."""
+        btn = TEMPLATES.get("dashboard_teleport_button")
+        init = TEMPLATES.get("dashboard_teleport_init")
+        if not (btn and init):
+            self._hud("err", "[teleport] нет шаблонов вкладки")
+            return False
+        if not self._click_template(btn, "fullscreen", thr_btn, timeout_s):
+            self._hud("err", "[teleport] кнопка Teleport не найдена")
+            return False
+
+        # дождаться init вкладки
+        win = self._win()
+        if not win:
+            return False
+        end = time.time() + timeout_s
+        while time.time() < end:
+            if match_key_in_zone_single(
+                window=win,
+                zone_ltrb=self._zone("fullscreen"),
+                server=self.server,
+                lang=self._lang(),
+                template_parts=init,
+                threshold=thr_init,
+                engine="dashboard",
+            ):
+                self._hud("ok", "[teleport] вкладка открыта")
+                return True
+            time.sleep(0.05)
+
+        self._hud("err", "[teleport] вкладка не открылась")
+        return False
+
+    def open_category(self, cat: str, *, thr_btn: float = 0.86, timeout_s: float = 2.5) -> bool:
+        """towns/villages → клик + ожидание *_init."""
+        cat = (cat or "").strip().lower()
+        if cat not in TELEPORT_CATEGORIES:
+            self._hud("err", f"[teleport] неизвестная категория: {cat}")
+            return False
+
+        # клик по плитке категории
+        parts_cat = TELEPORT_CATEGORIES.get(cat)
+        parts_cat = [self._lang() if p == "<lang>" else p for p in (parts_cat or [])]
+        if not self._click_template(parts_cat, "fullscreen", thr_btn, timeout_s):
+            self._hud("err", f"[teleport] категория '{cat}' не найдена")
+            return False
+
+        # ожидание init раздела
+        init_key = "towns_init" if cat == "towns" else "villages_init"
+        init_map = TELEPORT_TOWNS if cat == "towns" else TELEPORT_VILLAGES
+        parts_init = init_map.get(init_key)
+        parts_init = [self._lang() if p == "<lang>" else p for p in (parts_init or [])]
+
+        win = self._win()
+        end = time.time() + timeout_s
+        while time.time() < end:
+            if match_key_in_zone_single(
+                window=win,
+                zone_ltrb=self._zone("fullscreen"),
+                server=self.server,
+                lang=self._lang(),
+                template_parts=parts_init,
+                threshold=0.86,
+                engine="dashboard",
+            ):
+                self._hud("ok", f"[teleport] категория '{cat}' открыта")
+                return True
+            time.sleep(0.05)
+
+        self._hud("err", f"[teleport] '{cat}' не инициализировалась")
+        return False
+
+    def _ensure_container_for_location(self, loc: str, cat: str, *, thr: float = 0.86, timeout_s: float = 2.5) -> bool:
+        """
+        Для towns: перед кликом по локации нужно войти в город-контейнер.
+        Определяем по пути в TELEPORT_LOCATIONS[loc] имя города и кликаем его + ждём *_init.
+        Для villages — контейнер не требуется.
+        """
+        cat = (cat or "").strip().lower()
+        if cat != "towns":
+            return True  # для деревень не заходим внутрь
+
+        parts = TELEPORT_LOCATIONS.get(loc)
+        if not parts:
+            return False
+        parts = [self._lang() if p == "<lang>" else p for p in parts]
+
+        # ожидаем, что путь имеет вид: "<lang>/teleport/towns/<City>/<file>"
+        city_name = None
+        try:
+            idx = parts.index("towns")
+            city_name = parts[idx + 1]
         except Exception:
             pass
 
-    def _match_key_center(self, win: Dict, parts: List[str], thr: float = 0.87) -> Optional[Tuple[int, int]]:
-        pt = match_key_in_zone_single(
-            window=win,
-            zone_ltrb=self._zone_ltrb(win, "fullscreen"),
-            server=self.server,
-            lang=self._lang(),
-            template_parts=parts or [],
-            threshold=thr,
-            engine="dashboard",
-        )
-        return pt
+        if not city_name:
+            return True  # ничего не знаем — попробуем без контейнера
 
-    # --- state ------------------------------------------------------------
+        # клик по городу
+        city_btn = TELEPORT_TOWNS.get(city_name)
+        city_init = TELEPORT_TOWNS.get(f"{city_name}_init")
+        if not (city_btn and city_init):
+            return True  # нет шаблонов — пробуем без контейнера
 
-    def is_open(self, thr: float = 0.87) -> bool:
-        """Teleport-вкладка открыта, если виден ключ 'dashboard_teleport_init'."""
-        win = self._win()
-        if not win:
+        city_btn = [self._lang() if p == "<lang>" else p for p in city_btn]
+        city_init = [self._lang() if p == "<lang>" else p for p in city_init]
+
+        if not self._click_template(city_btn, "fullscreen", thr, timeout_s):
             return False
-        parts = TEMPLATES.get("dashboard_teleport_init")
+
+        # дождаться init города
+        win = self._win()
+        end = time.time() + timeout_s
+        while time.time() < end:
+            if match_key_in_zone_single(
+                window=win,
+                zone_ltrb=self._zone("fullscreen"),
+                server=self.server,
+                lang=self._lang(),
+                template_parts=city_init,
+                threshold=thr,
+                engine="dashboard",
+            ):
+                return True
+            time.sleep(0.05)
+        return False
+
+    def click_location(self, loc: str, cat: str, *, thr: float = 0.86, timeout_s: float = 3.0) -> bool:
+        """
+        Нажать Esc → клик по локации → успех, если dashboard_init исчез.
+        """
+        loc = (loc or "").strip()
+        if not loc:
+            return False
+
+        # убедимся, что открыли нужный контейнер (города) если надо
+        if not self._ensure_container_for_location(loc, cat, thr=thr, timeout_s=timeout_s):
+            self._hud("err", f"[teleport] контейнер для '{loc}' не открыт")
+            return False
+
+
+        # 1) клик по локации
+        parts = TELEPORT_LOCATIONS.get(loc)
         if not parts:
+            self._hud("err", f"[teleport] нет шаблона локации: {loc}")
             return False
-        return self._match_key_center(win, parts, thr) is not None
-
-    def open_tab(self, thr_btn: float = 0.85, thr_init: float = 0.85, timeout_s: float = 2.5) -> bool:
-        """Клик по кнопке Teleport и ожидание 'dashboard_teleport_init'."""
-        win = self._win()
-        if not win:
-            self._hud("err", "[dashboard/teleport] окно игры не найдено")
+        parts = [self._lang() if p == "<lang>" else p for p in parts]
+        if not self._click_template(parts, "fullscreen", thr, timeout_s):
+            self._hud("err", f"[teleport] локация '{loc}' не найдена")
             return False
 
-        if self.is_open(thr=thr_init):
-            return True
-
-        btn = TEMPLATES.get("dashboard_teleport_button")
-        init = TEMPLATES.get("dashboard_teleport_init")
-        if not btn or not init:
-            self._hud("err", "[dashboard/teleport] нет шаблонов кнопки/инициализации")
-            return False
-
-        pt = self._match_key_center(win, btn, thr_btn)
-        if not pt:
-            self._hud("err", "[dashboard/teleport] кнопка Teleport не найдена")
-            return False
-
-        self._click(pt[0], pt[1])
-
-        import time as _t
-        end = _t.time() + max(0.5, float(timeout_s))
-        while _t.time() < end:
-            if self._match_key_center(win, init, thr_init):
-                self._hud("ok", "[dashboard] раздел Teleport открыт")
+        # 2) подтверждение: dashboard_init должен пропасть сам
+        end = time.time() + max(1.0, timeout_s)
+        while time.time() < end:
+            if not self._visible("dashboard_init", "fullscreen", 0.86):
+                self._hud("succ", f"[teleport] стартован переход в '{loc}'")
                 return True
-            _t.sleep(0.05)
+            time.sleep(0.05)
 
-        self._hud("err", "[dashboard/teleport] раздел не открылся")
+        self._hud("err", "[teleport] дэшборд не закрылся после клика по локации")
         return False
-
-    # --- categories / containers -----------------------------------------
-
-    def open_category(self, category: str, thr_btn: float = 0.85, thr_init: float = 0.85, timeout_s: float = 2.5) -> bool:
-        win = self._win()
-        if not win:
-            return False
-        category = (category or "").strip()
-
-        # карта категорий → кнопка
-        parts_btn = TELEPORT_CATEGORIES.get(category)
-        if not parts_btn:
-            self._hud("err", f"[teleport] неизвестная категория: {category}")
-            return False
-
-        # init-ключ для выбранной категории
-        if category == "towns":
-            parts_init = TELEPORT_TOWNS.get("towns_init")
-        elif category == "villages":
-            parts_init = TELEPORT_VILLAGES.get("villages_init")
-        else:
-            parts_init = None
-
-        if not parts_init:
-            self._hud("err", f"[teleport] нет шаблона init для категории '{category}'")
-            return False
-
-        # если уже в разделе категории — готово
-        if self._match_key_center(win, parts_init, thr_init):
-            return True
-
-        pt = self._match_key_center(win, parts_btn, thr_btn)
-        if not pt:
-            self._hud("err", f"[teleport] кнопка категории '{category}' не найдена")
-            return False
-
-        self._click(pt[0], pt[1])
-
-        import time as _t
-        end = _t.time() + max(0.5, float(timeout_s))
-        while _t.time() < end:
-            if self._match_key_center(win, parts_init, thr_init):
-                self._hud("ok", f"[teleport] открыт раздел '{category}'")
-                return True
-            _t.sleep(0.05)
-
-        self._hud("err", f"[teleport] раздел '{category}' не открылся")
-        return False
-
-    def _ensure_container_open(self, category: str, container: str,
-                               thr_btn: float = 0.85, thr_init: float = 0.85, timeout_s: float = 2.5) -> bool:
-        """
-        Убедиться, что открыт подраздел (например, towns → Goddard).
-        Для towns: TELEPORT_TOWNS['Goddard'] → ожидать TELEPORT_TOWNS['Goddard_init'].
-        Для villages: аналогично TELEPORT_VILLAGES.
-        """
-        win = self._win()
-        if not win:
-            return False
-        category = (category or "").strip()
-        container = (container or "").strip()
-
-        if category == "towns":
-            btn_parts = TELEPORT_TOWNS.get(container)
-            init_parts = TELEPORT_TOWNS.get(f"{container}_init")
-        elif category == "villages":
-            btn_parts = TELEPORT_VILLAGES.get(container)
-            init_parts = TELEPORT_VILLAGES.get(f"{container}_init")
-        else:
-            btn_parts = None
-            init_parts = None
-
-        if not init_parts:
-            # иногда контейнера как отдельной страницы нет — считаем, что уже «открыт»
-            return True
-
-        # уже открыт?
-        if self._match_key_center(win, init_parts, thr_init):
-            return True
-
-        if not btn_parts:
-            self._hud("err", f"[teleport] нет кнопки контейнера '{container}' для категории '{category}'")
-            return False
-
-        pt = self._match_key_center(win, btn_parts, thr_btn)
-        if not pt:
-            self._hud("err", f"[teleport] кнопка контейнера '{container}' не найдена")
-            return False
-
-        self._click(pt[0], pt[1])
-
-        import time as _t
-        end = _t.time() + max(0.5, float(timeout_s))
-        while _t.time() < end:
-            if self._match_key_center(win, init_parts, thr_init):
-                return True
-            _t.sleep(0.05)
-
-        self._hud("err", f"[teleport] контейнер '{container}' не открылся")
-        return False
-
-    # --- locations --------------------------------------------------------
-
-    @staticmethod
-    def _infer_cat_and_container_for_location(location: str) -> Tuple[Optional[str], Optional[str]]:
-        """
-        По TELEPORT_LOCATIONS выясняем категорию (towns/villages) и «контейнер» (город/деревня),
-        на странице которого лежит нужная локация.
-        parts = ["<lang>", "teleport", <cat>, <container>, ...]
-        """
-        parts = TELEPORT_LOCATIONS.get(location)
-        if not parts or len(parts) < 4:
-            return None, None
-        cat = parts[2]
-        container = parts[3]
-        return (cat, container)
-
-    def click_location(self, location: str, thr_btn: float = 0.85) -> bool:
-        """
-        Кликает по локации. При необходимости:
-          - переключает категорию,
-          - открывает нужный контейнер (город/деревню).
-        """
-        win = self._win()
-        if not win:
-            return False
-        location = (location or "").strip()
-
-        parts = TELEPORT_LOCATIONS.get(location)
-        if not parts:
-            self._hud("err", f"[teleport] неизвестная локация: {location}")
-            return False
-
-        cat, container = self._infer_cat_and_container_for_location(location)
-        if not cat:
-            self._hud("err", f"[teleport] не удалось вывести категорию/контейнер для '{location}'")
-            return False
-
-        # открыть категорию
-        if not self.open_category(cat):
-            return False
-
-        # открыть контейнер (страницу города/деревни), если требуется
-        if container and not self._ensure_container_open(cat, container):
-            return False
-
-        # клик по самой локации
-        pt = self._match_key_center(win, parts, thr_btn)
-        if not pt:
-            self._hud("err", f"[teleport] кнопка локации '{location}' не найдена")
-            return False
-
-        self._click(pt[0], pt[1])
-        self._hud("succ", f"[teleport] клик по '{location}'")
-        return True

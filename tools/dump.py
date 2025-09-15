@@ -290,7 +290,7 @@ def main():
     # ЕДИНЫЙ МАНИФЕСТ (с разделителями по секторам)
     manifest_path = out_dir / args.manifest_name
     with io.open(manifest_path, "w", encoding="utf-8", newline="\n") as mf:
-        mf.write("# section\tstatus\teleportath\n")
+        mf.write("# section\tstatus\tpath\n")
         for l in letters:
             if l not in all_entries_by_section:
                 continue

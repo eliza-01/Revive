@@ -29,7 +29,9 @@ TEMPLATES: Dict[str, List[str]] = {
     "dashboard_buffer_restoreHp": ["<lang>", "buffer", "dashboard_buffer_restoreHp.png"],
     "target_player_init": ["<lang>", "buffer", "target_player_init.png"],
     # dashboard_teleport
-    "dashboard_telepor4t_init": ["<lang>", "teleport", "dashboard_teleport_init.png"],
+    "dashboard_teleport_init": ["<lang>", "teleport", "dashboard_teleport_init.png"],
+    # interface
+    "target_init": ["common", "interface", "target_init.png"]
 }
 TELEPORT_CATEGORIES: Dict[str, List[str]] = {
     # кнопки перехода в раздел с городами/деревнями

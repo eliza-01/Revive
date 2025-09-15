@@ -9,7 +9,7 @@ import numpy as np
 from core.logging import console
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from .dashboard_data import ZONES, TEMPLATES
-from .templates.resolver import resolve as teleportl_resolve
+from .templates.resolver import resolve as tpl_resolve
 
 ZoneLTRB = Tuple[int, int, int, int]
 
@@ -29,12 +29,12 @@ def _zone_ltrb(win: Dict[str, Any], decl) -> ZoneLTRB:
         return (l, t, r, b)
     return (0, 0, int(win.get("width", 0)), int(win.get("height", 0)))
 
-def _match_on_window(win: Dict[str, Any], lang: str, teleportl_key: str,
+def _match_on_window(win: Dict[str, Any], lang: str, tpl_key: str,
                      zone_key: str = "fullscreen", threshold: float = 0.87) -> Optional[Tuple[int,int,int,int]]:
-    parts = TEMPLATES.get(teleportl_key)
+    parts = TEMPLATES.get(tpl_key)
     if not parts:
         return None
-    path = teleportl_resolve(lang, *parts)
+    path = tpl_resolve(lang, *parts)
     if not path:
         return None
 
@@ -44,20 +44,20 @@ def _match_on_window(win: Dict[str, Any], lang: str, teleportl_key: str,
         return None
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    teleportl  = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    if teleportl is None or teleportl.size == 0:
+    tpl  = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if tpl is None or tpl.size == 0:
         return None
 
-    th, tw = teleportl.shape[:2]
-    res = cv2.matchTemplate(gray, teleportl, cv2.TM_CCOEFF_NORMED)
+    th, tw = tpl.shape[:2]
+    res = cv2.matchTemplate(gray, tpl, cv2.TM_CCOEFF_NORMED)
     _minVal, maxVal, _minLoc, maxLoc = cv2.minMaxLoc(res)
     if float(maxVal) < float(threshold):
         return None
     x = l + int(maxLoc[0]); y = t + int(maxLoc[1])
     return (x, y, tw, th)
 
-def _visible(win: Dict[str, Any], lang: str, teleportl_key: str, zone_key: str = "fullscreen", thr: float = 0.87) -> bool:
-    return _match_on_window(win, lang, teleportl_key, zone_key, thr) is not None
+def _visible(win: Dict[str, Any], lang: str, tpl_key: str, zone_key: str = "fullscreen", thr: float = 0.87) -> bool:
+    return _match_on_window(win, lang, tpl_key, zone_key, thr) is not None
 
 def _click_center(controller, rect: Tuple[int,int,int,int]) -> None:
     (x, y, w, h) = rect
@@ -107,6 +107,13 @@ class DashboardEngine:
         except Exception:
             pass
 
+    def _press_esc(self, delay_s: float = 0.10):
+        try:
+            self.controller.send("esc")
+        except Exception:
+            pass
+        if delay_s > 0:
+            time.sleep(delay_s)
     # ---------- dashboard state ----------
     def is_open(self, thr: float = 0.87) -> bool:
         win = self._win()

@@ -30,7 +30,10 @@ def _resolve_path(server: str, lang: str, parts: Sequence[str], engine: str) -> 
     parts обычно вида ["<lang>", "reborn_banner.png"].
     """
     try:
-        mod_name = f"core.engines.{engine}.server.{server}.templates.resolver"
+        if engine == "stabilize":
+            mod_name = f"core.engines.dashboard.server.{server}.teleport.stabilize.templates.resolver"
+        else:
+            mod_name = f"core.engines.{engine}.server.{server}.templates.resolver"
         mod = __import__(mod_name, fromlist=["resolve"])
         resolve = getattr(mod, "resolve", None)
         if callable(resolve):
@@ -67,11 +70,11 @@ def match_key_in_zone_single(
     else:
         zone_gray = zone_img_bgr
 
-    teleportath = _resolve_path(server, (lang or "rus").lower(), template_parts, engine=engine)
-    if not teleportath:
+    tpath = _resolve_path(server, (lang or "rus").lower(), template_parts, engine=engine)
+    if not tpath:
         return None
 
-    templ = _load_template_abs(teleportath)
+    templ = _load_template_abs(tpath)
     if templ is None:
         return None
 
@@ -133,23 +136,23 @@ def match_multi_in_zone(
         parts = templates_map.get(key)
         if not parts:
             continue
-        teleportath = _resolve_path(server, (lang or "rus").lower(), parts, engine=engine)
-        if not teleportath:
+        tpath = _resolve_path(server, (lang or "rus").lower(), parts, engine=engine)
+        if not tpath:
             if debug:
                 console.log(f"[tm2] no template path for key={key} (server={server}, engine={engine})")
             continue
 
-        teleportl = _load_template_abs(teleportath)
-        if teleportl is None or teleportl.size == 0:
+        tpl = _load_template_abs(tpath)
+        if tpl is None or tpl.size == 0:
             if debug:
-                console.log(f"[tm2] failed to read template: {teleportath}")
+                console.log(f"[tm2] failed to read template: {tpath}")
             continue
 
         for s in scales:
-            tw = max(1, int(round(teleportl.shape[1] * s)))
-            th = max(1, int(round(teleportl.shape[0] * s)))
+            tw = max(1, int(round(tpl.shape[1] * s)))
+            th = max(1, int(round(tpl.shape[0] * s)))
             t = cv2.resize(
-                teleportl,
+                tpl,
                 (tw, th),
                 interpolation=cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC
             )

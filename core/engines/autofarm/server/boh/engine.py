@@ -212,18 +212,18 @@ def _resolve_monster_template(server: str, lang: str, zone_id: str, name: str) -
             return p
     return None
 
-def _match_template_on_window(win: Dict, teleportl_path: str, threshold: float = 0.84) -> Optional[Tuple[int,int,int,int]]:
-    if not (teleportl_path and os.path.isfile(teleportl_path)):
+def _match_template_on_window(win: Dict, tpl_path: str, threshold: float = 0.84) -> Optional[Tuple[int,int,int,int]]:
+    if not (tpl_path and os.path.isfile(tpl_path)):
         return None
-    teleportl = cv2.imread(teleportl_path, cv2.IMREAD_GRAYSCALE)
-    if teleportl is None or teleportl.size == 0:
+    tpl = cv2.imread(tpl_path, cv2.IMREAD_GRAYSCALE)
+    if tpl is None or tpl.size == 0:
         return None
-    th, tw = teleportl.shape[:2]
+    th, tw = tpl.shape[:2]
     frame = capture_window_region_bgr(win, (0, 0, int(win["width"]), int(win["height"])))
     if frame is None or frame.size == 0:
         return None
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    _, maxVal, _, maxLoc = cv2.minMaxLoc(cv2.matchTemplate(gray, teleportl, cv2.TM_CCOEFF_NORMED))
+    _, maxVal, _, maxLoc = cv2.minMaxLoc(cv2.matchTemplate(gray, tpl, cv2.TM_CCOEFF_NORMED))
     if float(maxVal) < float(threshold):
         return None
     x, y = int(maxLoc[0]), int(maxLoc[1])
@@ -378,11 +378,11 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
         if nm in excluded_targets:
             continue
 
-        teleportl = _resolve_monster_template(server, lang, zone_id, nm)
-        if not teleportl:
+        tpl = _resolve_monster_template(server, lang, zone_id, nm)
+        if not tpl:
             continue
 
-        rect = _match_template_on_window(win, teleportl, threshold=0.84)
+        rect = _match_template_on_window(win, tpl, threshold=0.84)
         if not rect:
             continue
 

@@ -2,25 +2,25 @@
 
 FLOW = [
     {  #1
-        "op": "click_in", "zone": "settings_block", "teleportl": "settings_button", "thr": 0.87,
+        "op": "click_in", "zone": "settings_block", "tpl": "settings_button", "thr": 0.87,
         "timeout_ms": 4000,
         "retry_count": 3, "retry_delay_ms": 1000,
     },
     {  #2
-        "op": "wait", "zone": "settings_block", "teleportl": "restart_button", "thr": 0.87,
+        "op": "wait", "zone": "settings_block", "tpl": "restart_button", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 600,
     },
 
     {  #3
-        "op": "click_in", "zone": "settings_block", "teleportl": "restart_button", "thr": 0.87,
+        "op": "click_in", "zone": "settings_block", "tpl": "restart_button", "thr": 0.87,
         "timeout_ms": 4000,
         "retry_count": 4, "retry_delay_ms": 2000, "retry_action": "prev",
         "wait_ms": 1000,
     },
     {  #4
-        "op": "wait", "zone": "fullscreen", "teleportl": "apply_button", "thr": 0.87,
+        "op": "wait", "zone": "fullscreen", "tpl": "apply_button", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 4, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
@@ -28,14 +28,14 @@ FLOW = [
 
 
     {  #5
-        "op": "click_in", "zone": "fullscreen", "teleportl": "apply_button", "thr": 0.87,
+        "op": "click_in", "zone": "fullscreen", "tpl": "apply_button", "thr": 0.87,
         "timeout_ms": 4000,
         "retry_count": 4, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 3000,
     },
     #проверяемся на дисконнект
     {  #6
-        "op": "wait_optional", "zone": "fullscreen", "teleportl": "disconnect_window", "thr": 0.87,
+        "op": "wait_optional", "zone": "fullscreen", "tpl": "disconnect_window", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 4, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
@@ -43,7 +43,7 @@ FLOW = [
     {  # Да на Disconnect
         "op": "click_optional",
         "zone": "fullscreen",
-        "teleportl": "yes_button",
+        "tpl": "yes_button",
         "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 4, "retry_delay_ms": 2000, "retry_action": "prev",
@@ -51,20 +51,20 @@ FLOW = [
     },
 
     {  #7
-        "op": "wait_optional", "zone": "settings_block", "teleportl": "account_characters_init", "thr": 0.87,
+        "op": "wait_optional", "zone": "settings_block", "tpl": "account_characters_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 600,
     },
 
     {  #8
-        "op": "click_optional", "zone": "settings_block", "teleportl": "relogin_button", "thr": 0.87,
+        "op": "click_optional", "zone": "settings_block", "tpl": "relogin_button", "thr": 0.87,
         "timeout_ms": 4000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 2000,
     },
     {  #9
-        "op": "wait", "zone": "fullscreen", "teleportl": "enterGame_button", "thr": 0.87,
+        "op": "wait", "zone": "fullscreen", "tpl": "enterGame_button", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 600,
@@ -83,33 +83,33 @@ FLOW = [
 
 
     {  #15
-        "op": "click_in", "zone": "fullscreen", "teleportl": "enterGame_button", "thr": 0.87,
+        "op": "click_in", "zone": "fullscreen", "tpl": "enterGame_button", "thr": 0.87,
         "timeout_ms": 4000, "retry_count": 3,
     },
     {  #16
-        "op": "wait", "zone": "fullscreen", "teleportl": "login_accept_button", "thr": 0.87,
+        "op": "wait", "zone": "fullscreen", "tpl": "login_accept_button", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
     },
     {  #17
-        "op": "click_in", "zone": "fullscreen", "teleportl": "login_accept_button", "thr": 0.87,
+        "op": "click_in", "zone": "fullscreen", "tpl": "login_accept_button", "thr": 0.87,
         "timeout_ms": 4000, "retry_count": 3,
         "wait_ms": 600,
     },
     {  #18
-        "op": "wait", "zone": "fullscreen", "teleportl": "enterServerOk_button", "thr": 0.87,
+        "op": "wait", "zone": "fullscreen", "tpl": "enterServerOk_button", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
     },
     {  #19
-        "op": "click_in", "zone": "fullscreen", "teleportl": "enterServerOk_button", "thr": 0.87,
+        "op": "click_in", "zone": "fullscreen", "tpl": "enterServerOk_button", "thr": 0.87,
         "timeout_ms": 4000, "retry_count": 3,
         "wait_ms": 600,
     },
     {  #20
-        "op": "wait", "zone": "fullscreen", "teleportl": "account_characters_init", "thr": 0.87,
+        "op": "wait", "zone": "fullscreen", "tpl": "account_characters_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
@@ -118,7 +118,7 @@ FLOW = [
 
     # Зашли в выбор персонажа wait_optional - ожидание с положительным результатом (ок) при всех провалах
     {  #20
-        "op": "wait_optional", "zone": "fullscreen", "teleportl": "pincode_init", "thr": 0.87,
+        "op": "wait_optional", "zone": "fullscreen", "tpl": "pincode_init", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
@@ -129,14 +129,14 @@ FLOW = [
         "digit_delay_ms": 120,
         "timeout_ms": 1500,
         "wait_ms": 600,
-        # опционально можно подсказать какой teleportl считать «признаком» панели:
-        # "visible_teleportl": "enter_pincode",
+        # опционально можно подсказать какой tpl считать «признаком» панели:
+        # "visible_tpl": "enter_pincode",
     },
 
     {  # подтверждение PIN — мягко (если кнопки нет, шаг всегда OK)
         "op": "click_optional",
         "zone": "fullscreen",
-        "teleportl": "enter_pincode",
+        "tpl": "enter_pincode",
         "timeout_ms": 1500,
         "thr": 0.87,
         "wait_ms": 300,
@@ -148,25 +148,25 @@ FLOW = [
 
 
     {  #21
-        "op": "click_in", "zone": "fullscreen", "teleportl": "start_button", "thr": 0.87,
+        "op": "click_in", "zone": "fullscreen", "tpl": "start_button", "thr": 0.87,
         "timeout_ms": 4000,
         "wait_ms": 4000,
     },
 
     {  #20
-        "op": "wait", "zone": "settings_block", "teleportl": "settings_button", "thr": 0.87,
+        "op": "wait", "zone": "settings_block", "tpl": "settings_button", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
         "wait_ms": 1000,
     },
 
     {  #22
-        "op": "click_optional", "zone": "fullscreen", "teleportl": "closeCross_button", "timeout_ms": 1500, "thr": 0.87,
+        "op": "click_optional", "zone": "fullscreen", "tpl": "closeCross_button", "timeout_ms": 1500, "thr": 0.87,
         "wait_ms": 1000,
     },
 
     {  #23
-        "op": "wait", "zone": "settings_block", "teleportl": "settings_button", "thr": 0.87,
+        "op": "wait", "zone": "settings_block", "tpl": "settings_button", "thr": 0.87,
         "timeout_ms": 2000,
         "retry_count": 3, "retry_delay_ms": 1000, "retry_action": "prev",
     },

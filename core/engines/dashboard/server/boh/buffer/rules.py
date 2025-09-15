@@ -21,7 +21,7 @@ from core.vision.matching.template_matcher_2 import (
 
 from ..dashboard_data import TEMPLATES, ZONES, BUFFS, DANCES, SONGS
 from .engine import BufferEngine
-from ..templates.resolver import resolve as teleportl_resolve
+from ..templates.resolver import resolve as tpl_resolve
 
 
 # ---------------------- helpers ----------------------
@@ -59,7 +59,7 @@ def _debug_open_zone_with_icons(
             parts = (BUFFS.get(tok) or DANCES.get(tok) or SONGS.get(tok))
             if not parts:
                 continue
-            p = teleportl_resolve(lang, *parts)
+            p = tpl_resolve(lang, *parts)
             if not (p and os.path.isfile(p)):
                 continue
             img = cv2.imread(p, cv2.IMREAD_UNCHANGED)

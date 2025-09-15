@@ -14,7 +14,7 @@ Flow — это список шагов, описывающих последов
 | `op`           | Операция (тип шага, см. ниже) |
 | `zone`         | Одна зона для поиска (если операция работает в одной зоне) |
 | `zones`        | Список зон (если поиск в нескольких) |
-| `teleportl`          | Имя шаблона, который ищем |
+| `tpl`          | Имя шаблона, который ищем |
 | `timeout_ms`   | Время ожидания совпадения шаблона в миллисекундах |
 | `thr`          | Порог совпадения (0.0–1.0) |
 | `ms`           | Для `sleep` — пауза в миллисекундах |
@@ -26,20 +26,20 @@ Flow — это список шагов, описывающих последов
 ## 3. Операции (`op`)
 
 ### `click_any`
-Ищет шаблон (`teleportl`) в **любой зоне** из списка `zones`.  
+Ищет шаблон (`tpl`) в **любой зоне** из списка `zones`.  
 Как только нашёл — кликает и переходит к следующему шагу.  
 Полезно, когда элемент может находиться в разных частях UI.
 
 ```python
-{"op": "click_any", "zones": ["dashboard_tab", "dashboard_body"], "teleportl": "buffer_button", "timeout_ms": 2000, "thr": 0.87}
+{"op": "click_any", "zones": ["dashboard_tab", "dashboard_body"], "tpl": "buffer_button", "timeout_ms": 2000, "thr": 0.87}
 ```
 
 ### `click_in`
-Ищет шаблон (teleportl) в одной конкретной зоне (zone).
+Ищет шаблон (tpl) в одной конкретной зоне (zone).
 Если не найден в течение timeout_ms — ошибка.
 
 ```python
-{"op": "click_in", "zone": "dashboard_body", "teleportl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87}
+{"op": "click_in", "zone": "dashboard_body", "tpl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87}
 ```
 
 ### `click_optional`
@@ -48,15 +48,15 @@ Flow — это список шагов, описывающих последов
 
 
 ```python
-{"op": "click_optional", "zone": "dashboard_body", "teleportl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87}
+{"op": "click_optional", "zone": "dashboard_body", "tpl": "buffer_restore_hp", "timeout_ms": 1000, "thr": 0.87}
 ```
 
 ### wait
-**Ждёт появления шаблона (teleportl) в зоне без клика.
+**Ждёт появления шаблона (tpl) в зоне без клика.
 Если не найден в течение timeout_ms — ошибка.**
 
 ```python
-{"op": "wait", "zone": "dashboard_body", "teleportl": "buffer_init", "timeout_ms": 2000, "thr": 0.87}
+{"op": "wait", "zone": "dashboard_body", "tpl": "buffer_init", "timeout_ms": 2000, "thr": 0.87}
 ```
 
 ### sleep

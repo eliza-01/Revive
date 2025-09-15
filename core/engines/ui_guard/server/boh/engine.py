@@ -9,7 +9,7 @@ import numpy as np
 from core.vision.zones import compute_zone_ltrb
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 
-from .templates import resolver as teleportlresolver
+from .templates import resolver as tplresolver
 from .ui_guard_data import ZONES, PAGES, CLOSE_BUTTONS
 
 from core.logging import console
@@ -123,18 +123,18 @@ class UIGuardEngine:
         best = None
         scales = (1.0, 0.9, 1.1, 0.8, 1.2)
         for key, fname in PAGES.items():
-            path = teleportlresolver.resolve(lang, "<lang>", "interface", "pages", fname)
+            path = tplresolver.resolve(lang, "<lang>", "interface", "pages", fname)
             if not path:
                 continue
 
-            teleportl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            if teleportl is None or teleportl.size == 0:
+            tpl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if tpl is None or tpl.size == 0:
                 continue
 
             for s in scales:
-                tw = max(1, int(round(teleportl.shape[1] * s)))
-                th = max(1, int(round(teleportl.shape[0] * s)))
-                t = cv2.resize(teleportl, (tw, th), interpolation=cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC)
+                tw = max(1, int(round(tpl.shape[1] * s)))
+                th = max(1, int(round(tpl.shape[0] * s)))
+                t = cv2.resize(tpl, (tw, th), interpolation=cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC)
                 if t.shape[0] > gray.shape[0] or t.shape[1] > gray.shape[1]:
                     continue
 
@@ -164,12 +164,12 @@ class UIGuardEngine:
             return []
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        path = teleportlresolver.resolve((lang or "rus").lower(), *parts)
+        path = tplresolver.resolve((lang or "rus").lower(), *parts)
         if not path:
             return []
 
-        teleportl0 = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        if teleportl0 is None or teleportl0.size == 0:
+        tpl0 = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        if tpl0 is None or tpl0.size == 0:
             return []
 
         # Чтобы не уехало в бесконечный спам — адекватный набор масштабов
@@ -177,9 +177,9 @@ class UIGuardEngine:
         raw_points: List[Tuple[int, int]] = []
 
         for s in scales:
-            tw = max(1, int(round(teleportl0.shape[1] * s)))
-            th = max(1, int(round(teleportl0.shape[0] * s)))
-            t = cv2.resize(teleportl0, (tw, th), interpolation=cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC)
+            tw = max(1, int(round(tpl0.shape[1] * s)))
+            th = max(1, int(round(tpl0.shape[0] * s)))
+            t = cv2.resize(tpl0, (tw, th), interpolation=cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC)
             if t.shape[0] > gray.shape[0] or t.shape[1] > gray.shape[1]:
                 continue
 
