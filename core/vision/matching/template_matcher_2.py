@@ -30,7 +30,10 @@ def _resolve_path(server: str, lang: str, parts: Sequence[str], engine: str) -> 
     parts обычно вида ["<lang>", "reborn_banner.png"].
     """
     try:
-        mod_name = f"core.engines.{engine}.server.{server}.templates.resolver"
+        if engine == "stabilize":
+            mod_name = f"core.engines.dashboard.server.{server}.teleport.stabilize.templates.resolver"
+        else:
+            mod_name = f"core.engines.{engine}.server.{server}.templates.resolver"
         mod = __import__(mod_name, fromlist=["resolve"])
         resolve = getattr(mod, "resolve", None)
         if callable(resolve):

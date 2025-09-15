@@ -73,7 +73,6 @@ void loop() {
 
 
 void processCommand(String cmd) {
-
   // убрать \n\r в конце
   while (cmd.length() && (cmd[cmd.length()-1] == '\n' || cmd[cmd.length()-1] == '\r')) {
     cmd.remove(cmd.length()-1);

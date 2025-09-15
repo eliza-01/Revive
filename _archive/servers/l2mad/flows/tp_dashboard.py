@@ -1,8 +1,8 @@
 ﻿# _archive/servers/l2mad/flows/tp_dashboard.py
 # =========================
-# File: core/servers/l2mad/flows/tp.py
+# File: core/servers/l2mad/flows/teleport.py
 # L2MAD teleport flow (dashboard). Uses special ops: click_village, click_location.
-# Цикл автотп для L2MAD. Зонные ключи и template-ключи берутся из zones/tp.py
+# Цикл автотп для L2MAD. Зонные ключи и template-ключи берутся из zones/teleport.py
 # =========================
 FLOW = [
     {"op": "send_arduino", "cmd": "b"},  # Открыть дэшборд

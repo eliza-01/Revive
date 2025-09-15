@@ -23,7 +23,7 @@ class SafeSerial:
                 pass
             try:
                 self.ser.reset_input_buffer()
-                self.ser.reset_output_buffer()
+                self.ser.reset_outeleportut_buffer()
             except Exception:
                 pass
         except Exception as e:

@@ -56,7 +56,7 @@
       "respawn":"Respawn",
       "macros":"Макросы",
       "buff":"Баф",
-      "tp":"Телепорт",
+      "teleport":"Телепорт",
       "autofarm":"Автофарм",
     }[k] || k;
   }
@@ -66,7 +66,7 @@
     const list = $("#pipeList");
     list.innerHTML = "";
 
-    let cfg = {enabled:true, order:["respawn","buff","macros","autofarm"], allowed:["respawn","macros","buff","tp","autofarm"]};
+    let cfg = {enabled:true, order:["respawn","buff","macros","autofarm"], allowed:["respawn","macros","buff","teleport","autofarm"]};
     try { cfg = await pywebview.api.pipeline_get_order(); } catch(_){}
 
     // Respawn (fixed)

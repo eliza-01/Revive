@@ -64,9 +64,9 @@ class FlowActions:
     def buff(self, mode_key_provider) -> bool:
         return self._run("buffer", extras={"mode_key_provider": mode_key_provider}, guard=True)
 
-    def tp_dashboard(self, category_id: str, location_id: str) -> bool:
+    def teleport_dashboard(self, category_id: str, location_id: str) -> bool:
         return self._run(
-            "tp",
+            "teleport",
             extras={"resolver": l2mad_resolver.resolve, "category_id": category_id, "location_id": location_id},
             guard=True,
         )
@@ -74,7 +74,7 @@ class FlowActions:
     def dashboard_reset(self) -> bool:
         return self._run("dashboard_reset", extras={}, guard=True)
 
-    def post_tp_row(self, village_id: str, location_id: str, row_id: str) -> bool:
+    def post_teleport_row(self, village_id: str, location_id: str, row_id: str) -> bool:
         try:
             zmod = importlib.import_module(f"core.servers.{self.server}.zones.rows")
             zones = getattr(zmod, "ZONES", {})

@@ -4,7 +4,7 @@ import importlib, time
 from typing import Callable, Optional, Dict, List, Any, Tuple
 from _archive.core.runtime.flow_ops import FlowCtx, FlowOpExecutor, run_flow
 
-class PostTPRowRunner:
+class PostTeleportRowRunner:
     def __init__(self, controller, server: str, get_window, get_language,
                  on_status: Callable[[str, Optional[bool]], None] = lambda *_: None,
                  on_finished: Callable[[], None] = lambda: None):
@@ -70,7 +70,7 @@ class RowsController:
         get_destination: Callable[[], Tuple[str, str]],  # (cat, loc)
         schedule: Callable[[Callable, int], None],        # schedule(fn, delay_ms)
         on_values: Callable[[List[Tuple[str, str]]], None],  # called with [(row_id, title)]
-        on_select_row_id: Callable[[str], None],          # push selected row_id to TP UI
+        on_select_row_id: Callable[[str], None],          # push selected row_id to Teleport UI
         log=print,
     ):
         self.get_server = get_server

@@ -54,7 +54,12 @@ html, body { scrollbar-gutter: stable; }
 /* Headings */
 h3 { margin: 2px 0 6px; font-size: 14px; }
 h4 { margin: 2px 0 6px; color: #cbd3df; font-size: 13px; }
-label { color: #cbd3df; }
+label {
+    color: #cbd3df;
+    display: flex;
+    gap: 7px;
+    align-items: center;
+}
 
 /* Controls */
 select, input, button {
@@ -287,3 +292,23 @@ select.sm.with-icon{
 .btn{padding:6px 10px;border-radius:6px;border:1px solid #3a3f49;background:#2b2f36;color:#fff;cursor:pointer}
 .btn.primary{background:#5a86ff;border-color:#5a86ff}
 .hint{opacity:.75;font-size:12px;margin:0 0 0px}
+
+/* Локальная лёгкая стилизация для ❔ и тултипа */
+.qmark {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:18px; height:18px; border-radius:50%;
+  border:0px solid #9aa0a6; font-size:16px; line-height:1;
+  margin-left:6px; cursor:default; opacity:.85; user-select:none;
+}
+.qmark:hover { opacity:1; }
+.tooltip {
+  position:relative; display:inline-flex; align-items:center;
+}
+.tooltip[data-tip]:hover::after {
+  content: attr(data-tip);
+  position:absolute; z-index:20;
+  top: 125%; left: 0; transform: translateY(4px);
+  max-width: 360px; min-width: 240px;
+  background: #1e1f22; color: #ff9a00; border:1px solid #3c4043;
+  padding:10px 12px; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.35);
+  font-size:13px; line-height:1.35; white-space:normal;

@@ -97,10 +97,52 @@ def get_buff_modes(server_id: str) -> List[str]:
     return list(modes)
 
 
-def get_tp_methods(server_id: str) -> List[str]:
-    """Список методов ТП (tp.methods)."""
-    tp = (_server(server_id).get("tp") or {})
+# -------- Teleport --------
+
+def get_teleport_methods(server_id: str) -> List[str]:
+    """Список методов ТП (teleport.methods)."""
+    tp = (_server(server_id).get("teleport") or {})
     methods = tp.get("methods") or []
     if not isinstance(methods, list):
-        _ve(f"Invalid tp.methods for server '{server_id}'")
+        _ve(f"Invalid teleport.methods for server '{server_id}'")
     return list(methods)
+
+
+def get_teleport_categories(server_id: str) -> List[str]:
+    """
+    Категории ТП из манифеста.
+    Поддерживаем новый формат:
+      "categories": { "<category>": { "locations": [...] }, ... }
+    и легаси (списком), если вдруг встретится.
+    """
+    tp = (_server(server_id).get("teleport") or {})
+    cats = tp.get("categories") or {}
+    if isinstance(cats, dict):
+        # порядок сохранится как в JSON
+        return list(cats.keys())
+    if isinstance(cats, list):  # легаси
+        return list(cats)
+    _ve(f"Invalid teleport.categories for server '{server_id}'")
+    return []  # недостижимо
+
+
+def get_teleport_locations(server_id: str, category: str) -> List[str]:
+    """
+    Локации для категории (новый формат манифеста).
+    Если категория не найдена, вернём [].
+    Для легаси манифеста вернём плоский 'locations' (без учёта категории).
+    """
+    tp = (_server(server_id).get("teleport") or {})
+    cats = tp.get("categories") or {}
+    if isinstance(cats, dict):
+        entry = cats.get(str(category) if category is not None else "") or {}
+        locs = entry.get("locations") or []
+        if not isinstance(locs, list):
+            _ve(f"Invalid teleport.categories[{category}].locations for server '{server_id}'")
+        return [str(x) for x in locs]
+    # легаси
+    locs = tp.get("locations") or []
+    if isinstance(locs, list):
+        return [str(x) for x in locs]
+    _ve(f"Invalid legacy teleport.locations for server '{server_id}'")
+    return []

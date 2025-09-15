@@ -49,9 +49,9 @@ class RestartManager:
             return False
 
         try:
-            zones_mod = importlib.import_module(f"core.servers.{server}.zones.tp_dashboard")
+            zones_mod = importlib.import_module(f"core.servers.{server}.zones.teleport_dashboard")
         except Exception:
-            zones_mod = importlib.import_module(f"core.servers.{server}.zones.tp_dashboard")
+            zones_mod = importlib.import_module(f"core.servers.{server}.zones.teleport_dashboard")
 
         zones = getattr(zones_mod, "ZONES", {})
         templates = getattr(zones_mod, "TEMPLATES", {})

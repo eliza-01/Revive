@@ -12,7 +12,7 @@ from core.config.servers import (
     get_section_flags,
     get_buff_methods,
     get_buff_modes,
-    get_tp_methods,
+    get_teleport_methods,
 )
 
 # секции
@@ -21,7 +21,7 @@ from .sections.state import StateSection
 from .sections.respawn import RespawnSection
 from .sections.buff import BuffSection
 from .sections.macros import MacrosSection
-from .sections.tp import TPSection
+from .sections.teleport import TeleportSection
 from .sections.autofarm import AutofarmSection
 from .sections.pipeline import PipelineSection
 from .sections.record import RecordSection
@@ -96,10 +96,10 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         "enabled": False, "repeat_enabled": False, "rows": [],
         "run_always": False, "delay_s": 1.0, "duration_s": 2.0, "sequence": ["1"], "status": "idle",
     })
-    # buff/tp методы из манифеста
+    # buff/teleport методы из манифеста
     buff_methods = get_buff_methods(server)
     buff_modes = get_buff_modes(server)
-    tp_methods = get_tp_methods(server)
+    teleport_methods = get_teleport_methods(server)
 
     pool_write(state, "features.buff", {
         "enabled": False,
@@ -109,7 +109,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         "modes": buff_modes,
         "status": "idle"
     })
-    pool_write(state, "features.tp", {"enabled": False, "status": "idle", "methods": tp_methods})
+    pool_write(state, "features.teleport", {"enabled": False, "status": "idle", "methods": teleport_methods})
     pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
     # pool_write(state, "features.record", {
     #     "enabled": False,
@@ -121,7 +121,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     #     "ts": 0.0,
     # })
     # pool_write(state, "pipeline", {
-    #     "allowed": ["respawn", "buff", "macros", "tp", "autofarm"],
+    #     "allowed": ["respawn", "buff", "macros", "teleport", "autofarm"],
     #     "order": ["respawn", "macros", "autofarm"],
     #     "active": False, "idx": 0, "last_step": ""
     # })
@@ -143,7 +143,7 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         RespawnSection(window, state),
         BuffSection(window, controller, ps_adapter, state, ui.schedule, checker=None),
         MacrosSection(window, controller, state),
-        TPSection(window, controller, ps_adapter, state, ui.schedule),
+        TeleportSection(window, controller, ps_adapter, state, ui.schedule),
         AutofarmSection(window, controller, ps_adapter, state, ui.schedule),
         PipelineSection(window, state),
         RecordSection(state=state, controller=controller, get_window=lambda: pool_get(state, "window.info", None)),

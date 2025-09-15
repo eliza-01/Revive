@@ -7,6 +7,7 @@
   <title>Revive Launcher</title>
   <link rel="icon" href="assets/icon.png">
   <link rel="stylesheet" href="css/style.css"/>
+
 </head>
 <body>
   <header class="hdr">
@@ -137,11 +138,7 @@
         <select id="buffMethod" class="sm"></select>
 
         <label class="ml">Режим:</label>
-        <select id="buffMode" class="xs">
-<!--          <option value="profile">profile</option>-->
-<!--          <option value="mage">mage</option>-->
-<!--          <option value="fighter">fighter</option>-->
-        </select>
+        <select id="buffMode" class="xs"></select>
 
         <button class="ml" id="btnBuffOnce">Баф один раз</button>
       </div>
@@ -152,35 +149,6 @@
         <button class="ml" id="btnBuffChecker">Проверять баф</button>
       </div>
     </section>
-
-    <!--  Модальное buff-checker'a  -->
-<!--    <div id="buffCheckerModal" class="modal hidden" aria-hidden="true">-->
-<!--      <div class="modal__backdrop" data-close></div>-->
-<!--      <div class="modal__panel">-->
-<!--        <div class="modal__hdr">-->
-<!--          <h4>Проверка бафов</h4>-->
-<!--          <button class="modal__x" id="buffCheckerClose" title="Закрыть">×</button>-->
-<!--        </div>-->
-
-<!--        <div class="tabs">-->
-<!--          <button class="tab is-active" data-tab="buffs">Buffs</button>-->
-<!--          <button class="tab" data-tab="dances">Dances</button>-->
-<!--          <button class="tab" data-tab="songs">Songs</button>-->
-<!--        </div>-->
-
-<!--        <div class="tabpanes">-->
-<!--          <div class="tabpane is-active" data-pane="buffs"><div class="grid" id="grid-buffs"></div></div>-->
-<!--          <div class="tabpane" data-pane="dances"><div class="grid" id="grid-dances"></div></div>-->
-<!--          <div class="tabpane" data-pane="songs"><div class="grid" id="grid-songs"></div></div>-->
-<!--        </div>-->
-
-<!--        <div class="modal__ftr">-->
-<!--          <button id="buffCheckerSave" class="primary">Сохранить</button>-->
-<!--          <button id="buffCheckerCancel" data-close>Отмена</button>-->
-<!--        </div>-->
-<!--      </div>-->
-<!--    </div>-->
-
 
     <section class="card" id="sec-macros" data-section="macros">
       <h4>Макросы</h4>
@@ -211,34 +179,40 @@
       </div>
     </section>
 
-    <section class="card" id="sec-tp" data-section="tp">
+    <section class="card" id="sec-teleport" data-section="teleport">
       <h4>Телепорт</h4>
       <div class="row compact wrap">
         <label class="switch">
-          <input type="checkbox" id="chkTP">
+          <input type="checkbox" id="chkTeleport">
           <span class="slider"></span>
-          <span class="slabel">ТП после смерти</span>
+          <span class="slabel">Включить</span>
         </label>
 
         <label class="ml">Метод:</label>
-        <select id="tpMethod" class="sm"></select>
+        <select id="teleportMethod" class="sm"></select>
       </div>
 
       <div class="row compact wrap">
-        <label>Категория:</label><select id="tpCat" class="sm"></select>
-        <label class="ml">Локация:</label><select id="tpLoc" class="sm"></select>
-        <button class="ml" id="btnTPNow">ТП сейчас</button>
+        <label>Категория:</label><select id="teleportCat" class="sm"></select>
+        <label class="ml">Локация:</label><select id="tploc" class="sm"></select>
+        <button class="ml" id="btnTeleportNow">ТП сейчас</button>
+      </div>
+
+      <!-- Новая опция: стабилизация прибытия с подсказкой -->
+      <div class="row compact wrap">
+        <label class="checkbox">
+          <input type="checkbox" id="teleportStab">
+          <span class="slabel">Стабилизация прибытия</span>
+        </label>
+        <span class="tooltip qmark"
+              data-tip="Приводит персонажа в одну и ту же точку. Поможет корректно записать маршрут до спота фарма">⚠️</span>
       </div>
 
       <div class="row compact">
-        <span id="status-tp" class="status gray">Выберите категорию и локацию</span>
+        <span id="status-teleport" class="status gray">Выберите категорию и локацию</span>
       </div>
 
-      <div class="row compact wrap mt">
-        <label>Маршрут:</label>
-        <select id="rows" class="md"></select>
-        <button id="btnRowClear" class="ml">Очистить</button>
-      </div>
+      <!-- БЛОК МАРШРУТОВ УДАЛЁН -->
     </section>
 
     <section class="card" id="sec-autofarm" data-section="autofarm">
@@ -335,7 +309,7 @@
   <script src="js/extra.buff.profile.js"></script>
   <script src="js/extra.buff.checker.js"></script>
   <script src="js/macros.ui.js"></script>
-  <script src="js/tp.ui.js"></script>
+  <script src="js/teleport.ui.js"></script>
   <script src="js/record.js"></script>
   <script src="js/autofarm.ui.js"></script>
 </body>

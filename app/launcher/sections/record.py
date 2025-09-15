@@ -44,6 +44,10 @@ class RecordSection:
         # анти-дребезг для Ctrl + wheel_down
         self._last_ctrl_wheel_ts = 0.0
         self._ctrl_wheel_cooldown_s = 1.0
+        self._last_stop_reason: Optional[str] = None
+
+    def last_stop_reason(self) -> Optional[str]:
+        return self._last_stop_reason
 
     # ---------- глобальные хуки ----------
     def start_global_hooks(self):

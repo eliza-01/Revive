@@ -4,8 +4,8 @@ from typing import Any, Dict, Optional
 from ..base import BaseSection
 from core.state.pool import pool_write, pool_get
 
-TP_METHOD_DASHBOARD = "dashboard"
-TP_METHOD_GATEKEEPER = "gatekeeper"
+Teleport_METHOD_DASHBOARD = "dashboard"
+Teleport_METHOD_GATEKEEPER = "gatekeeper"
 
 class BuffSection(BaseSection):
     """

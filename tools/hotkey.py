@@ -1,4 +1,4 @@
-# hotkey.py
+﻿# tools/hotkey.py
 # pip install pynput
 import time
 import threading

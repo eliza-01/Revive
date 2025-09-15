@@ -107,6 +107,13 @@ class DashboardEngine:
         except Exception:
             pass
 
+    def _press_esc(self, delay_s: float = 0.10):
+        try:
+            self.controller.send("esc")
+        except Exception:
+            pass
+        if delay_s > 0:
+            time.sleep(delay_s)
     # ---------- dashboard state ----------
     def is_open(self, thr: float = 0.87) -> bool:
         win = self._win()

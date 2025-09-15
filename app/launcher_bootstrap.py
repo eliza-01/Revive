@@ -64,7 +64,7 @@ def _is_signature_valid(path: str) -> bool:
     cmd = "(Get-AuthenticodeSignature '{}').Status".format(path.replace("'", "''"))
     ps = ["powershell","-NoProfile","-ExecutionPolicy","Bypass", cmd]
     try:
-        out = subprocess.check_output(ps, stderr=subprocess.STDOUT, text=True, timeout=20)
+        out = subprocess.check_outeleportut(ps, stderr=subprocess.STDOUT, text=True, timeout=20)
         return "Valid" in out
     except Exception:
         return False

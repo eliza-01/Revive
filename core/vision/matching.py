@@ -9,7 +9,7 @@ def click_center(controller, point: Tuple[int, int]):
 
 def find_dynamic_in_zone(window: dict, zone, category_id: str, location_id: str, kind: str) -> Optional[Tuple[int, int]]:
     """
-    kind: 'tp_category' | 'tp_location' | 'gk_category' | 'gk_location' | 'buffer_icon' ...
+    kind: 'teleport_category' | 'teleport_location' | 'gk_category' | 'gk_location' | 'buffer_icon' ...
     Верни центр подходящего элемента.
     """
     return None

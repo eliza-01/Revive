@@ -30,7 +30,7 @@
         update:  "#status-update",
         buff:    "#status-buff",
         macros:  "#status-macros",
-        tp:      "#status-tp",
+        teleport:      "#status-teleport",
         postrow: "#status-postrow",
         respawn: "#status-respawn"
       }[scope] || "#status-driver";
@@ -55,7 +55,7 @@
   };
 
   function applySectionsVisibility(sections) {
-    const ids = ["system","stream","respawn","buff","macros","tp","autofarm"];
+    const ids = ["system","stream","respawn","buff","macros","teleport","autofarm"];
     ids.forEach(k => {
       const el = document.querySelector(`[data-section="${k}"]`);
       if (!el) return;
@@ -89,7 +89,7 @@
     applySectionsVisibility(init.sections || {});
 
     // методы
-    fillSelect($("#tpMethod"), init.tp_methods || [], (init.tp_methods && init.tp_methods[0]) || "");
+    fillSelect($("#teleportMethod"), init.teleport_methods || [], (init.teleport_methods && init.teleport_methods[0]) || "");
     window.ReviveUI.onBuffMethods(init.buff_methods || [], init.buff_current || "");
 
     // мониторинг/драйвер
@@ -167,9 +167,9 @@
     if (window.UIMacros)  window.UIMacros.init();
     if (window.UIRespawn) window.UIRespawn.init?.();
     if (window.UIState)   window.UIState.init?.();
-    if (window.UITP)      {
-      window.UITP.init();
-      await window.UITP.refreshTPCats?.();
+    if (window.UITeleport)      {
+      window.UITeleport.init();
+      await window.UITeleport.refreshTeleportCats?.();
     }
     if (window.UIStatePoller) window.UIStatePoller.start?.(); // hp/cp + watcher
 

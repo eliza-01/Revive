@@ -337,6 +337,10 @@ class FlowOpExecutor:
                 self.ctx.controller.send("press_enter")
                 ok = True
 
+            elif op == "press_esc":
+                self.ctx.controller.send("esc")
+                ok = True
+
             elif op == "send_message":
                 text = self._subst(str(step.get("text", "")))  # плейсхолдеры
                 layout = (step.get("layout") or "auto").lower()
@@ -464,7 +468,7 @@ class FlowOpExecutor:
             file = f"{cat}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
             if not ok_res:
-                self._log(f"[tp] village template missing: {cat}")
+                self._log(f"[teleport] village template missing: {cat}")
                 return False
             parts = ["dashboard", "teleport", "villages", cat, file]
         else:  # location_png
@@ -473,7 +477,7 @@ class FlowOpExecutor:
             file = f"{loc}.png"
             ok_res = bool(resolver(lang, "dashboard", "teleport", "villages", cat, file))
             if not ok_res:
-                self._log(f"[tp] location template missing: {cat}/{loc}")
+                self._log(f"[teleport] location template missing: {cat}/{loc}")
                 return False
             parts = ["dashboard", "teleport", "villages", cat, file]
 

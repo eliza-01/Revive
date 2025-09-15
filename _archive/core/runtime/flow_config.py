@@ -3,7 +3,7 @@ PRIORITY = [
     "buff_if_needed",
     "macros_after_buff",
     "recheck_charged",
-    "tp_if_ready",
-    "post_tp_row",
+    "teleport_if_ready",
+    "post_teleport_row",
     "autofarm_after_rows",
 ]

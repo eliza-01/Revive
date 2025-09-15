@@ -1,5 +1,5 @@
 Root: C:\Projects\Revive
-Generated: 2025-09-13 14:54:22
+Generated: 2025-09-14 22:11:51
 
 Revive
 ├── _archive
@@ -49,7 +49,7 @@ Revive
 │   │   │   ├── respawn.py
 │   │   │   ├── state.py
 │   │   │   ├── system.py
-│   │   │   └── tp.py
+│   │   │   └── teleport.py
 │   │   ├── __init__.py
 │   │   ├── base.py
 │   │   ├── main.py
@@ -72,7 +72,7 @@ Revive
 │   │   │   ├── respawn.ui.js
 │   │   │   ├── state.poller.js
 │   │   │   ├── state.ui.js
-│   │   │   └── tp.ui.js
+│   │   │   └── teleport.ui.js
 │   │   ├── hud.html
 │   │   └── index.html
 │   ├── __init__.py
@@ -96,51 +96,15 @@ Revive
 │   │   ├── servers.manifest.json
 │   │   └── servers.py
 │   ├── engines
-│   │   ├── autofarm
-│   │   │   ├── server
-│   │   │   │   ├── boh
-│   │   │   │   │   ├── templates
-│   │   │   │   │   │   ├── common
-│   │   │   │   │   │   │   └── interface
-│   │   │   │   │   │   ├── eng
-│   │   │   │   │   │   │   └── interface
-│   │   │   │   │   │   └── rus
-│   │   │   │   │   │       ├── monsters
-│   │   │   │   │   │       │   └── names
-│   │   │   │   │   │       └── sys_messages
-│   │   │   │   │   ├── zones
-│   │   │   │   │   │   ├── Dion_1
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   ├── Dwarf_village
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   ├── Ruins_of_agony_start
-│   │   │   │   │   │   │   └── gallery
-│   │   │   │   │   │   └── Varka_1
-│   │   │   │   │   │       └── gallery
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── engine.py
-│   │   │   │   │   ├── rules.py
-│   │   │   │   │   └── zones.json
-│   │   │   │   ├── common
-│   │   │   │   │   ├── skills
-│   │   │   │   │   ├── zones
-│   │   │   │   │   │   └── Varka_1
-│   │   │   │   │   │       └── gallery
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── professions.json
-│   │   │   │   │   ├── skills_catalog.json
-│   │   │   │   │   ├── templates_map.py
-│   │   │   │   │   └── zones.json
-│   │   │   │   └── __init__.py
-│   │   │   ├── __init__.py
-│   │   │   ├── runner.py
-│   │   │   ├── service.py
-│   │   │   ├── skill_repo.py
-│   │   │   └── zone_repo.py
+
 │   │   ├── dashboard
 │   │   │   ├── server
 │   │   │   │   ├── boh
 │   │   │   │   │   ├── buffer
+│   │   │   │   │   │   ├── __init__.py
+│   │   │   │   │   │   ├── engine.py
+│   │   │   │   │   │   └── rules.py
+│   │   │   │   │   ├── teleport
 │   │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   │   ├── engine.py
 │   │   │   │   │   │   └── rules.py
@@ -162,6 +126,7 @@ Revive
 │   │   │   │   │   │   │       │   ├── Goddard
 │   │   │   │   │   │   │       │   └── Rune
 │   │   │   │   │   │   │       └── villages
+│   │   │   │   │   │   │           └── TalkingIsland
 │   │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
@@ -252,9 +217,12 @@ Revive
 │   │   ├── runtime.py
 │   │   └── snapshot.py
 │   ├── os
-│   │   └── win
-│   │       ├── mouse.py
-│   │       └── window.py
+│   │   ├── win
+│   │   │   ├── __init__.py
+│   │   │   ├── mouse.py
+│   │   │   ├── rawmouse.py
+│   │   │   └── window.py
+│   │   └── __init__.py
 │   ├── state
 │   │   └── pool.py
 │   ├── vision
