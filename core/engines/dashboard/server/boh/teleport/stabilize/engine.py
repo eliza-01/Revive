@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Tuple, List
 from core.logging import console
 from core.vision.zones import compute_zone_ltrb
 from core.vision.matching.template_matcher_2 import match_key_in_zone_single
+from core.engines.flow.ops import FlowCtx, FlowOpExecutor, run_flow
 
 from .stabilize_data import ZONES, TEMPLATES
 
@@ -147,6 +148,28 @@ class StabilizeEngine:
             if delay_ms > 0:
                 time.sleep(delay_ms / 1000.0)
 
+    # --- send_target ---------------------------------------------------------
+    def _send_target_ru(self, ex: FlowOpExecutor, npc_name: str, wait_ms: int = 120) -> bool:
+        flow = [
+            {"op": "press_enter"},
+            {"op": "enter_text", "layout": "en", "text": "/target "},
+            {"op": "set_layout", "layout": "ru", "delay_ms": 120},
+            {"op": "enter_text", "layout": "ru", "text": npc_name, "wait_ms": 60},
+            {"op": "press_enter"},
+            {"op": "set_layout", "layout": "en", "delay_ms": 120},
+            {"op": "sleep", "ms": max(0, int(wait_ms))},
+        ]
+        return bool(run_flow(flow, ex))
+
+    def _send_target_en(self, ex: FlowOpExecutor, npc_name: str, wait_ms: int = 120) -> bool:
+        flow = [
+            {"op": "press_enter"},
+            {"op": "enter_text", "layout": "en", "text": f"/target {npc_name}"},
+            {"op": "press_enter"},
+            {"op": "sleep", "ms": max(0, int(wait_ms))},
+        ]
+        return bool(run_flow(flow, ex))
+
     # --- required ---------------------------------------------------------
 
     def stabilize_required(self, timeout_s: float = 8.0) -> bool:
@@ -162,6 +185,19 @@ class StabilizeEngine:
             time.sleep(0.10)
         return False
 
+    # --- Flow executor (для корректной печати) ----------------------------
+
+    def _make_executor(self) -> FlowOpExecutor:
+        ctx = FlowCtx(
+            server=self.server,
+            controller=self.controller,
+            get_window=self.get_window,
+            get_language=self.get_language,
+            zones=ZONES,
+            templates=TEMPLATES,
+            extras={},  # пока без плейсхолдеров
+        )
+        return FlowOpExecutor(ctx, logger=lambda m: console.log(f"[stabilize] {m}"))
     # --- optional ---------------------------------------------------------
 
     def _anchors_for_location(self, location: str) -> Tuple[str, int]:
@@ -184,24 +220,14 @@ class StabilizeEngine:
             return True
 
         # Повторы таргета до появления креста
+        ex = self._make_executor()
         for _ in range(4):
-            # открыть чат
-            self._press_enter(60)
 
             if self._lang().startswith("ru"):
                 # /target (англ) + имя русскими (через Alt+Shift)
-                self._enter_text("/target ")
-                self._layout_toggle_altshift(1, 120)  # en→ru
-                self._enter_text(anchor)              # русские буквы (преобразуются на стороне драйвера)
-                self._press_enter(80)
-                self._layout_toggle_altshift(1, 120)  # ru→en
+                self._send_target_ru(ex, anchor, wait_ms=120)
             else:
-                # английская локаль — всё одной строкой
-                self._enter_text(f"/target {anchor}")
-                self._press_enter(120)
-                self._press_pagedown(120)
-                self._press_pagedown(120)
-                self._press_pagedown(120)
+                self._send_target_en(ex, anchor, wait_ms=120)
 
             time.sleep(0.20)
             if self._visible("target_init", "target", 0.86):
@@ -211,11 +237,16 @@ class StabilizeEngine:
             return False
 
         # /attack и ожидание перемещения
+        self._press_enter(80)
         self._enter_text("/attack")
+        self._press_enter(80)
         # подождать (движение к якорю)
         wait_s = max(0.2, travel_ms / 1000.0)
         time.sleep(wait_s)
         self._press_esc(200)
+        self._press_pagedown(120)
+        self._press_pagedown(120)
+        self._press_pagedown(120)
         return True
 
     # --- entry ------------------------------------------------------------
