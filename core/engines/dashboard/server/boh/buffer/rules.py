@@ -16,7 +16,6 @@ from core.vision.zones import compute_zone_ltrb
 from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.matching.template_matcher_2 import (
     match_key_in_zone_single,
-    match_multi_in_zone,
 )
 
 from ..dashboard_data import TEMPLATES, ZONES, BUFFS, DANCES, SONGS
@@ -25,11 +24,25 @@ from ..templates.resolver import resolve as tpl_resolve
 
 
 # ---------------------- helpers ----------------------
+def _run_unstuck(state: Dict[str, Any], controller) -> None:
+    try:
+        srv = (pool_get(state, "config.server", "boh") or "boh").lower()
+        mod = importlib.import_module(f"core.engines.ui_guard.server.{srv}.engine")
+        Eng = getattr(mod, "UIGuardEngine", None)
+        if Eng is None:
+            console.log("[UNSTUCK] UIGuardEngine not found")
+            return
+        eng = Eng(server=srv, controller=controller, state=state)
+        eng.run_unstuck()
+    except Exception as e:
+        console.log(f"[UNSTUCK] invoke error: {e}")
+
+
 def _debug_open_zone_with_icons(
     state: Dict[str, Any],
-    win: Dict,
+    win: Dict[str, Any],
     lang: str,
-    tokens: list[str],
+    tokens: List[str],
     zone_name: str = "current_buffs",
     filename_hint: str = "verify"
 ) -> None:
@@ -84,7 +97,7 @@ def _debug_open_zone_with_icons(
                         cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
             icons.append(tile)
 
-        # собрать полосу иконок (несколько рядов при необходимости)
+        # собрать полосу иконок
         strip = None
         if icons:
             cols = min(12, len(icons))
@@ -100,7 +113,7 @@ def _debug_open_zone_with_icons(
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
             strip = np.vstack([header, strip])
 
-        # финальная картинка: roi сверху, ниже — полоса иконок (если есть)
+        # финальная картинка
         roi_bgr = roi if roi.ndim == 3 else cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
         if strip is not None:
             W = max(roi_bgr.shape[1], strip.shape[1])
@@ -136,15 +149,16 @@ def _debug_open_zone_with_icons(
         console.log(f"[dashboard/buffer][dbg] error: {e}")
 
 
-def _focused_now(state: Dict[str, Any]) -> Optional[bool]:
+def _paused_now(state: Dict[str, Any]) -> Tuple[bool, str]:
     try:
-        v = pool_get(state, "focus.is_focused", None)
-        return bool(v) if isinstance(v, bool) else None
+        p = bool(pool_get(state, "features.buff.paused", False))
+        reason = str(pool_get(state, "features.buff.pause_reason", "") or "")
+        return p, reason
     except Exception:
-        return None
+        return False, ""
 
 
-def _win_ok(win: Optional[Dict]) -> bool:
+def _win_ok(win: Optional[Dict[str, Any]]) -> bool:
     return bool(win and all(k in win for k in ("x", "y", "width", "height")))
 
 
@@ -153,7 +167,7 @@ def _hud_err(msg: str):  console.hud("err",  msg)
 def _hud_succ(msg: str): console.hud("succ", msg)
 
 
-def _zone_ltrb(win: Dict, name: str) -> tuple[int, int, int, int]:
+def _zone_ltrb(win: Dict[str, Any], name: str) -> Tuple[int, int, int, int]:
     decl = ZONES.get(name, ZONES.get("fullscreen", {"fullscreen": True}))
     l, t, r, b = compute_zone_ltrb(win, decl)
     return (int(l), int(t), int(r), int(b))
@@ -173,7 +187,7 @@ def _click(controller, x: int, y: int, *, hover_delay_s: float = 0.20, post_dela
         pass
 
 
-def _ensure_alt_b(controller, *, want_open: bool, win: Dict, server: str, lang: str, timeout_s: float = 2.0) -> bool:
+def _ensure_alt_b(controller, *, want_open: bool, win: Dict[str, Any], server: str, lang: str, timeout_s: float = 2.0) -> bool:
     """
     Привести дэш к нужному состоянию (want_open=True → открыт) по ключу 'dashboard_init'.
     Проверка состояния — как в respawn: сначала матч, без клика.
@@ -214,7 +228,7 @@ def _ensure_alt_b(controller, *, want_open: bool, win: Dict, server: str, lang: 
     return False
 
 
-def _dashboard_is_locked(win: Dict, server: str, lang: str) -> bool:
+def _dashboard_is_locked(win: Dict[str, Any], server: str, lang: str) -> bool:
     """
     Новый вариант: не нажимаем ничего — просто проверяем наличие хотя бы одного
     из 'dashboard_is_locked_*' (по аналогии с respawn-метчами).
@@ -271,22 +285,6 @@ def _reset_attempts(state: Dict[str, Any]) -> None:
     _set_attempts(state, 0)
 
 
-def _call_stub(controller, helpers: Dict[str, Any]) -> None:
-    # Пытаемся вызвать заглушку через helpers, иначе через контроллер
-    for key in ("buff_stub", "on_buff_attempts_exhausted", "stub"):
-        cb = helpers.get(key)
-        if callable(cb):
-            try:
-                cb()
-                return
-            except Exception:
-                pass
-    try:
-        controller.send("stub")
-    except Exception:
-        pass
-
-
 # ---------------------- public entry (pipeline step) ----------------------
 
 def run_step(
@@ -295,7 +293,7 @@ def run_step(
     controller,
     snap,  # core.orchestrators.snapshot.Snapshot
     helpers: Dict[str, Any],
-) -> tuple[bool, bool]:
+) -> Tuple[bool, bool]:
     """
     Шаг 'buff' через dashboard/buffer:
       1) Закрыть дэш, если открыт (Alt+B).
@@ -308,16 +306,19 @@ def run_step(
 
       Дополнительно:
       - Если player.alive == False — прекращаем попытку шага сразу.
-      - Если attempts >= 10 — вызываем заглушку и выходим.
+      - Если attempts >= 5 — вызов /unstuck и выходим.
+      - Если features.buff.paused == True — не тратим время, просто ждём (return False, False).
     """
 
-    # окно и фокус
+    # окно
     win = helpers.get("get_window", lambda: None)()  # type: ignore
     if not _win_ok(win):
         return False, False
 
-    if _focused_now(state) is False:
-        console.hud("ok", "[dashboard] пауза: окно без фокуса — жду")
+    # пауза — уважение orchestration-паузы (вместо is_focused)
+    paused, reason = _paused_now(state)
+    if paused:
+        console.hud("ok", f"[dashboard] пауза: {reason or 'остановлено'} — жду")
         return False, False
 
     # если мёртв — прекратить попытки (не тратим время на бафф)
@@ -327,9 +328,10 @@ def run_step(
 
     # лимит попыток
     attempts = _get_attempts(state)
-    if attempts >= 10:
-        _hud_err("[dashboard] попытки исчерпаны (>=10) — заглушка")
-        _call_stub(controller, helpers)
+    if attempts >= 5:
+        _hud_err(f"[dashboard] попытки исчерпаны (>={attempts}) — запускаю /unstuck")
+        _run_unstuck(state, controller)
+        _reset_attempts(state)
         return False, True
 
     # инкремент перед процедурой шага
@@ -339,19 +341,21 @@ def run_step(
     lang = (helpers.get("get_language", lambda: "rus")() or "rus").lower()  # type: ignore
     server = (pool_get(state, "config.server", "") or "").lower()
 
-    # создаём низкоуровневый движок вкладки Buffer
-    be = BufferEngine(
-        state=state,
-        server=server,
-        controller=controller,
-        get_window=helpers.get("get_window", lambda: None),
-        get_language=helpers.get("get_language", lambda: "rus"),
-    )
+    # локальная проверка «стоит ли прерывать ожидания»
+    def _should_abort() -> bool:
+        p, _ = _paused_now(state)
+        if p:
+            return True
+        if _player_is_dead(state):
+            return True
+        return False
 
     # 1) Сброс
     _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.5)
 
     # 2) Открыть и проверить
+    if _should_abort():
+        return False, False
     if not _ensure_alt_b(controller, want_open=True, win=win, server=server, lang=lang, timeout_s=2.5):
         _hud_err("[dashboard] Alt+B: не удалось открыть")
         return False, False
@@ -385,11 +389,11 @@ def run_step(
     end = time.time() + 2.0
     opened = False
     while time.time() < end:
-        # стопим попытки, если игрок умер — выходим сразу
-        if pool_get(state, "player.alive", None) is False:
-            _hud_err("[dashboard] игрок мёртв — выхожу из ожидания")
+        # прерывание ожидания при паузе/смерти
+        if _should_abort():
             _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
-            return False, True
+            # смерть → завершаем попытку; пауза → просто ждём в пайплайне
+            return (False, True) if _player_is_dead(state) else (False, False)
 
         pt2 = match_key_in_zone_single(
             window=win,
@@ -418,24 +422,36 @@ def run_step(
 
     _hud_ok("[dashboard] баффер открыт")
 
-    # 5) Нажать профиль
+    # 5) Нажать профиль (mode из пула передаём в engine явно)
     mode = (pool_get(state, "features.buff.mode", "") or "").strip().lower() or "profile"
+    be = BufferEngine(
+        server=server,
+        controller=controller,
+        get_window=helpers.get("get_window", lambda: None),
+        get_language=helpers.get("get_language", lambda: "rus"),
+    )
     if not be.click_mode(mode=mode, thr=0.85):
         _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
 
     time.sleep(0.5)  # дать анимации времени
 
-    # 6) Верификация бафа (подход как в respawn)
-    if not be.verify_buff_applied(thr=0.86):
+    # 6) Верификация бафа (сбор токенов — здесь, матч — в engine)
+    tokens: List[str] = list(pool_get(state, "features.buff.checker", []) or [])
+    if tokens:
+        _debug_open_zone_with_icons(state, win, lang, tokens, filename_hint="verify")
+    if not be.verify_selected_buffs(tokens, thr=0.86):
+        _hud_err("[dashboard] баф не обнаружен")
         _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
         return False, False
 
     # 7) Restore HP и закрыть
-    be.click_restore_hp(thr=0.85)
+    if be.click_restore_hp(thr=0.85):
+        _hud_ok("[dashboard] восстановление HP")
     time.sleep(0.2)
     _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.0)
 
     # успешно — сбрасываем счётчик попыток
     _reset_attempts(state)
+    _hud_succ("[dashboard] баф подтверждён")
     return True, True

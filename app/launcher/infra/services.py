@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 import json
 import importlib  # ← ДОБАВЛЕНО
+import time
 
 from core.state.pool import pool_get, pool_write
 from core.engines.player_state.service import PlayerStateService
@@ -72,7 +73,7 @@ class ServicesBundle:
             if self._ui_guard_runner is not None:
                 return self._ui_guard_runner
             try:
-                srv = str(pool_get(self.state, "config.server", "boh") or "boh").lower()
+                srv = str(pool_get(self.state, "config.server", "") or "").lower()
                 mod = importlib.import_module(f"core.engines.ui_guard.server.{srv}.engine")
                 EngineCls = getattr(mod, "UIGuardEngine", None)
                 if EngineCls is None:
@@ -81,12 +82,12 @@ class ServicesBundle:
                 eng = EngineCls(
                     server=srv,
                     controller=self.controller,
+                    state=self.state,   # ← ВАЖНО
                 )
                 runner = UIGuardRunner(
                     engine=eng,
                     get_window=lambda: pool_get(self.state, "window.info", None),
                     get_language=lambda: pool_get(self.state, "config.language", "rus"),
-                    is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
                     state=self.state,  # ← ВАЖНО: передаём пул внутрь раннера
                 )
                 # Инициализируем узел в пуле (на всякий случай)
@@ -101,7 +102,7 @@ class ServicesBundle:
             """Пока экран перекрыт или UI-страж занят — HP/CP считаем неизвестными ('--')."""
             pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
             try:
-                if self.hud_window and pool_get(self.state, "focus.is_focused"):
+                if self.hud_window:
                     self.hud_window.evaluate_js(
                         "window.ReviveHUD && window.ReviveHUD.setHP('--','')"
                     )
@@ -122,11 +123,19 @@ class ServicesBundle:
 
         # --- Player State service ---
         def _on_ps_update(data: Dict[str, Any]):
-            hp = data.get("hp_ratio")
 
-            # не трогаем vitals, если нет фокуса
-            if pool_get(self.state, "focus.is_focused") is False:
+            # пауза сервиса: не трогаем виталы/ HUD
+            # пауза: сразу маскируем виталы и HUD, без восстановлений из пула
+            if pool_get(self.state, "services.player_state.paused", False):
+                pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
+                try:
+                    if self.hud_window:
+                        self.hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
+                except Exception:
+                    pass
                 return
+
+            hp = data.get("hp_ratio")
 
             # 0) Если прямо сейчас UI-страж что-то видит/чинит — виталы считаем неизвестными
             ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
@@ -141,20 +150,13 @@ class ServicesBundle:
                 runner = _ensure_ui_guard_runner()
                 if runner is not None:
                     try:
-                        # run_once сам крутится до «чистого» экрана либо до неудачи,
-                        # и обновляет features.ui_guard.{busy,report}
                         runner.run_once()
                     except Exception as e:
                         console.log(f"[UI_GUARD] run_once error: {e}")
 
-                # после прогона проверяем состояние — если всё ещё не empty → виталы неизвестны
-                ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
-                ui_report = str(pool_get(self.state, "features.ui_guard.report", "empty") or "empty")
-                if ui_busy or ui_report != "empty":
-                    _mask_hp_unknown_and_hud()
-                    _maybe_warn_overlay(ui_report)
-                    return
-                # если экран чист — продолжим обычной логикой (ниже)
+                # После любой чистки экрана НЕ используем старое hp из этого тика.
+                # Маскируем виталы и ждём следующий тик PS.
+                _mask_hp_unknown_and_hud()
 
             # 2) Обычная запись виталов и HUD, когда ничего не перекрыто
             alive = None if hp is None else bool(hp > 0.001)
@@ -166,7 +168,7 @@ class ServicesBundle:
 
             # HUD vitals
             try:
-                if self.hud_window and pool_get(self.state, "focus.is_focused"):
+                if self.hud_window:
                     h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
                     cp = data.get("cp_ratio")
                     c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
@@ -177,9 +179,11 @@ class ServicesBundle:
                 console.log(f"[HUD] hp set error: {e}")
 
         self.ps_service = PlayerStateService(
-            server=lambda: pool_get(self.state, "config.server", "boh"),
+            server=lambda: pool_get(self.state, "config.server", ""),
             get_window=lambda: pool_get(self.state, "window.info", None),
             on_update=_on_ps_update,
+            is_paused=lambda: bool(pool_get(self.state, "services.player_state.paused", False)),
+            get_pause_reason=lambda: str(pool_get(self.state, "services.player_state.pause_reason", "")),
         )
 
         # --- Window Focus service ---
@@ -201,29 +205,40 @@ class ServicesBundle:
                     "teleport": bool(pool_get(self.state, "features.teleport.busy", False)),
                     "autofarm": bool(pool_get(self.state, "features.autofarm.busy", False)),
                 }
-                # сохраняем снимок, чтобы правило паузы не «перезаписало» его уже обнулёнными флагами
                 pool_write(self.state, "runtime.focus_pause", {"saved_busy": dict(saved_busy)})
 
-            # OFF → сброс vitals
-            if is_focused is False:
-                pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
-                try:
-                    if self.hud_window:
-                        self.hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
-                except Exception:
-                    pass
-            # ON после OFF → восстановить HUD из пула
-            elif self.hud_window and prev_focus is not True:
-                last = pool_get(self.state, "player", {}) or {}
-                hp = last.get("hp_ratio"); cp = last.get("cp_ratio")
-                h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
-                c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
-                try:
-                    self.hud_window.evaluate_js(
-                        f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
-                    )
-                except Exception:
-                    pass
+            elif (is_focused is True) and (prev_focus is not True):
+                # снимаем только «unfocused»-паузы
+                for fk in ("respawn","buff","macros","teleport","record","autofarm","stabilize","ui_guard"):
+                    if pool_get(self.state, f"features.{fk}.pause_reason","") == "unfocused":
+                        pool_write(self.state, f"features.{fk}", {"paused": False, "pause_reason": ""})
+                for sk in ("player_state","macros_repeat","autofarm"):
+                    if pool_get(self.state, f"services.{sk}.pause_reason","") == "unfocused":
+                        pool_write(self.state, f"services.{sk}", {"paused": False, "pause_reason": ""})
+
+            # OFF/ON: WindowFocusService больше не трогает vitals/HUD.
+            # Логику маскировки/восстановления ведёт PlayerStateService в зависимости от paused/pause_reason.
+
+            # # OFF → сброс vitals
+            # if is_focused is False:
+            #     pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
+            #     try:
+            #         if self.hud_window:
+            #             self.hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
+            #     except Exception:
+            #         pass
+            # # ON после OFF → восстановить HUD из пула
+            # elif self.hud_window and prev_focus is not True:
+            #     last = pool_get(self.state, "player", {}) or {}
+            #     hp = last.get("hp_ratio"); cp = last.get("cp_ratio")
+            #     h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
+            #     c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
+            #     try:
+            #         self.hud_window.evaluate_js(
+            #             f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
+            #         )
+            #     except Exception:
+            #         pass
 
             # статус (раньше шёл в UI через ui_emit) — теперь в HUD
             if prev_focus is None or prev_focus != is_focused:
@@ -237,27 +252,27 @@ class ServicesBundle:
 
         # --- Macros Repeat service ---
         self.macros_repeat_service = MacrosRepeatService(
-            server=lambda: pool_get(self.state, "config.server", "boh"),
+            server=lambda: pool_get(self.state, "config.server", ""),
             controller=self.controller,
             get_window=lambda: pool_get(self.state, "window.info", None),
             get_language=lambda: pool_get(self.state, "config.language", "rus"),
             get_rows=lambda: list(pool_get(self.state, "features.macros.rows", []) or []),
             is_enabled=lambda: bool(pool_get(self.state, "features.macros.repeat_enabled", False)),
             is_alive=lambda: pool_get(self.state, "player.alive", None),
-            is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
+            is_paused=lambda: bool(pool_get(self.state, "services.macros_repeat.paused", False)),  # ← ВАЖНО
             set_busy=lambda b: pool_write(self.state, "features.macros", {"busy": bool(b)}),
         )
 
         # --- AutoFarm service ---
         self.autofarm_service = AutoFarmService(
-            server=lambda: pool_get(self.state, "config.server", "boh"),
+            server=lambda: pool_get(self.state, "config.server", ""),
             controller=self.controller,
             get_window=lambda: pool_get(self.state, "window.info", None),
             get_language=lambda: pool_get(self.state, "config.language", "rus"),
             get_cfg=lambda: pool_get(self.state, "features.autofarm", {}),  # ВЕСЬ узел, не только .config
             is_enabled=lambda: bool(pool_get(self.state, "features.autofarm.enabled", False)),
             is_alive=lambda: pool_get(self.state, "player.alive", None),
-            is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", False)),
+            is_paused=lambda: bool(pool_get(self.state, "services.autofarm.paused", False)),   # ← ВАЖНО
             set_busy=lambda b: pool_write(self.state, "features.autofarm", {"busy": bool(b)}),
         )
 

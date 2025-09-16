@@ -21,15 +21,17 @@ def log_pool_snapshot(state: Dict[str, Any]) -> None:
 
 
 def orchestrator_tick(state: Dict[str, Any], ps_adapter, rules) -> None:
-    """
-    Единственная точка входа тиков оркестратора.
-    """
     snap = build_snapshot(state, ps_adapter)
 
-    # полный дамп по флагу
     if pool_get(state, "runtime.debug.pool_debug", False):
         log_pool_snapshot(state)
 
     for rule in rules:
-        if rule.when(snap):
-            rule.run(snap)
+        try:
+            if rule.when(snap):
+                try:
+                    rule.run(snap)
+                except Exception as e:
+                    print("[ORCH] rule.run error:", e)
+        except Exception as e:
+            print("[ORCH] rule.when error:", e)

@@ -6,7 +6,7 @@ import re
 from typing import Callable, Dict, List, Optional, Tuple, Sequence, Any
 
 from core.engines.flow.engine import FlowEngine
-from core.vision.matching.template_matcher import match_in_zone
+from core.vision.matching.template_matcher_2 import match_key_in_zone_single
 from core.logging import console
 
 _RU2US = {
@@ -120,7 +120,15 @@ class FlowCtx:
         ltrb = self._zone_ltrb(zone); win = self._win()
         deadline = time.time() + timeout_ms / 1000.0
         while time.time() < deadline:
-            if match_in_zone(win, ltrb, self.server, self._lang(), parts, thr):
+            if match_key_in_zone_single(
+                    window=win,
+                    zone_ltrb=ltrb,
+                    server=self.server,
+                    lang=self._lang(),
+                    template_parts=parts,
+                    threshold=thr,
+                    engine="dashboard",
+            ):
                 return True
             time.sleep(0.05)
         return False
@@ -132,7 +140,15 @@ class FlowCtx:
         ltrb = self._zone_ltrb(zone); win = self._win()
         deadline = time.time() + timeout_ms / 1000.0
         while time.time() < deadline:
-            pt = match_in_zone(win, ltrb, self.server, self._lang(), parts, thr)
+            pt = match_key_in_zone_single(
+                window=win,
+                zone_ltrb=ltrb,
+                server=self.server,
+                lang=self._lang(),
+                template_parts=parts,
+                threshold=thr,
+                engine="dashboard",
+            )
             if pt:
                 try:
                     self.controller.send(f"click:{pt[0]},{pt[1]}")
@@ -148,7 +164,15 @@ class FlowCtx:
         if not zone or not parts:
             return False
         ltrb = self._zone_ltrb(zone); win = self._win()
-        return match_in_zone(win, ltrb, self.server, self._lang(), parts, thr) is not None
+        return match_key_in_zone_single(
+            window=win,
+            zone_ltrb=ltrb,
+            server=self.server,
+            lang=self._lang(),
+            template_parts=parts,
+            threshold=thr,
+            engine="dashboard",
+        ) is not None
 
 
 class FlowOpExecutor:

@@ -462,7 +462,11 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     _RESTART_STREAK = 0
     excluded_targets.clear()
 
-    server = (ctx_base["server"] or "boh").lower()
+    server = (ctx_base.get("server") or "").lower()
+    if not server:
+        console.log("[autofarm] server не задан")
+        return False
+
     lang = (ctx_base["get_language"]() or "eng").lower()
     win = ctx_base["get_window"]()
     if not win:

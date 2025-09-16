@@ -8,12 +8,13 @@ from core.state.pool import pool_get, pool_write
 
 from .engine import RecordEngine
 
-def _focused_now(state: Dict[str, Any]) -> Optional[bool]:
+def _paused_now(state: Dict[str, Any]) -> tuple[bool, str]:
     try:
-        v = pool_get(state, "focus.is_focused", None)
-        return bool(v) if isinstance(v, bool) else None
+        p = bool(pool_get(state, "features.record.paused", False))
+        reason = str(pool_get(state, "features.record.pause_reason", "") or "")
+        return p, reason
     except Exception:
-        return None
+        return False, ""
 
 def _win_has_focus_or_wait(helpers: Dict[str, Any], timeout_s: float = 3.0) -> bool:
     get_focus = helpers.get("get_focus")  # опц. колбэк, если есть
@@ -40,15 +41,7 @@ def _set_status(state: Dict[str, Any], status: str):
     except Exception:
         pass
 
-def run_step(
-    *,
-    state: Dict[str, Any],
-    ps_adapter,
-    controller,
-    snap,  # Snapshot
-    helpers: Dict[str, Any],
-) -> Tuple[bool, bool]:
-
+def run_step(*, state, ps_adapter, controller, snap, helpers) -> Tuple[bool, bool]:
     console.log("[record.rules] enter run_step")
 
     if not snap.has_window:
@@ -58,7 +51,7 @@ def run_step(
     enabled = bool(pool_get(state, "features.record.enabled", False))
     status  = str(pool_get(state, "features.record.status", "") or "")
     current = str(pool_get(state, "features.record.current_record", "") or "")
-    console.log(f"[record.rules] enter enabled={enabled} status={status} current='{current}' focus={snap.is_focused}")
+    console.log(f"[record.rules] enter enabled={enabled} status={status} current='{current}'")
 
     if not enabled:
         console.log("[record.rules] skip: not enabled")
@@ -67,6 +60,12 @@ def run_step(
         console.log("[record.rules] skip: already recording")
         return False, False
 
+    paused, reason = _paused_now(state)
+    if paused:
+        console.hud("ok", f"[record] пауза: {reason or 'остановлено'} — жду")
+        return False, False
+
+    # защитный дубль
     if bool(pool_get(state, "features.record.status", "") == "recording"):
         console.log("[record.rules] currently recording -> skip playback")
         return False, False
@@ -77,25 +76,21 @@ def run_step(
         console.log("[record.rules] engine missing")
         return False, True
 
-    focused = _win_has_focus_or_wait(helpers, timeout_s=3.0)
-    console.log(f"[record.rules] focused={focused}")
-    if not focused:
-        console.hud("err", "[record] нет фокуса окна")
-        return False, False
-
-    # воспроизведение записи через countdown_s (!нет это не тут)
-    ok = bool(engine.play(wait_focus_cb=lambda timeout_s=0: True, countdown_s=3.0))
+    # Проигрываем. Фокус НЕ проверяем — пауза уже всё контролирует.
+    ok = bool(engine.play(countdown_s=3.0,
+                          should_abort=lambda: (
+                              bool(pool_get(state, "features.record.paused", False))
+                              or not bool(pool_get(state, "features.record.enabled", True))
+                          )))
     console.log(f"[record.rules] play -> ok={ok}")
-    # выключаем тумблер только если НЕ потеряли фокус
+
+    # Сообщение по причине остановки (если была)
     try:
-        reason = engine.last_stop_reason() if hasattr(engine, "last_stop_reason") else None
+        reason = engine.last_stop_reason()
     except Exception:
         reason = None
 
-    if reason == "focus_lost":
-        console.hud("att", "[record] остановлено: потерян фокус")
-        # не трогаем features.record.enabled
-    # else:
-        # pool_write(state, "features.record", {"enabled": False})
+    if reason == "aborted":
+        console.hud("att", "[record] остановлено")
 
     return ok, True

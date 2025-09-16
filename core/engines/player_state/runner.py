@@ -12,6 +12,9 @@ def run_player_state(
     on_update: Optional[Callable[[Dict[str, Any]], None]] = None,  # {"hp_ratio": float, "ts": float}
     cfg: Optional[Dict[str, Any]] = None,
     should_abort: Optional[Callable[[], bool]] = None,
+    # ← НОВОЕ: опциональные колбэки паузы
+    is_paused: Optional[Callable[[], bool]] = None,
+    get_pause_reason: Optional[Callable[[], str]] = None,
 ) -> bool:
     """
     Универсальный запуск движка player_state для конкретного сервера:
@@ -44,9 +47,12 @@ def run_player_state(
     # 3) Контекст (минимально необходимый)
     ctx_base = {
         "server": server,
-        "get_window": lambda: win,   # фиксируем окно на момент запуска
-        "on_update": on_update,      # опционально: публикация hp_ratio наружу
+        "get_window": lambda: win,  # фиксируем окно на момент запуска
+        "on_update": on_update,  # опционально: публикация hp_ratio наружу
         "should_abort": (should_abort or (lambda: False)),
+        # ← НОВОЕ: пробрасываем в движок
+        "is_paused": (is_paused or (lambda: False)),
+        "get_pause_reason": (get_pause_reason or (lambda: "")),
     }
 
     # 4) Старт

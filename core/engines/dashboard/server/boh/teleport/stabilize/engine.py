@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple
 
 from core.logging import console
 from core.vision.zones import compute_zone_ltrb
@@ -17,10 +17,7 @@ _ANCHORS_CACHE: Dict[str, Any] = {}
 
 
 def _anchors_path() -> str:
-    return os.path.join(
-        os.path.dirname(__file__),
-        "anchors.json",
-    )
+    return os.path.join(os.path.dirname(__file__), "anchors.json")
 
 
 def _load_anchors() -> Dict[str, Any]:
@@ -45,7 +42,7 @@ class StabilizeEngine:
     Дополнительная (optional), если features.stabilize.enabled=True:
       1) /target <anchor> (ru/en вариант)
       2) если target_init не появился — повторить п.1
-      3) /attack (ждём travel_time мс) → Esc
+      3) /attack (ждём travel_time мс) → Esc + PageDown×3
     """
 
     def __init__(self, state: Dict[str, Any], server: str, controller: Any, get_window, get_language):
@@ -91,20 +88,30 @@ class StabilizeEngine:
             lang=self._lang(),
             template_parts=parts,
             threshold=thr,
-            engine="stabilize",  # тот же матчинг
+            engine="stabilize",
         ) is not None
+
+    def _click_abs(self, abs_x: int, abs_y: int, *, hover_delay_s: float = 0.08, post_delay_s: float = 0.08) -> None:
+        try:
+            if hasattr(self.controller, "move"):
+                self.controller.move(int(abs_x), int(abs_y))
+            time.sleep(max(0.0, hover_delay_s))
+            if hasattr(self.controller, "_click_left_arduino"):
+                self.controller._click_left_arduino()
+            else:
+                self.controller.send("l")
+            time.sleep(max(0.0, post_delay_s))
+        except Exception:
+            pass
 
     def _click_zone_center(self, zone_name: str, delay_ms: int = 80):
         l, t, r, b = self._zone(zone_name)
         x = (l + r) // 2
         y = (t + b) // 2
-        win = self._win() if hasattr(self, "_win") else (self.get_window() if hasattr(self, "get_window") else {}) or {}
+        win = self._win() or {}
         abs_x = int((win.get("x") or 0) + x)
         abs_y = int((win.get("y") or 0) + y)
-        try:
-            self.controller.send(f"click:{abs_x},{abs_y}")
-        except Exception:
-            pass
+        self._click_abs(abs_x, abs_y, hover_delay_s=0.04, post_delay_s=0.04)
         if delay_ms > 0:
             time.sleep(delay_ms / 1000.0)
 
@@ -133,22 +140,28 @@ class StabilizeEngine:
             time.sleep(delay_ms / 1000.0)
 
     def _enter_text(self, text: str):
-        # контроллер сам печатает raw-текст; раскладка уже учитывается в /target-логике (см. ниже)
+        # контроллер сам печатает raw-текст; раскладка в /target делается через Flow.
         try:
             self.controller.send(f"enter_text {text}")
         except Exception:
             pass
 
-    def _layout_toggle_altshift(self, count: int = 1, delay_ms: int = 120):
-        for i in range(max(1, count)):
-            try:
-                self.controller.send("layout_toggle_altshift")
-            except Exception:
-                pass
-            if delay_ms > 0:
-                time.sleep(delay_ms / 1000.0)
+    # --- Flow executor (корректная печать и раскладки) -------------------
 
-    # --- send_target ---------------------------------------------------------
+    def _make_executor(self) -> FlowOpExecutor:
+        ctx = FlowCtx(
+            server=self.server,
+            controller=self.controller,
+            get_window=self.get_window,
+            get_language=self.get_language,
+            zones=ZONES,
+            templates=TEMPLATES,
+            extras={},
+        )
+        return FlowOpExecutor(ctx, logger=lambda m: console.log(f"[stabilize] {m}"))
+
+    # --- /target helpers --------------------------------------------------
+
     def _send_target_ru(self, ex: FlowOpExecutor, npc_name: str, wait_ms: int = 120) -> bool:
         flow = [
             {"op": "press_enter"},
@@ -185,46 +198,30 @@ class StabilizeEngine:
             time.sleep(0.10)
         return False
 
-    # --- Flow executor (для корректной печати) ----------------------------
-
-    def _make_executor(self) -> FlowOpExecutor:
-        ctx = FlowCtx(
-            server=self.server,
-            controller=self.controller,
-            get_window=self.get_window,
-            get_language=self.get_language,
-            zones=ZONES,
-            templates=TEMPLATES,
-            extras={},  # пока без плейсхолдеров
-        )
-        return FlowOpExecutor(ctx, logger=lambda m: console.log(f"[stabilize] {m}"))
     # --- optional ---------------------------------------------------------
 
     def _anchors_for_location(self, location: str) -> Tuple[str, int]:
         data = _load_anchors()
-        locs = ((data.get("location") or {}) if isinstance(data, dict) else {})
+        locs = (data.get("location") or {}) if isinstance(data, dict) else {}
         node = locs.get(location) or {}
         travel_ms = int(node.get("travel_time", 1500) or 1500)
-        anchor = ((node.get("anchor") or {}) if isinstance(node, dict) else {})
+        anchor = node.get("anchor") or {}
         key = "rus" if self._lang().startswith("ru") else "eng"
         name = str(anchor.get(key, "")).strip()
         return name, travel_ms
 
     def stabilize_optional(self, location: str) -> bool:
         """
-        /target <anchor> до появления target_init → /attack (ждать travel_time) → Esc
+        /target <anchor> до появления target_init → /attack (ждать travel_time) → Esc + PageDown×3.
         """
         anchor, travel_ms = self._anchors_for_location(location)
         if not anchor:
             # нет якоря — нечего делать, считаем успехом
             return True
 
-        # Повторы таргета до появления креста
         ex = self._make_executor()
         for _ in range(4):
-
             if self._lang().startswith("ru"):
-                # /target (англ) + имя русскими (через Alt+Shift)
                 self._send_target_ru(ex, anchor, wait_ms=120)
             else:
                 self._send_target_en(ex, anchor, wait_ms=120)
@@ -240,9 +237,8 @@ class StabilizeEngine:
         self._press_enter(80)
         self._enter_text("/attack")
         self._press_enter(80)
-        # подождать (движение к якорю)
-        wait_s = max(0.2, travel_ms / 1000.0)
-        time.sleep(wait_s)
+
+        time.sleep(max(0.2, travel_ms / 1000.0))
         self._press_esc(100)
         self._press_esc(100)
         self._press_pagedown(120)
