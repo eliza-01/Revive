@@ -40,7 +40,7 @@
           },
           "autofarm": {
             "section": true,
-            "methods": ["auto", "manual"]
+            "modes": ["auto", "manual"]
           }
         },
 
@@ -70,7 +70,7 @@
           },
           "autofarm": {
             "section": false,
-            "methods": ["auto", "manual"]
+            "modes": ["auto", "manual"]
           }
         }
       }

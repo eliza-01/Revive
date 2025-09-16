@@ -66,7 +66,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
         },
         "autofarm": {
             "enabled": False,
-            "mode": "manual",           # "auto" | "manual"
+            "mode": "",           # "auto" | "manual"
             "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False,
             "config": {
                 "profession": "",
@@ -82,7 +82,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("pipeline", {
         "allowed": ["respawn", "buff", "macros", "teleport", "record", "autofarm"],
         "order":   ["respawn", "buff", "macros", "teleport", "record", "autofarm"],
-        "active": False, "idx": 0, "last_step": "", "ts": 0.0,
+        "active": False, "idx": 0, "last_step": "", "paused": False, "pause_reason":"", "ts": 0.0,
     })
 
     # ---- Сервисы ----

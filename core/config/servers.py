@@ -96,6 +96,13 @@ def get_buff_modes(server_id: str) -> List[str]:
         _ve(f"Invalid buff.modes for server '{server_id}'")
     return list(modes)
 
+def get_autofarm_modes(server_id: str) -> List[str]:
+    """Список режимов автофарма (autofarm.modes)."""
+    af = (_server(server_id).get("autofarm") or {})
+    modes = af.get("modes") or []
+    if not isinstance(modes, list):
+        _ve(f"Invalid autofarm.modes for server '{server_id}'")
+    return list(modes)
 
 # -------- Teleport --------
 

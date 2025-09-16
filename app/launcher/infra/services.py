@@ -198,6 +198,14 @@ class ServicesBundle:
 
             # ← ДО любых побочных эффектов: на фронте перехода ON->OFF делаем мгновенный снимок busy
             if (is_focused is False) and (prev_focus is not False):
+                # раздаём паузы
+                for fk in ("respawn","buff","macros","teleport","record","autofarm","stabilize","ui_guard"):
+                    pool_write(self.state, f"features.{fk}", {"paused": True, "pause_reason": "unfocused"})
+                for sk in ("player_state","macros_repeat","autofarm"):
+                    pool_write(self.state, f"services.{sk}", {"paused": True, "pause_reason": "unfocused"})
+                # pipeline флаг паузы
+                pool_write(self.state, "pipeline", {"paused": True, "pause_reason": "unfocused", "ts": time.time()})
+
                 saved_busy = {
                     "respawn": bool(pool_get(self.state, "features.respawn.busy", False)),
                     "buff": bool(pool_get(self.state, "features.buff.busy", False)),
@@ -215,30 +223,8 @@ class ServicesBundle:
                 for sk in ("player_state","macros_repeat","autofarm"):
                     if pool_get(self.state, f"services.{sk}.pause_reason","") == "unfocused":
                         pool_write(self.state, f"services.{sk}", {"paused": False, "pause_reason": ""})
-
-            # OFF/ON: WindowFocusService больше не трогает vitals/HUD.
-            # Логику маскировки/восстановления ведёт PlayerStateService в зависимости от paused/pause_reason.
-
-            # # OFF → сброс vitals
-            # if is_focused is False:
-            #     pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
-            #     try:
-            #         if self.hud_window:
-            #             self.hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
-            #     except Exception:
-            #         pass
-            # # ON после OFF → восстановить HUD из пула
-            # elif self.hud_window and prev_focus is not True:
-            #     last = pool_get(self.state, "player", {}) or {}
-            #     hp = last.get("hp_ratio"); cp = last.get("cp_ratio")
-            #     h = "" if hp is None else str(int(max(0, min(1.0, float(hp))) * 100))
-            #     c = "" if cp is None else str(int(max(0, min(1.0, float(cp))) * 100))
-            #     try:
-            #         self.hud_window.evaluate_js(
-            #             f"window.ReviveHUD && window.ReviveHUD.setHP({json.dumps(h)}, {json.dumps(c)})"
-            #         )
-            #     except Exception:
-            #         pass
+                # pipeline флаг паузы
+                pool_write(self.state, "pipeline", {"paused": False, "pause_reason": "", "ts": time.time()})
 
             # статус (раньше шёл в UI через ui_emit) — теперь в HUD
             if prev_focus is None or prev_focus != is_focused:

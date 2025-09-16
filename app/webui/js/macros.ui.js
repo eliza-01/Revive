@@ -3,8 +3,10 @@
   const $ = (sel) => document.querySelector(sel);
 
   const KEYS = ["1","2","3","4","5","6","7","8","9","0"];
-  let ac = null; // AbortController для дедупликации обработчиков
+  let ac = null;                // AbortController для дедупликации обработчиков
+  let _booting = false;         // подавляем любые пуши в пул во время гидратации
 
+  // ---------- helpers ----------
   function create(tag, attrs = {}, text = "") {
     const el = document.createElement(tag);
     Object.entries(attrs).forEach(([k, v]) => {
@@ -13,7 +15,23 @@
     if (text) el.textContent = text;
     return el;
   }
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 
+  async function waitForApi(methodNames, timeoutMs = 5000, intervalMs = 100) {
+    const names = Array.isArray(methodNames) ? methodNames : [methodNames];
+    const t0 = Date.now();
+    return new Promise(resolve => {
+      const tick = () => {
+        const ok = window.pywebview && window.pywebview.api && names.every(n => typeof window.pywebview.api[n] === "function");
+        if (ok) return resolve(true);
+        if (Date.now() - t0 >= timeoutMs) return resolve(false);
+        setTimeout(tick, intervalMs);
+      };
+      tick();
+    });
+  }
+
+  // ---------- UI builders ----------
   function buildKeySelect(val) {
     const sel = create("select", { class: "key", "data-scope": "macros-key" });
     KEYS.forEach(k => sel.appendChild(create("option", { value: k }, k)));
@@ -31,7 +49,7 @@
 
     const onChange = () => {
       const v = parseFloat(inp.value || "0");
-      const clamped = isFinite(v) ? Math.max(min, Math.min(max, v)) : 0;
+      const clamped = isFinite(v) ? clamp(v, min, max) : 0;
       inp.value = String(clamped);
       pushRowsToBackend();
     };
@@ -87,8 +105,7 @@
     return wrap;
   }
 
-  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
-
+  // ---------- state <-> UI ----------
   function readRows() {
     const cont = $("#macrosRows");
     if (!cont) return [];
@@ -102,11 +119,12 @@
     return rows;
   }
 
-  function pushRowsToBackend(){
-    try {
-      const rows = readRows();
-      pywebview.api.macros_set_rows(rows);
-    } catch(_) {}
+  function setRows(rows) {
+    const cont = $("#macrosRows");
+    if (!cont) return;
+    cont.innerHTML = "";
+    (rows && rows.length ? rows : [{ key:"1", cast_s:0, repeat_s:0 }])
+      .forEach(r => cont.appendChild(buildRow(r)));
   }
 
   function ensureAtLeastOneRow() {
@@ -117,6 +135,64 @@
     }
   }
 
+  function pushRowsToBackend(){
+    if (_booting) return; // не синкаем пул, пока идёт загрузка
+    try {
+      const rows = readRows();
+      if (window.pywebview && window.pywebview.api && typeof pywebview.api.macros_set_rows === "function") {
+        pywebview.api.macros_set_rows(rows);
+      }
+    } catch(_) {}
+  }
+
+  // ---------- hydrate ----------
+  async function hydrateFromBackend() {
+    _booting = true;
+    try {
+      let enabled = false;
+      let repeatEnabled = false;
+      let rows = [];
+
+      // 1) предпочтительно — новый API
+      if (await waitForApi(["macros_set_rows"], 1) && window.pywebview?.api?.macros_get) {
+        try {
+          const r = await pywebview.api.macros_get();
+          if (r && r.ok) {
+            enabled = !!r.enabled;
+            repeatEnabled = !!r.repeat_enabled;
+            rows = Array.isArray(r.rows) ? r.rows : [];
+          }
+        } catch (_) { /* fallthrough */ }
+      }
+
+      // 2) фолбэк — достаём напрямую из пула
+      if (!rows.length && window.pywebview?.api?.pool_dump) {
+        try {
+          const dump = await pywebview.api.pool_dump();
+          const m = dump && dump.state && dump.state.features && dump.state.features.macros;
+          if (m) {
+            enabled = !!m.enabled;
+            repeatEnabled = !!m.repeat_enabled;
+            rows = Array.isArray(m.rows) ? m.rows : [];
+          }
+        } catch (_) { /* ignore */ }
+      }
+
+      // применяем в UI
+      setRows(rows);
+      ensureAtLeastOneRow();
+
+      const chk = $("#chkMacros");
+      if (chk) chk.checked = !!enabled;
+
+      // если нужен отдельный чекбокс для повтора — тут можно выставить
+      // (сейчас один чекбокс рулит и enabled, и repeat_enabled)
+    } finally {
+      _booting = false;
+    }
+  }
+
+  // ---------- events wiring ----------
   function wire() {
     // Снимаем все старые обработчики этого модуля перед перевешиванием
     if (ac) ac.abort();
@@ -133,36 +209,33 @@
 
     const chk = $("#chkMacros");
     if (chk) chk.addEventListener("change", e => {
-      const enabled = !!e.target.checked;
+      const on = !!e.target.checked;
       try {
-        pywebview.api.macros_set_enabled(enabled);
-        pywebview.api.macros_set_repeat_enabled(enabled);
+        if (window.pywebview && window.pywebview.api) {
+          if (typeof pywebview.api.macros_set_enabled === "function")        pywebview.api.macros_set_enabled(on);
+          if (typeof pywebview.api.macros_set_repeat_enabled === "function") pywebview.api.macros_set_repeat_enabled(on);
+        }
       } catch(_) {}
     }, { signal });
   }
 
+  // ---------- public API ----------
   window.UIMacros = {
-    init() {
-      // Отрисовываем дефолтную строку ТОЛЬКО если контейнер пуст
-      const cont = $("#macrosRows");
-      if (cont && cont.querySelectorAll(".macros-row").length === 0) {
-        cont.appendChild(buildRow({ key:"1", cast_s:0, repeat_s:0 }));
-        // синхронизируем пул после первичной отрисовки
-        pushRowsToBackend();
-      }
+    async init() {
       wire();
+      await hydrateFromBackend();   // подтягиваем prefs→pool→UI, НО не перезаписываем пул
     },
 
-    // <<< НОВОЕ: полный сброс раздела >>>
+    // Полный сброс раздела (и на бэке, и в UI)
     reset() {
       try {
-        // сбрасываем флаги на бэкенде
-        pywebview.api.macros_set_enabled(false);
-        pywebview.api.macros_set_repeat_enabled(false);
-        pywebview.api.macros_set_rows([]);
+        if (window.pywebview && window.pywebview.api) {
+          if (pywebview.api.macros_set_enabled)        pywebview.api.macros_set_enabled(false);
+          if (pywebview.api.macros_set_repeat_enabled) pywebview.api.macros_set_repeat_enabled(false);
+          if (pywebview.api.macros_set_rows)           pywebview.api.macros_set_rows([]);
+        }
       } catch(_) {}
 
-      // сбрасываем UI
       const cont = $("#macrosRows");
       if (cont) {
         cont.innerHTML = "";
@@ -170,9 +243,30 @@
       }
       const chk = $("#chkMacros");
       if (chk) chk.checked = false;
-
-      // синхронизируем в пул новую (дефолтную) строку
-      pushRowsToBackend();
     }
   };
+
+  // ---------- boot ----------
+  function boot() {
+    if (window.UIMacros && typeof window.UIMacros.init === "function") {
+      window.UIMacros.init();
+    }
+  }
+  if (window.pywebview && window.pywebview.api) {
+    boot();
+  } else {
+    document.addEventListener("pywebviewready", boot);
+    document.addEventListener("DOMContentLoaded", () => {
+      // страховочный поллинг, если событие по какой-то причине не пришло
+      let tries = 0;
+      const t = setInterval(() => {
+        if (window.pywebview && window.pywebview.api) {
+          clearInterval(t);
+          boot();
+        } else if (++tries > 60) {
+          clearInterval(t);
+        }
+      }, 100);
+    });
+  }
 })();

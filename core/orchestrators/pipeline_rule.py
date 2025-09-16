@@ -30,7 +30,7 @@ class PipelineRule:
         self._active = False
         self._idx = 0
         self._running = False
-        self._busy_until = 0.0
+        self._busy_until = 0.0 #кулдаун. Метка, после которой можно снова работать.
 
         self._respawn_runner = RespawnRunner(
             engine=self._make_respawn_engine(),
@@ -61,11 +61,22 @@ class PipelineRule:
     def _hud_succ(self, text: str): console.hud("succ", text)
     def _hud_err(self, text: str):  console.hud("err",  text)
 
+    # --- helper ---
+    # cooldown
+    def _cd(self, secs: float):
+        self._busy_until = time.time() + max(0.0, secs)
     # ---------- lifecycle ----------
     def when(self, snap: Snapshot) -> bool:
+
+        if pool_get(self.s, "pipeline.paused", False):
+            # опц.: логнуть причину
+            pr = pool_get(self.s, "pipeline.pause_reason", "")
+            console.log(f"[PIPE] pause: pipeline.paused ({pr})")
+            return False
+
         now = time.time()
         if now < self._busy_until:
-            console.log(f"[PIPE] skip: cooldown left {self._busy_until - now:.2f}s")
+            console.log(f"[PIPE] cooldown left {self._busy_until - now:.2f}s")
             return False
         if self._running:
             console.log("[PIPE] skip: already running")
@@ -100,14 +111,14 @@ class PipelineRule:
         if (not self._active) and is_dead and (not respawn_on) and snap.has_window:
             console.log("[PIPE] no-activate: dead but respawn disabled")
             self._hud_err("[PIPE] смерть обнаружена, но авто-респавн выключен")
-            self._busy_until = time.time() + 2.0
+            self._cd(2.0)
             return False
 
         if not self._active:
             if is_dead and respawn_on and snap.has_window:
                 self._active = True
                 self._idx = 0
-                pool_merge(self.s, "pipeline", {"active": True, "idx": 0, "last_step": ""})
+                pool_merge(self.s, "pipeline", {"active": True, "idx": 0, "last_step": "", "ts": time.time()})
                 console.log(f"[PIPE] activate: dead={is_dead} alive={snap.alive} hp={snap.hp_ratio}")
                 self._hud_succ("[PIPE] старт пайплайна после смерти")
                 return True
@@ -131,7 +142,7 @@ class PipelineRule:
 
             step = order[self._idx]
             console.log(f"[PIPE] run step[{self._idx}]: {step}")
-            pool_merge(self.s, "pipeline", {"active": True, "idx": self._idx, "last_step": step})
+            pool_merge(self.s, "pipeline", {"active": True, "idx": self._idx, "last_step": step, "ts": time.time()})
 
             ok, advance = self._run_step(step, snap)
 
@@ -139,7 +150,7 @@ class PipelineRule:
             if ok and advance:
                 self._idx += 1
                 pool_merge(self.s, "pipeline", {"idx": self._idx})
-                self._busy_until = time.time() + 0.5
+                self._cd(0.5)
                 console.log(f"[PIPE] advance -> idx={self._idx}")
 
             if self._idx >= len(order):
@@ -444,8 +455,8 @@ class PipelineRule:
         console.log("[PIPE] finish: reset state")
         self._active = False
         self._idx = 0
-        self._busy_until = time.time() + 1.0
-        pool_merge(self.s, "pipeline", {"active": False, "idx": 0})
+        self._cd(1.0)
+        pool_merge(self.s, "pipeline", {"active": False, "idx": 0, "ts": time.time()})
 
 
 def make_pipeline_rule(state, ps_adapter, controller, helpers=None):
