@@ -1,38 +1,35 @@
-﻿# core/engines/respawn/server/boh/engine.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import time
 import os
 from typing import Optional, Dict, Tuple, Callable, List, Any
 
 from core.vision.zones import compute_zone_ltrb
-from core.vision.matching.template_matcher_2 import (
-    match_multi_in_zone,
-    match_key_in_zone_single,
-)
+from core.vision.matching.template_matcher_2 import match_key_in_zone_single
 from .respawn_data import ZONES, TEMPLATES
 from .templates import resolver as tplresolver
 from core.logging import console
 from core.state.pool import pool_get
 
 Point = Tuple[int, int]
-REVIVE_RESPAWN_DEBUG=1
 
 # Порог и таймаут по умолчанию
 DEFAULT_CLICK_THRESHOLD = 0.70
 DEFAULT_CONFIRM_TIMEOUT_S = 6.0
 
+REVIVE_RESPAWN_DEBUG = 0
+
 # Базовый порядок (если allowed_keys не задан)
 PREFERRED_TEMPLATE_KEYS: List[str] = [
     "reborn_banner",
-    "death_banner",
     "accept_button",
+    "death_banner",
     "decline_button",
 ]
 
 
 class RespawnEngine:
     """
-    Низкоуровневый движок: скан разрешённых ключей и клик.
+    Низкоуровневый движок: последовательный точечный поиск по ключам (как в бафере).
     Вся сценарная логика — в rules.py.
     """
 
@@ -45,7 +42,7 @@ class RespawnEngine:
         click_threshold: float = DEFAULT_CLICK_THRESHOLD,
         confirm_timeout_s: float = DEFAULT_CONFIRM_TIMEOUT_S,
     ):
-        self.server = server
+        self.server = (server or "").lower()
         self.controller = controller
         self._is_alive_cb = is_alive_cb or (lambda: True)
         self.click_threshold = float(click_threshold)
@@ -56,14 +53,11 @@ class RespawnEngine:
         """
         Включаем отладку ТОЛЬКО при явном True в пуле:
         runtime.debug.respawn_debug == True
-        Никакого state в инстансе — читаем флаг из пула напрямую.
         """
         try:
-            # 1) Переменная окружения принудительно включает дебаг
             env = os.getenv("REVIVE_RESPAWN_DEBUG", "")
             if env.strip().lower() in ("1", "true", "yes", "on"):
                 return True
-            # 2) Попытка достать реальный пул из контроллера (если он его держит)
             st = getattr(self.controller, "_state", None)
             if isinstance(st, dict):
                 return pool_get(st, "runtime.debug.respawn_debug", False) is True
@@ -71,7 +65,7 @@ class RespawnEngine:
             pass
         return False
 
-    def _dbg(self, msg: str):
+    def _dbg(self, msg: str) -> None:
         try:
             if self._debug_enabled():
                 console.log(f"[RESPAWN/DBG] {msg}")
@@ -87,7 +81,7 @@ class RespawnEngine:
 
     # ---- API ----
     def set_server(self, server: str) -> None:
-        self.server = server
+        self.server = (server or "").lower()
 
     def scan_banner_key(
         self,
@@ -96,45 +90,63 @@ class RespawnEngine:
         allowed_keys: Optional[List[str]] = None,
     ) -> Optional[Tuple[Point, str]]:
         """
-        Вернуть ((x,y), key) по разрешённым ключам или None.
+        Последовательный ТОЧЕЧНЫЙ поиск по ключам (как в бафере):
+        для каждого key → match_key_in_zone_single → при успехе вернуть (pt, key).
+        Для reborn предпочитаем клик именно по accept_button.
         """
-        zone_decl = ZONES.get("fullscreen")
+        # Зона: компактная центральная, если задана, иначе весь экран
+        zone_decl = ZONES.get("death_banners") or ZONES.get("fullscreen")
         if not zone_decl or not window:
             return None
         ltrb = compute_zone_ltrb(window, zone_decl)
 
-        key_order = list(allowed_keys) if allowed_keys else list(PREFERRED_TEMPLATE_KEYS)
-
-        # Диагностика наличия шаблонов — только если включён пуловый дебаг
         if self._debug_enabled():
-            for k in key_order:
+            console.log(f"[RESPAWN/DBG] scan LTRB={ltrb} thr={self.click_threshold:.2f}")
+
+        keys = list(allowed_keys) if allowed_keys else list(PREFERRED_TEMPLATE_KEYS)
+        lang = (lang or "rus").lower()
+
+        # Диагностика наличия файлов шаблонов
+        if self._debug_enabled():
+            for k in keys:
                 parts = TEMPLATES.get(k)
                 if not parts:
                     self._dbg(f"нет parts для ключа '{k}'")
                     continue
-                p = tplresolver.resolve((lang or "rus").lower(), *parts)
+                p = tplresolver.resolve(lang, *parts)
                 if not p:
                     self._dbg(f"не найден файл шаблона для '{k}' (lang={lang})")
 
-        return match_multi_in_zone(
-            window=window,
-            zone_ltrb=ltrb,
-            server=self.server,
-            lang=(lang or "rus").lower(),
-            templates_map=TEMPLATES,
-            key_order=key_order,
-            threshold=self.click_threshold,
-            engine="respawn",
-            debug=self._debug_enabled(),
-        )
+        for key in keys:
+            parts = TEMPLATES.get(key)
+            if not parts:
+                continue
+            pt = match_key_in_zone_single(
+                window=window,
+                zone_ltrb=ltrb,
+                server=self.server,
+                lang=lang,
+                template_parts=parts,
+                threshold=self.click_threshold,
+                engine="respawn",
+            )
+            if pt:
+                # Если видим окно реса — попробуем кликнуть по accept_button
+                if key == "reborn_banner":
+                    acc = self.find_key_in_zone(window, lang, "accept_button")
+                    if acc:
+                        return (acc, "accept_button")
+                return (pt, key)
+
+        return None
 
     def find_key_in_zone(
         self, window: Dict, lang: str, key: str
     ) -> Optional[Tuple[int, int]]:
         """
-        Точный поиск одного ключа → экранные координаты центра или None.
+        Точный поиск ОДНОГО ключа → экранные координаты центра или None.
         """
-        zone_decl = ZONES.get("death_banners")
+        zone_decl = ZONES.get("death_banners") or ZONES.get("fullscreen")
         if not zone_decl or not window:
             return None
         ltrb = compute_zone_ltrb(window, zone_decl)
@@ -154,16 +166,15 @@ class RespawnEngine:
         )
 
     def pick_click_point_for_key(
-            self,
-            window: Dict,
-            lang: str,
-            key: str,
-            fallback_pt: Tuple[int, int],
+        self,
+        window: Dict,
+        lang: str,
+        key: str,
+        fallback_pt: Tuple[int, int],
     ) -> Tuple[int, int]:
         """
         Для reborn_banner пытается найти accept_button и вернуть его центр,
         иначе — вернёт fallback_pt. Для остальных ключей — просто fallback_pt.
-        Никакой логики ожидания здесь нет.
         """
         if key == "reborn_banner":
             acc = self.find_key_in_zone(window, lang, "accept_button")

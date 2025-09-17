@@ -1,3 +1,4 @@
+﻿# core/engines/window_focus/engine.py
 from __future__ import annotations
 import time
 import ctypes

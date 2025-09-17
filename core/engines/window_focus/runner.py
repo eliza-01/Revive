@@ -1,3 +1,4 @@
+﻿# core/engines/window_focus/runner.py
 from __future__ import annotations
 import importlib
 from typing import Optional, Callable, Dict, Any

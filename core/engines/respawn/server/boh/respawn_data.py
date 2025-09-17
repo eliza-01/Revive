@@ -11,6 +11,7 @@ ZONES: Dict[str, ZoneDecl] = {
     # Кнопка/баннер «встать/возродиться».
     # Центр окна 280x200 — поправишь при необходимости.
     "fullscreen": {"fullscreen": True},
+    "death_banners": {"centered": True, "width": 340, "height": 200},
 }
 
 TEMPLATES: Dict[str, List[str]] = {

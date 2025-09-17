@@ -1,6 +1,11 @@
 ﻿# core/engines/respawn/server/boh/rules.py
-from typing import Any, Dict, Optional, Tuple, List, Callable  # + Callable
+from typing import Any, Dict, Optional, Tuple, List, Callable
 import time
+import os
+import tempfile
+
+import cv2
+import numpy as np
 
 from core.state.pool import pool_get, pool_write
 from core.orchestrators.snapshot import Snapshot
@@ -8,10 +13,13 @@ from core.logging import console
 
 # ↓ эти нужны утилите _perform_stand_up_phase
 from core.vision.zones import compute_zone_ltrb
+from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 from core.vision.matching.template_matcher_2 import match_multi_in_zone
 from .respawn_data import ZONES, TEMPLATES
+from .templates.resolver import resolve as tpl_resolve
 
 RESPAWN_TIMEOUT = 8_000
+
 
 def run_step(
     *,
@@ -79,10 +87,14 @@ def run_step(
 
         if wait_enabled and wait_seconds > 0:
             console.hud("ok", f"[RESPAWN] жду reborn_banner {wait_seconds} сек")
+
             elapsed_active = 0.0  # считаем только «когда не на паузе»
             last_ts = time.time()
 
-            last_tick = -1
+            # для «тикания» и обратного отсчёта
+            last_tick = -1          # сколько прошло (целых секунд)
+            last_remaining = None   # сколько осталось (для HUD)
+
             last_reason = ""
             while elapsed_active < wait_seconds:
                 now = time.time()
@@ -100,6 +112,13 @@ def run_step(
                 # активны — тикаем и сканим только reborn
                 elapsed_active = min(wait_seconds, elapsed_active + dt)
                 tick = int(elapsed_active)
+
+                # обновляем обратный отсчёт в HUD ровно раз в секунду
+                remaining = max(0, wait_seconds - tick)
+                if remaining != last_remaining:
+                    last_remaining = remaining
+                    console.hud("ok", f"[RESPAWN] ожидание reborn: {remaining}s")
+
                 if tick != last_tick:
                     last_tick = tick
                     console.log(f"[RESPAWN] ожидание reborn… {tick}/{wait_seconds}s")
@@ -230,7 +249,93 @@ def run_step(
             pass
 
 
-# ---- utils ----
+# ---- debug helper (ROI + шаблоны) ---------------------------------------
+def _debug_open_respawn_probe(
+    window: Dict[str, Any],
+    lang: str,
+    allowed_keys: List[str],
+    ltrb: Tuple[int, int, int, int],
+    filename_hint: str = "probe"
+) -> None:
+    try:
+        roi = capture_window_region_bgr(window, ltrb)
+        if roi is None or roi.size == 0:
+            console.log("[respawn/dbg] zone capture is empty")
+            return
+
+        tiles = []
+        lang = (lang or "rus").lower()
+        for key in (allowed_keys or []):
+            parts = TEMPLATES.get(key)
+            if not parts:
+                continue
+            p = tpl_resolve(lang, *parts)
+            if not p:
+                console.log(f"[respawn/dbg] template not resolved for key={key}")
+                continue
+            img = cv2.imread(p, cv2.IMREAD_UNCHANGED)
+            if img is None or img.size == 0:
+                console.log(f"[respawn/dbg] template read failed for key={key}: {p}")
+                continue
+
+            if img.ndim == 2:
+                icon = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            elif img.ndim == 3 and img.shape[2] == 4:
+                icon = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            else:
+                icon = img
+
+            icon = cv2.resize(icon, (70, 70), interpolation=cv2.INTER_AREA)
+            icon = cv2.copyMakeBorder(icon, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=(0, 255, 0))
+            label_h = 18
+            tile = np.zeros((icon.shape[0] + label_h, icon.shape[1], 3), dtype=np.uint8)
+            tile[:icon.shape[0], :icon.shape[1]] = icon
+            cv2.putText(tile, key[:16], (2, tile.shape[0]-4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+            tiles.append(tile)
+
+        strip = None
+        if tiles:
+            strip = np.hstack(tiles)
+            header = np.zeros((22, strip.shape[1], 3), dtype=np.uint8)
+            cv2.putText(header, "SEARCH TEMPLATES:", (6, 16),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 1, cv2.LINE_AA)
+            strip = np.vstack([header, strip])
+
+        roi_bgr = roi if roi.ndim == 3 else cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+        if strip is not None:
+            W = max(roi_bgr.shape[1], strip.shape[1])
+
+            def _pad_w(img):
+                if img.shape[1] == W:
+                    return img
+                pad = np.zeros((img.shape[0], W - img.shape[1], 3), dtype=np.uint8)
+                return np.hstack([img, pad])
+
+            out = np.vstack([_pad_w(roi_bgr), _pad_w(strip)])
+        else:
+            out = roi_bgr
+
+        ts = int(time.time())
+        path = os.path.join(tempfile.gettempdir(), f"revive_dbg_respawn_{filename_hint}_{ts}.png")
+        cv2.imwrite(path, out)
+        console.log(f"[respawn/dbg] saved -> {path}")
+        try:
+            os.startfile(path)  # Windows
+        except Exception:
+            try:
+                import subprocess, platform
+                if platform.system() == "Darwin":
+                    subprocess.Popen(["open", path])
+                else:
+                    subprocess.Popen(["xdg-open", path])
+            except Exception:
+                pass
+    except Exception as e:
+        console.log(f"[respawn/dbg] snapshot error: {e}")
+
+
+# ---- stand-up phase ------------------------------------------------------
 def _perform_stand_up_phase(
     *,
     engine,
@@ -248,10 +353,23 @@ def _perform_stand_up_phase(
     """
     console.hud("ok", "[respawn] Жду кнопку в город или рес")
 
-    zone_decl = ZONES.get("fullscreen")
+    zone_decl = ZONES.get("death_banners") or ZONES.get("fullscreen")
     if not zone_decl or not window:
         return False
     ltrb = compute_zone_ltrb(window, zone_decl)
+
+    debug_on = False
+    try:
+        debug_on = bool(getattr(engine, "_debug_enabled")() is True)
+    except Exception:
+        pass
+
+    if debug_on:
+        console.log(f"[respawn] scan zone={ltrb} thr={engine.click_threshold:.2f} keys={allowed_keys}")
+        try:
+            _debug_open_respawn_probe(window, lang, allowed_keys, ltrb, filename_hint="standup")
+        except Exception:
+            pass
 
     deadline = time.time() + max(1, int(timeout_ms)) / 1000.0
     last_seen_key: Optional[str] = None
@@ -262,16 +380,11 @@ def _perform_stand_up_phase(
             console.hud("succ", "[respawn] Возродились")
             return True
 
-        res = match_multi_in_zone(
+        # точечный последовательный поиск через движок
+        res = engine.scan_banner_key(
             window=window,
-            zone_ltrb=ltrb,
-            server=engine.server,
             lang=(lang or "rus").lower(),
-            templates_map=TEMPLATES,
-            key_order=allowed_keys,
-            threshold=engine.click_threshold,
-            engine="respawn",
-            debug=engine._debug_enabled(),
+            allowed_keys=allowed_keys,
         )
 
         if res is None:
@@ -279,7 +392,7 @@ def _perform_stand_up_phase(
                 console.hud("ok", "[respawn] кнопка пропала. Ждём подъём")
             elif last_seen_key == "reborn_banner":
                 console.hud("ok", "[respawn] окно реса пропало. Ждём подъём")
-            load_deadline = time.time() + 2.0
+            load_deadline = time.time() + 0.4
             while time.time() < load_deadline:
                 if is_alive_cb():
                     console.hud("succ", "[respawn] Возродились")
@@ -298,7 +411,7 @@ def _perform_stand_up_phase(
 
         click_x, click_y = engine.pick_click_point_for_key(window, lang, key, pt)
         confirm_wait_s = engine.confirm_timeout_s
-        if key == "reborn_banner":
+        if key == "reborn_banner" or key == "accept_button":
             console.hud("ok", "[respawn] соглашаемся на рес")
             confirm_wait_s = 5.0
         elif key == "death_banner":
@@ -321,12 +434,13 @@ def _perform_stand_up_phase(
                 key_order=allowed_keys,
                 threshold=engine.click_threshold,
                 engine="respawn",
-                debug=engine._debug_enabled(),
+                scales=(1.0, 0.95, 1.05),
+                debug=debug_on,
             )
             if res2 is None:
                 if key == "death_banner":
                     console.hud("ok", "[respawn] кнопка пропала. Ждём подъём")
-                elif key == "reborn_banner":
+                elif key in ("reborn_banner", "accept_button"):
                     console.hud("ok", "[respawn] окно реса пропало. Ждём подъём")
                 break
             time.sleep(0.05)
@@ -335,6 +449,7 @@ def _perform_stand_up_phase(
 
     console.hud("err", "[respawn] не удалось подняться")
     return False
+
 
 def _set_last_respawn(state: Dict[str, Any], rtype: str) -> None:
     try:
