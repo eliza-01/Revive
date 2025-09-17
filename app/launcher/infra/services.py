@@ -159,8 +159,28 @@ class ServicesBundle:
             hp = data.get("hp_ratio")
             cp = data.get("cp_ratio")
 
-            # 1) Пока UI-guard занят или есть отчёт о перекрытии — виталы неизвестны
-            ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
+            # 0.5) Эвристика «жив» от фолбэка HP (мигающий низкий HP)
+            if bool(data.get("fallback_alive", False)):
+                pool_write(self.state, "player", {"alive": True, "hp_ratio": None, "cp_ratio": None})
+                try:
+                    if self.hud_window and self.hud_window.evaluate_js(
+                            "typeof window.ReviveHUD==='object' && typeof window.ReviveHUD.setHP==='function'"
+                    ):
+                        self.hud_window.evaluate_js("window.ReviveHUD.setHP('--','')")
+                except Exception:
+                    pass
+                try:
+                    console.hud("att", "Индикатор HP чем-то перекрыт, но персонаж жив. Избегайте таких ситуаций")
+                except Exception:
+                    pass
+                return
+
+            # 0.6) Очистить HUD при возврате к основному движку
+            if bool(data.get("fallback_clear_hud", False)):
+                try:
+                    console.hud_clear()
+                except Exception:
+                    pass
             ui_report = str(pool_get(self.state, "features.ui_guard.report", "empty") or "empty")
             if ui_busy or ui_report != "empty":
                 _mask_hp_unknown_and_hud()
