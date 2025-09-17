@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/ui_guard/runner.py
+from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import time
 

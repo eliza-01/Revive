@@ -38,6 +38,9 @@ class OrchestratorLoop:
             t.start()
 
     def _tick(self):
+        #для будущей глобал версии ui.schedule
+        # if not self._running:
+        #     return
         try:
             orchestrator_tick(self._state, self._ps_adapter, self._rules)
         except Exception as e:

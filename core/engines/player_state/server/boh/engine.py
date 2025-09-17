@@ -1,7 +1,6 @@
-﻿# core/engines/player_state/server/boh/engine.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import time
-from typing import Dict, Any, Optional, Callable, Tuple, List
+from typing import Dict, Any, Optional, Callable, Tuple
 
 import numpy as np
 import cv2
@@ -105,15 +104,13 @@ def _estimate_hp_ratio_from_colorbar(
 
 def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     """
-    Движок состояния игрока (HP) для BOH:
-    вычисляет hp_ratio по длине цветной полосы (шаблонный цвет) в окне клиента.
+    Движок состояния игрока (HP) для BOH: вычисляет hp_ratio по длине цветной полосы.
+    Никакой логики пауз/overlay/UI-Guard здесь нет — только измерение и on_update().
     """
     get_window = ctx_base["get_window"]
     on_update: Optional[Callable[[Dict[str, Any]], None]] = ctx_base.get("on_update")
     should_abort: Callable[[], bool] = ctx_base.get("should_abort") or (lambda: False)
-    # ← НОВОЕ: поддержка паузы от сервисов/фич
     is_paused: Callable[[], bool] = ctx_base.get("is_paused") or (lambda: False)
-    get_pause_reason: Callable[[], str] = ctx_base.get("get_pause_reason") or (lambda: "")
 
     probe_color_rgb: Tuple[int, int, int] = tuple(cfg.get("hp_probe_color_rgb", DEFAULT_HP_PROBE_RGB))  # type: ignore
     color_tol: int = int(cfg.get("hp_color_tol", DEFAULT_HP_COLOR_TOL))
@@ -124,26 +121,30 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     poll_interval: float = float(cfg.get("poll_interval", DEFAULT_POLL_INTERVAL))
 
     prev_ratio = 1.0
+    was_paused = False  # ← отслеживаем фронт паузы
     console.log(f"[player_state/boh] start (poll={poll_interval}s, extra_down={zone_extra_down})")
-
-    # следим за фронтами паузы
-    was_paused = False
 
     try:
         while True:
             if should_abort():
                 return True
 
-            # пауза: один раз сообщаем "hp неизвестен", дальше — спим до снятия паузы
+            # --- пауза сервиса ---
             if is_paused():
-                was_paused = True
+                if not was_paused:
+                    was_paused = True
+                    if on_update:
+                        try:
+                            on_update({"paused": True, "hp_ratio": None, "cp_ratio": None, "ts": time.time()})
+                        except Exception:
+                            pass
                 time.sleep(poll_interval)
                 continue
             else:
-                # сняли паузу — просто продолжаем обычный цикл
                 if was_paused:
                     was_paused = False
 
+            # --- обычный цикл замера ---
             try:
                 win = get_window() or {}
             except Exception:

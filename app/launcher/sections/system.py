@@ -266,6 +266,7 @@ class SystemSection(BaseSection):
             "buff_methods": buff_methods,
             "buff_modes": buff_modes,
             "buff_current": pool_get(self.s, "features.buff.mode", ""),
+            "buff_enabled": bool(  pool_get(self.s, "features.buff.enabled", False)),  # ← ВАЖНО
             "buff_method_current": pool_get(self.s, "features.buff.method", (buff_methods[0] if buff_methods else "")),
 
             "teleport_methods": tp_methods,

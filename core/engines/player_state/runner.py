@@ -1,5 +1,4 @@
-﻿# core/engines/player_state/runner.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import importlib
 from typing import Optional, Callable, Dict, Any
 from core.logging import console
@@ -12,7 +11,6 @@ def run_player_state(
     on_update: Optional[Callable[[Dict[str, Any]], None]] = None,  # {"hp_ratio": float, "ts": float}
     cfg: Optional[Dict[str, Any]] = None,
     should_abort: Optional[Callable[[], bool]] = None,
-    # ← НОВОЕ: опциональные колбэки паузы
     is_paused: Optional[Callable[[], bool]] = None,
     get_pause_reason: Optional[Callable[[], str]] = None,
 ) -> bool:
@@ -27,7 +25,7 @@ def run_player_state(
         console.log("[player_state] server не задан")
         return False
 
-    # 1) Проверка окна (фиксируем на запуск)
+    # 1) Зафиксировать окно на запуск
     try:
         win = get_window() if callable(get_window) else None
     except Exception:
@@ -44,13 +42,12 @@ def run_player_state(
         console.log(f"[player_state] не найден движок сервера '{server}': {mod_name}: {e}")
         return False
 
-    # 3) Контекст (минимально необходимый)
+    # 3) Контекст
     ctx_base = {
         "server": server,
         "get_window": lambda: win,  # фиксируем окно на момент запуска
-        "on_update": on_update,  # опционально: публикация hp_ratio наружу
+        "on_update": on_update,
         "should_abort": (should_abort or (lambda: False)),
-        # ← НОВОЕ: пробрасываем в движок
         "is_paused": (is_paused or (lambda: False)),
         "get_pause_reason": (get_pause_reason or (lambda: "")),
     }

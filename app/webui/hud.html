@@ -176,14 +176,53 @@
         }
       }
 
+      /// Универсальный обработчик событий от Python (UIBridge.schedule("hud", payload))
+      function onEvent(e) {
+        try {
+          if (!e) return;
+
+          switch (e.type) {
+            case "orch.started":
+              // Старт оркестратора
+              push({ status: "ok", text: `Оркестратор запущен (${e.period_ms ?? "?"} мс)` });
+              break;
+
+            case "orch.heartbeat":
+              // Лёгкий «пульс» — опционально: подсветка/мигание индикатора
+              document.body.classList.add("orch-alive");
+              setTimeout(() => document.body.classList.remove("orch-alive"), 250);
+              break;
+
+            case "coordinator.paused":
+              // Координатор применил паузу
+              push({ status: "att", text: `Пауза: ${e.reason || "неизвестно"}` });
+              break;
+
+            case "coordinator.resumed":
+              // Снятие паузы
+              push({ status: "succ", text: "Пауза снята" });
+              break;
+
+            // можно добавлять свои события по мере надобности
+            default:
+              // тихий фолбэк для отладки
+              // push({ status: "gray", text: `HUD evt: ${e.type}` });
+              break;
+          }
+        } catch (_) { /* молча */ }
+      }
       // Экспортируемое API для Python
       window.ReviveHUD = {
         push,                                   // принимает строку или {status,text}
         dump(){ return buf.slice(); },          // для отладки
         setHP(hp, cp){ setHP(hp, cp); },        // обновление HP/CP
         stop_attention(){
-          if (attEl) attEl.textContent = '';
-        }
+          if (attEl){
+            attEl.innerHTML = '';
+            attEl.style.display = 'none';
+          }
+        },
+        onEvent,
       };
 
       document.addEventListener('DOMContentLoaded', boot);

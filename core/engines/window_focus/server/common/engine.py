@@ -7,6 +7,9 @@ from typing import Dict, Any, Optional, Callable
 
 from core.logging import console
 
+# для будущей глобал-версии schedule
+# from app.launcher.infra.ui_global import ui
+
 DEFAULT_POLL_INTERVAL: float = 2.0  # сек
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -132,6 +135,9 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             # LOG 4: изменение состояния фокуса
             if last_state is None or focused != last_state:
                 console.log(f"[window_focus] фокус окна: {'да' if focused else 'нет'}")
+                # console.hud("att", "Фокус окна изменен")
+                # ui.schedule(lambda: console.hud("att", ""), 2000)
+
                 last_state = focused
 
             time.sleep(poll_interval)

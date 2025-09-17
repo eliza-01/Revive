@@ -57,17 +57,17 @@ class BuffSection(BaseSection):
     def buff_get_config(self) -> Dict[str, Any]:
         return {
             "enabled": bool(pool_get(self.s, "features.buff.enabled", False)),
-            "mode": pool_get(self.s, "features.buff.mode", ""),
-            "method": pool_get(self.s, "features.buff.method", ""),
-            "methods": list(pool_get(self.s, "features.buff.methods", []) or []),
+            "mode":     pool_get(self.s, "features.buff.mode", ""),
+            "method":   pool_get(self.s, "features.buff.method", ""),
+            "methods":  list(pool_get(self.s, "features.buff.methods", []) or []),
         }
+
+    # совместимый state-эндпоинт для UI (fallback из JS)
+    def buff_state(self) -> Dict[str, Any]:
+        return self.buff_get_config()
 
     # --- manual run hook (опционально из UI) ---
     def buff_run_once(self) -> bool:
-        """
-        Запуск разового бафа из UI. Само применение зависит от движка.
-        Здесь только статус; фактическая реализация шага — в оркестраторе/правиле.
-        """
         en = bool(pool_get(self.s, "features.buff.enabled", False))
         if not en:
             self.emit("buff", "Баф отключён", None)
@@ -82,7 +82,8 @@ class BuffSection(BaseSection):
             "buff_set_mode": self.buff_set_mode,
             "buff_set_method": self.buff_set_method,
             "buff_get_config": self.buff_get_config,
-            "buff_run_once": self.buff_run_once,
-            "buff_checker_get": self.buff_checker_get,   # ← добавлено
-            "buff_checker_set": self.buff_checker_set,   # ← добавлено
+            "buff_state":      self.buff_state,        # ← добавили для UI fallback
+            "buff_run_once":   self.buff_run_once,
+            "buff_checker_get": self.buff_checker_get,
+            "buff_checker_set": self.buff_checker_set,
         }

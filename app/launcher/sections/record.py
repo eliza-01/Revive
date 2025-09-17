@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# app/launcher/sections/record.py
+from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import time, threading
 

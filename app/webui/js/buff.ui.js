@@ -63,8 +63,31 @@
       const current = st.buff_current || "";
 
       // Заполнить селекты
-      fillSelect($("#buffMethod"), methods, methods[0] || "dashboard"); // по умолчанию dashboard, если есть
+      fillSelect($("#buffMethod"), methods, methods[0] || "dashboard");
       fillSelect($("#buffMode"),   modes,   current);
+
+      // Установить состояние чекбокса "Включить"
+      const chk = $("#chkBuff");
+      if (chk) {
+        // пытаемся взять из init-state
+        let enabled = st.buff_enabled;
+        // на случай, если init-state не содержит плоского поля, пробуем из дерева
+        if (enabled === undefined && st.features && st.features.buff) {
+          enabled = st.features.buff.enabled;
+        }
+
+        if (typeof enabled === "boolean") {
+          chk.checked = enabled; // программное выставление не триггерит change — и хорошо
+        } else if (pywebview.api.buff_state) {
+          // запасной запрос, если init-state не отдал enabled
+          try {
+            const s = await pywebview.api.buff_state();
+            if (s && typeof s.enabled === "boolean") {
+              chk.checked = !!s.enabled;
+            }
+          } catch(_) {}
+        }
+      }
     } catch (_) {
       // молча
     }
@@ -74,7 +97,8 @@
   window.UIBuff = {
     init() { wire(); loadInitStateAndFill(); },
     updateMethods(methods, current) { fillSelect($("#buffMethod"), methods, current); },
-    updateModes(modes, current)     { fillSelect($("#buffMode"),   modes,   current); }
+    updateModes(modes, current)     { fillSelect($("#buffMode"),   modes,   current); },
+    updateEnabled(enabled)          { const chk = $("#chkBuff"); if (chk) chk.checked = !!enabled; }, // ← добавлено
   };
 
   // Совместимость: то, что вызывает Python
@@ -84,6 +108,10 @@
   };
   window.ReviveUI.onBuffModes = function(modes, current) {
     window.UIBuff.updateModes(modes, current);
+  };
+  // Можно из Python синхронно выставлять чекбокс без гонок:
+  window.ReviveUI.onBuffEnabled = function(enabled) {
+    window.UIBuff.updateEnabled(enabled);
   };
 
   // Инициализация: когда pywebview готов — заполняем из get_init_state
