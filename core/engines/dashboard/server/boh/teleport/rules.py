@@ -199,7 +199,7 @@ def run_step(
         return False, False
     _hud_ok(f"[teleport] категория '{category}' открыта")
 
-    # 5) Локация (Esc → click → ждать пропажи dashboard_init)
+    # 5) Локация (click → ждать пропажи dashboard_init)
     if not te.click_location(location, category):
         _hud_err(f"[teleport] локация '{location}' не нажата")
         return False, False

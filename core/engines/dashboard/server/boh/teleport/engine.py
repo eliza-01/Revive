@@ -252,9 +252,6 @@ class TeleportEngine:
         if not self._ensure_container_for_location(loc, cat, thr=thr, timeout_s=timeout_s):
             return False
 
-        # (опционально) сброс возможных попапов
-        self._press_esc(delay_s=0.10)
-
         # клик по локации
         parts = TELEPORT_LOCATIONS.get(loc)
         if not parts:
