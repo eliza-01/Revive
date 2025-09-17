@@ -131,7 +131,7 @@ class ServicesBundle:
             tp_busy = bool(pool_get(self.state, "features.teleport.busy", False))
             bf_busy = bool(pool_get(self.state, "features.buff.busy", False))
             if af_busy:
-                console.hud("att", "Индикатор HP чем-то перекрыт. Избегайте таких ситуаций на фарме.")
+                console.hud("att", "нужна отладка в этом месте")
             elif tp_busy or bf_busy:
                 console.hud("att", "Вероятно, Alt B перекрыло индикатор HP")
 
@@ -181,6 +181,9 @@ class ServicesBundle:
                     console.hud_clear()
                 except Exception:
                     pass
+
+            # 1) Пока UI-guard занят или есть отчёт о перекрытии — виталы неизвестны
+            ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
             ui_report = str(pool_get(self.state, "features.ui_guard.report", "empty") or "empty")
             if ui_busy or ui_report != "empty":
                 _mask_hp_unknown_and_hud()
