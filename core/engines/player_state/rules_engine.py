@@ -1,3 +1,4 @@
+﻿# core/engines/player_state/rules_engine.py
 from __future__ import annotations
 from typing import Any, Dict, Callable, List, Optional
 import importlib

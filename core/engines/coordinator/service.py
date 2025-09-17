@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/coordinator/service.py
+from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 import threading
 import time
@@ -121,6 +122,17 @@ class CoordinatorService:
 
         # обновлять runtime.pauses.ts только при изменении совокупности причин
         if active_set != self._last_active_set:
+            added = active_set - self._last_active_set
+            removed = self._last_active_set - active_set
+            # HUD: вход/выход причины 'unfocused'
+            try:
+                if "unfocused" in added:
+                    console.hud("att", "Сервисы остановлены! Вернитесь в Lineage")
+                if "unfocused" in removed:
+                    console.hud("succ", "Фокус вернулся — возобновляем процессы")
+                    console.hud("att", "")
+            except Exception:
+                pass
             from core.state.pool import pool_write
             pool_write(self.s, "runtime.pauses", {"ts": now})
             self._last_active_set = active_set

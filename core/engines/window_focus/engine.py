@@ -1,4 +1,3 @@
-# core/engines/window_focus/server/common/engine.py
 from __future__ import annotations
 import time
 import ctypes
@@ -6,9 +5,6 @@ from ctypes import wintypes
 from typing import Dict, Any, Optional, Callable
 
 from core.logging import console
-
-# для будущей глобал-версии schedule
-# from app.launcher.infra.ui_global import ui
 
 DEFAULT_POLL_INTERVAL: float = 2.0  # сек
 
@@ -71,7 +67,7 @@ def _is_window_focused(target_hwnd: int) -> bool:
         if a and b and a == b:
             return True
 
-        # 2) fallback: GA_ROOTOWNER
+        # 2) GA_ROOTOWNER
         try:
             h_fg = wintypes.HWND(fg)
             h_t  = wintypes.HWND(t)
@@ -97,14 +93,12 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     poll_interval = float(cfg.get("poll_interval", DEFAULT_POLL_INTERVAL))
     debug_focus = bool(cfg.get("debug_focus", False))
 
-    # LOG 1: старт
     console.log(f"[window_focus] старт (poll={poll_interval}s)…")
 
     last_state: Optional[bool] = None
     try:
         while True:
             if should_abort():
-                # LOG 2: остановка
                 console.log("[window_focus] остановлено пользователем")
                 return True
 
@@ -116,7 +110,6 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             hwnd = _extract_hwnd(win or {})
             focused = _is_window_focused(hwnd)
 
-            # LOG 3: отладка хэндлов (по флагу)
             if debug_focus:
                 try:
                     fg = _hwnd_value(_GetForegroundWindow())
@@ -132,12 +125,8 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 except Exception:
                     pass
 
-            # LOG 4: изменение состояния фокуса
             if last_state is None or focused != last_state:
                 console.log(f"[window_focus] фокус окна: {'да' if focused else 'нет'}")
-                # console.hud("att", "Фокус окна изменен")
-                # ui.schedule(lambda: console.hud("att", ""), 2000)
-
                 last_state = focused
 
             time.sleep(poll_interval)

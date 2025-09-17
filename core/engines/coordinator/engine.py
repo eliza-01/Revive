@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/coordinator/engine.py
+from __future__ import annotations
 from typing import Dict, Tuple, Optional, Dict as TDict
 
 from .rules import UnfocusedReason, UiGuardReason

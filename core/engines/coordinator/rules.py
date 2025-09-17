@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/coordinator/rules.py
+from __future__ import annotations
 from typing import Tuple, Protocol, Dict, Any, Optional
 import time
 

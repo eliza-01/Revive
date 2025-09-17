@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/player_state/service.py
+from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import threading, time
 
