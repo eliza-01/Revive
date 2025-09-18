@@ -1,19 +1,19 @@
 {
   "Varka_1": {
-    "title_rus": "Варка. Маршрут 1",
-    "title_eng": "Varka. Route 1",
+    "title_rus": "Варка",
+    "title_eng": "Varka",
     "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {
       "eng_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
       "rus_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
       "eng_short": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing"],
-      "rus_short": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing"]
+      "rus_short": ["Командир Фавнов", "Элитный страж", "Рекрут", "Пехотинец", "Луговая"]
     }
   },
   "Dion_1": {
-    "title_rus": "Дион. Маршрут 1",
-    "title_eng": "Dion. Route 1",
+    "title_rus": "Дион",
+    "title_eng": "Dion",
     "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {

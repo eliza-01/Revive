@@ -221,8 +221,8 @@ class UIGuardEngine:
         except Exception as e:
             console.log(f"[UNSTUCK] chat send error: {e}")
 
-        console.hud("ok", "[UNSTUCK] Ожидание 20 секунд…")
-        time.sleep(20.0)
+        console.hud("ok", "[UNSTUCK] Ожидание 25 секунд…") #убрать хардкод
+        time.sleep(25.0)
 
         if not isinstance(getattr(self, "s", None), dict):
             console.hud("succ", "[UNSTUCK] Готово")

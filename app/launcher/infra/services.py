@@ -116,6 +116,7 @@ class ServicesBundle:
         def _mask_hp_unknown_and_hud():
             """Пока экран перекрыт или UI-страж занят — HP/CP считаем неизвестными ('--')."""
             pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
+            console.log(f"HP = None services.py 119")
             try:
                 if self.hud_window:
                     self.hud_window.evaluate_js("window.ReviveHUD && window.ReviveHUD.setHP('--','')")
@@ -152,6 +153,7 @@ class ServicesBundle:
             # 0) Пауза сервиса — маска и выход
             if data.get("paused"):
                 pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
+                console.log(f"HP = None services.py 156")
                 try:
                     if self.hud_window and self.hud_window.evaluate_js(
                             "typeof window.ReviveHUD==='object' && typeof window.ReviveHUD.setHP==='function'"
@@ -163,10 +165,13 @@ class ServicesBundle:
 
             hp = data.get("hp_ratio")
             cp = data.get("cp_ratio")
-
+            console.log(f"HP: {hp}")
+            console.log(f"HP: {hp}")
+            console.log(f"HP: {hp}")
             # 0.5) Эвристика «жив» от фолбэка HP (мигающий низкий HP)
             if bool(data.get("fallback_alive", False)):
                 pool_write(self.state, "player", {"alive": True, "hp_ratio": None, "cp_ratio": None})
+                console.log(f"HP = None services.py 174")
                 try:
                     if self.hud_window and self.hud_window.evaluate_js(
                             "typeof window.ReviveHUD==='object' && typeof window.ReviveHUD.setHP==='function'"
@@ -187,13 +192,13 @@ class ServicesBundle:
                 except Exception:
                     pass
 
-            # 1) Пока UI-guard занят или есть отчёт о перекрытии — виталы неизвестны
-            ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
-            ui_report = str(pool_get(self.state, "features.ui_guard.report", "empty") or "empty")
-            if ui_busy or ui_report != "empty":
-                _mask_hp_unknown_and_hud()
-                _maybe_warn_overlay(ui_report)
-                return
+            # 1) Пока UI-guard занят или есть причина перекрытия — виталы неизвестны
+            # ui_busy = bool(pool_get(self.state, "features.ui_guard.busy", False))
+            # ui_reason = str(pool_get(self.state, "features.ui_guard.pause_reason", "empty") or "empty")
+            # if ui_busy or ui_reason not in ("", "empty"):
+            #     _mask_hp_unknown_and_hud()
+            #     _maybe_warn_overlay(ui_reason)  # можно оставить тот же HUD-хинт
+            #     return
 
             # 2) Нормальная запись виталов и HUD
             try:
