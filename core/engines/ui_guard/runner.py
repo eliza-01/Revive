@@ -137,19 +137,19 @@ class UIGuardRunner:
         found_any = False
         current_reason = "empty"
 
-        # # ===== 1) pages_blocker =====
-        # self._pool_set(report="pages_blocker")
-        # if self.engine.detect_pages_blocker(win, lang):
-        #     found_any = True
-        #     current_reason = "pages_blocker"
-        #     self._label_reason_for_paused(current_reason)
-        #     clicked = bool(self.engine.close_all_pages_crosses(win, lang))
-        #     closed_any = closed_any or clicked
-        #     if self.engine.detect_pages_blocker(win, lang):
-        #         self._pool_set(busy=False, report="pages_blocker", pause_reason=current_reason)
-        #         return {"found": True, "closed": closed_any, "key": "pages_blocker", "reason": current_reason}
-        #     else:
-        #         console.hud("err", "Обнаружен pages_blocker")
+        # ===== 1) pages_blocker =====
+        self._pool_set(report="pages_blocker")
+        if self.engine.detect_pages_blocker(win, lang):
+            found_any = True
+            current_reason = "pages_blocker"
+            self._label_reason_for_paused(current_reason)
+            clicked = bool(self.engine.close_all_pages_crosses(win, lang))
+            closed_any = closed_any or clicked
+            if self.engine.detect_pages_blocker(win, lang):
+                self._pool_set(busy=False, report="pages_blocker", pause_reason=current_reason)
+                return {"found": True, "closed": closed_any, "key": "pages_blocker", "reason": current_reason}
+            else:
+                console.hud("err", "Обнаружен pages_blocker")
 
         # ===== 2) dashboard_blocker =====
         self._pool_set(report="dashboard_blocker")
