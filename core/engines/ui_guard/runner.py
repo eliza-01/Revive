@@ -110,99 +110,91 @@ class UIGuardRunner:
 
     # ---- main single-run -------------------------------------------------
     def run_once(self) -> Dict[str, Any]:
-        # старт: просто объявляемся busy, без выставления paused
-        self._pool_set(busy=True, report="empty", pause_reason="")
-
-        # если фокуса нет — пропуск (пусть координатор рулит cor_1/cor_3)
+        # 0) Ранние выходы БЕЗ записи в пул (не дергаем busy/pause_reason)
         try:
             if not self._is_focused():
-                console.hud("err", "[UI_GUARD] skip: no focus")
-                base = self._baseline_reason()
-                self._pool_set(busy=False, report="empty", pause_reason=base)
-                return {"found": False, "closed": False, "key": "empty", "reason": base}
+                # Координатор сам держит cor_1; ui_guard тут молчит
+                return {"found": False, "closed": False, "key": "empty", "reason": "empty"}
         except Exception:
-            base = self._baseline_reason()
-            self._pool_set(busy=False, report="empty", pause_reason=base)
-            return {"found": False, "closed": False, "key": "empty", "reason": base}
+            return {"found": False, "closed": False, "key": "empty", "reason": "empty"}
 
         win = self._get_window() or {}
         if not win:
-            console.hud("err", "[UI_GUARD] no window")
-            base = self._baseline_reason()
-            self._pool_set(busy=False, report="empty", pause_reason=base)
-            return {"found": False, "closed": False, "key": "empty", "reason": base}
+            # Нет окна — выходим тихо
+            return {"found": False, "closed": False, "key": "empty", "reason": "empty"}
 
         lang = (self._get_language() or "rus").lower()
-        closed_any = False
-        found_any = False
-        current_reason = "empty"
+
+        # 1) Теперь можно объявиться busy
+        self._pool_set(busy=True, report="", pause_reason="")
+
+        closed_any = False  # что-то реально закрыли
+        # found_any больше не нужен для финала — если не нашли/всё закрыли, отдаём empty
 
         # ===== 1) pages_blocker =====
-        self._pool_set(report="pages_blocker")
+        # self._pool_set(report="pages_blocker")
         if self.engine.detect_pages_blocker(win, lang):
-            found_any = True
-            current_reason = "pages_blocker"
-            self._label_reason_for_paused(current_reason)
             clicked = bool(self.engine.close_all_pages_crosses(win, lang))
             closed_any = closed_any or clicked
+
+            # остался ли блокер после попытки закрытия?
             if self.engine.detect_pages_blocker(win, lang):
-                self._pool_set(busy=False, report="pages_blocker", pause_reason=current_reason)
-                return {"found": True, "closed": closed_any, "key": "pages_blocker", "reason": current_reason}
+                reason = "pages_blocker"
+                self._label_reason_for_paused(reason)
+                # фиксируем итог и выходим
+                self._pool_set(busy=False, report=reason, pause_reason=reason)
+                return {"found": True, "closed": closed_any, "key": reason, "reason": reason}
             else:
-                console.hud("err", "Обнаружен pages_blocker")
+                console.hud("succ", "pages_blocker закрыт")
 
         # ===== 2) dashboard_blocker =====
-        self._pool_set(report="dashboard_blocker")
+#         self._pool_set(report="dashboard_blocker")
         if self.engine.detect_dashboard_blocker(win, lang):
-            found_any = True
-            current_reason = "dashboard_blocker"
-            self._label_reason_for_paused(current_reason)
             handled = bool(self.engine.close_dashboard_blocker(win, lang))
-            if handled and (not self.engine.detect_dashboard_blocker(win, lang)):
-                console.hud("err", "Обнаружен dashboard_blocker")
-                closed_any = True
+            closed_any = closed_any or handled
+
+            if self.engine.detect_dashboard_blocker(win, lang):
+                reason = "dashboard_blocker"
+                self._label_reason_for_paused(reason)
+                self._pool_set(busy=False, report=reason, pause_reason=reason)
+                return {"found": True, "closed": closed_any, "key": reason, "reason": reason}
             else:
-                self._pool_set(busy=False, report="dashboard_blocker", pause_reason=current_reason)
-                return {"found": True, "closed": closed_any, "key": "dashboard_blocker", "reason": current_reason}
+                console.hud("succ", "dashboard_blocker закрыт")
 
         # ===== 3) language_blocker =====
-        self._pool_set(report="language_blocker")
+#         self._pool_set(report="language_blocker")
         if self.engine.detect_language_blocker(win, lang):
-            found_any = True
-            current_reason = "language_blocker"
-            self._label_reason_for_paused(current_reason)
             handled = bool(self.engine.handle_language_blocker(win, lang))
-            if handled and (not self.engine.detect_language_blocker(win, lang)):
-                console.hud("err", "Обнаружен language_blocker")
-                closed_any = True
+            closed_any = closed_any or handled
+
+            if self.engine.detect_language_blocker(win, lang):
+                reason = "language_blocker"
+                self._label_reason_for_paused(reason)
+                self._pool_set(busy=False, report=reason, pause_reason=reason)
+                return {"found": True, "closed": closed_any, "key": reason, "reason": reason}
             else:
-                self._pool_set(busy=False, report="language_blocker", pause_reason=current_reason)
-                return {"found": True, "closed": closed_any, "key": "language_blocker", "reason": current_reason}
+                console.hud("succ", "language_blocker закрыт")
 
         # ===== 4) disconnect_blocker (уведомление) =====
-        self._pool_set(report="disconnect_blocker")
+#         self._pool_set(report="disconnect_blocker")
         if self.engine.detect_disconnect_blocker(win, lang):
-            found_any = True
-            current_reason = "disconnect_blocker"
+            reason = "disconnect_blocker"
             console.hud("att", "Обнаружен disconnect_blocker")
             self.engine.handle_disconnect_blocker(win, lang)
-            self._pool_set(busy=False, report="disconnect_blocker", pause_reason=current_reason)
-            return {"found": True, "closed": closed_any, "key": "disconnect_blocker", "reason": current_reason}
+            self._pool_set(busy=False, report=reason, pause_reason=reason)
+            return {"found": True, "closed": closed_any, "key": reason, "reason": reason}
 
         # ===== экран чист =====
         if closed_any:
             console.hud("succ", "[UI_GUARD] screen clear")
 
-        # финал: если блокеров не нашли — оставляем базовую причину (cor_2 > cor_1),
-        # чтобы координатор показал заглушку «ui_guard не нашел причину».
-        base = self._baseline_reason()
-        final_reason = current_reason if found_any else base
-        self._pool_set(busy=False, report="empty", pause_reason=final_reason if final_reason else "empty")
+        # 5) Финал: ничего не нашли/всё закрыли → report пустой, причина empty
+        self._pool_set(busy=False, report="", pause_reason="empty")
         return {
-            "found": bool(found_any),
+            "found": False,
             "closed": bool(closed_any),
             "key": "empty",
-            "reason": final_reason if final_reason else "empty",
+            "reason": "empty",
         }
 
     # ---- watch-loop ------------------------------------------------------

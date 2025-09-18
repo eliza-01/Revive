@@ -99,6 +99,8 @@ class ServicesBundle:
                     engine=eng,
                     get_window=lambda: pool_get(self.state, "window.info", None),
                     get_language=lambda: pool_get(self.state, "config.language", "rus"),
+                    # 👇 критично: прокинуть фокус из пула
+                    is_focused=lambda: bool(pool_get(self.state, "focus.is_focused", True)),
                     state=self.state,
                 )
                 pool_write(self.state, "features.ui_guard", {"busy": False, "report": "empty"})
@@ -293,7 +295,28 @@ class ServicesBundle:
             pass
 
         # ---------- 7) Coordinator service (после остальных) ----------
-        cfg = CoordinatorEngine().build()  # универсальный билд без хардкода сервера
+        cfg = CoordinatorEngine().build()  # универсальный билд
+        # колбэки для автозапуска ui_guard из координатора (cor_2)
+        def _ensure_ui_guard_watch_cb() -> bool:
+            try:
+                res = self.ui_guard_watch(True)
+                return bool(res.get("ok", False))
+            except Exception:
+                return False
+
+        def _ui_guard_is_busy_cb() -> bool:
+            try:
+                return bool(pool_get(self.state, "features.ui_guard.busy", False))
+            except Exception:
+                return False
+
+        def _stop_ui_guard_watch_cb() -> bool:
+            try:
+                res = self.ui_guard_watch(False)
+                return bool(res.get("ok", False))
+            except Exception:
+                return False
+
         self.coordinator_service = CoordinatorService(
             state=self.state,
             providers=cfg["providers"],
@@ -302,6 +325,9 @@ class ServicesBundle:
             services=cfg["services"],
             reason_scopes=cfg["reason_scopes"],
             period_ms=cfg["period_ms"],
+            ensure_ui_guard_watch=_ensure_ui_guard_watch_cb,
+            ui_guard_is_busy=_ui_guard_is_busy_cb,
+            stop_ui_guard_watch=_stop_ui_guard_watch_cb,
         )
         self.coordinator_runner = CoordinatorRunner(self.state, self.coordinator_service)
 
@@ -355,6 +381,7 @@ class ServicesBundle:
                 return {"ok": True, "watching": False}
         except Exception as e:
             return {"ok": False, "watching": False, "error": str(e)}
+
     # =========================
     # Lifecycle
     # =========================
