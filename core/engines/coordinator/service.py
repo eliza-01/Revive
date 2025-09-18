@@ -1,5 +1,4 @@
-﻿# core/engines/coordinator/service.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 import threading
 import time
@@ -14,22 +13,18 @@ class CoordinatorService:
     - Периодически опрашивает providers -> активные причины.
     - Агрегирует их в paused-флаги для features/services/pipeline.
     - НЕ стартует/стопит другие сервисы — только пишет {paused, pause_reason}.
-
-    runtime.pauses.reasons: { <reason>: {active: bool, ts: float} }
-    features.<name>.{paused: bool, pause_reason: str}
-    services.<name>.{paused: bool, pause_reason: str}
-    pipeline.{paused: bool, pause_reason: str, ts: float}
     """
 
     def __init__(
         self,
         state: Dict,
         *,
+        period_ms: int = 500,
         providers: List,
-        period_ms: int = 250,
-        reason_priority: Tuple[str, ...] = ("ui_guard", "unfocused"),
+        reason_priority: Tuple[str, ...] = ("cor_3", "ui_guard", "cor_2", "cor_1", "unfocused"),
+        # По умолчанию без ui_guard (ставим его на паузу только при cor_3 точечно)
         features: Tuple[str, ...] = (
-            "respawn","buff","macros","teleport","record","autofarm","stabilize","ui_guard"
+            "respawn","buff","macros","teleport","record","autofarm","stabilize"
         ),
         services: Tuple[str, ...] = ("player_state","macros_repeat","autofarm"),
         reason_scopes: Optional[Dict[str, Dict[str, bool]]] = None,
@@ -46,7 +41,7 @@ class CoordinatorService:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._last_applied: Dict[str, Dict[str, str | bool]] = {}
-        self._last_active_set: set[str] = set()  # ← новое: для pauses.ts
+        self._last_active_set: set[str] = set()
 
     # ---------- lifecycle ----------
     def start(self):
@@ -104,12 +99,11 @@ class CoordinatorService:
 
     # ---------- reasons ----------
     def _write_runtime_reason(self, reason: str, active: bool, now: float):
-        # пишем точечно в конкретный путь, без перезатирания всего runtime.pauses
+        # точечная запись без перезатирания всего runtime.pauses
         path = f"runtime.pauses.reasons.{reason}"
         prev_active = bool(pool_get(self.s, f"{path}.active", False))
         if prev_active == bool(active):
             return
-        from core.state.pool import pool_write
         pool_write(self.s, path, {"active": bool(active), "ts": now})
 
     def _collect_active_reasons(self) -> list[str]:
@@ -124,16 +118,22 @@ class CoordinatorService:
         if active_set != self._last_active_set:
             added = active_set - self._last_active_set
             removed = self._last_active_set - active_set
-            # HUD: вход/выход причины 'unfocused'
             try:
                 if "unfocused" in added:
                     console.hud("att", "Сервисы остановлены! Вернитесь в Lineage")
                 if "unfocused" in removed:
                     console.hud("succ", "Фокус вернулся — возобновляем процессы")
                     console.hud("att", "")
+                # ui_guard завершился → показать заглушку, если runner оставил причину
+                if "ui_guard" in removed:
+                    r = str(pool_get(self.s, "features.ui_guard.pause_reason", "") or "")
+                    if r and r.lower() != "empty":
+                        if r in ("cor_1", "cor_2"):
+                            console.hud("att", "ui_guard не нашел причину")
+                        else:
+                            console.hud("att", f"Заглушка ui_guard reason: {r}")
             except Exception:
                 pass
-            from core.state.pool import pool_write
             pool_write(self.s, "runtime.pauses", {"ts": now})
             self._last_active_set = active_set
 
@@ -166,7 +166,6 @@ class CoordinatorService:
 
     # ---------- apply ----------
     def _scope_allows(self, reason: str, target_kind: str) -> bool:
-        # target_kind in {"features","services","pipeline"}
         sc = self._reason_scopes.get(reason)
         if sc is None:
             return True
@@ -176,10 +175,22 @@ class CoordinatorService:
         self._apply_one("pipeline", paused, reason, is_pipeline=True)
 
     def _apply_features(self, paused: bool, reason: str):
-        for fk in self._features:
+        # выбор целей в зависимости от паттерна
+        if reason in ("cor_1", "cor_2"):
+            targets = [f for f in self._features if f != "ui_guard"]
+        elif reason == "cor_3":
+            # точечно ставим/снимаем паузу только ui_guard
+            targets = ["ui_guard"]
+        else:
+            targets = list(self._features)
+
+        for fk in targets:
             self._apply_one(f"features.{fk}", paused, reason)
 
     def _apply_services(self, paused: bool, reason: str):
+        # cor_3 — останавливаем только ui_guard (сервисы не трогаем)
+        if reason == "cor_3":
+            return
         for sk in self._services:
             self._apply_one(f"services.{sk}", paused, reason)
 
@@ -193,18 +204,30 @@ class CoordinatorService:
         new_paused = bool(paused)
         new_reason = str(reason if paused else "")
 
-        if (cur_paused == new_paused and cur_reason == new_reason and
-            prev.get("paused") == new_paused and prev.get("pause_reason") == new_reason):
-            return
-
-        write_obj = {"paused": new_paused, "pause_reason": new_reason}
+        # Семантика:
+        # - pipeline: можно писать pause_reason как есть
+        # - features/services: при 'ui_guard' НЕ перетираем pause_reason
         if is_pipeline:
-            write_obj["ts"] = time.time()
+            write_obj: Dict[str, object] = {"paused": new_paused, "pause_reason": new_reason, "ts": time.time()}
+        else:
+            if new_paused:
+                if reason == "ui_guard":
+                    write_obj = {"paused": True}
+                else:
+                    write_obj = {"paused": True, "pause_reason": new_reason}
+            else:
+                write_obj = {"paused": False, "pause_reason": ""}
+
+        same_pause = (cur_paused == write_obj.get("paused", cur_paused))
+        next_reason = write_obj.get("pause_reason", cur_reason)
+        same_reason = (cur_reason == next_reason)
+        prev_same = (prev.get("paused") == write_obj.get("paused") and prev.get("pause_reason") == write_obj.get("pause_reason"))
+        if same_pause and same_reason and prev_same:
+            return
 
         pool_write(self.s, path_prefix, write_obj)
         self._last_applied[key] = dict(write_obj)
 
-    # (необязательно) быстрый снэпшот состояния причин
     def reasons_snapshot(self):
         return {
             "reasons": dict(pool_get(self.s, "runtime.pauses.reasons", {}) or {}),

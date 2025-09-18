@@ -97,9 +97,19 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("runtime", {
         "orch": {"busy_until": 0.0, "active": False, "ts": 0.0},
         "debug": {
-            "buff_zone": True, "log": False, "respawn_debug": False,
+            "buff_zone": False, "log": False, "respawn_debug": False,
             "pipeline_debug": False, "pool_debug": False, "ui_guard_debug": False, "ts": 0.0,
-        }
+        },
+        # создается в coordinator'е
+        # "pauses": {
+        #   "reasons": {
+        #     "unfocused": {
+        #       "active": None,
+        #       "ts": 0.0
+        #     }
+        #   },
+        #   "ts": 0.0
+        # }
     })
     return st
 
