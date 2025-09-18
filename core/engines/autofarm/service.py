@@ -1,5 +1,4 @@
-﻿# core/engines/autofarm/service.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import threading, time
 
@@ -11,13 +10,11 @@ class AutoFarmService:
     """
     Долгоживущий цикл фарма.
 
-    ВАЖНО (новая модель):
-    - Гейты: enabled, paused, alive.
-      * paused=True → сервис простаивает (не запускаем и прерываем текущий прогон)
-      * alive=False → прерываем текущий прогон
-      * enabled=False → сервис в режиме ожидания
-    - В auto-режиме запускаем ровно один прогон по событию `_kick` (из пайплайна),
-      если к моменту выполнения не стоит пауза, включено и персонаж жив.
+    Модель «ждём на паузе»:
+      - paused=True во время уже идущего цикла → цикл НЕ прерывается, busy остаётся True,
+        пока пауза не снимется (ожидаем внутри run_autofarm/server-движка).
+      - paused=True до старта → не запускаем новый прогон.
+    Гейты: enabled, paused, alive.
     """
 
     def __init__(
@@ -29,7 +26,7 @@ class AutoFarmService:
         get_cfg: Callable[[], Dict[str, Any]],
         is_enabled: Callable[[], bool],
         is_alive: Callable[[], Optional[bool]] = lambda: True,
-        is_paused: Callable[[], bool] = lambda: False,   # ← новое
+        is_paused: Callable[[], bool] = lambda: False,
         *,
         set_busy: Optional[Callable[[bool], None]] = None,
     ):
@@ -90,7 +87,7 @@ class AutoFarmService:
     # ---------- worker ----------
     def _loop(self, poll_interval: float):
         while self._run:
-            # простаиваем при паузе/отключении/смерти
+            # простаиваем при паузе/отключении/смерти ДО старта
             if (not self._is_enabled()) or self._is_paused() or (self._is_alive() is False):
                 time.sleep(self._poll)
                 continue
@@ -99,7 +96,7 @@ class AutoFarmService:
             mode = (cfg.get("mode") or "auto").lower()
 
             if mode == "manual":
-                # manual крутится постоянно, но только когда нет паузы
+                # manual крутится постоянно, но только когда нет паузы на входе
                 self._run_once()
                 time.sleep(self._poll)
                 continue
@@ -116,6 +113,23 @@ class AutoFarmService:
             self._kick.clear()
             self._run_once()
 
+    def _wait_if_paused_blocking(self):
+        """
+        Блокирующее ожидание паузы в УЖЕ ИДУЩЕМ цикле.
+        Не снимаем busy, не завершаем цикл; ждём до снятия паузы или пока не появится
+        внешняя причина отмены (disable, смерть, cancel, останов сервиса).
+        """
+        while self._run and self._is_paused():
+            # Если во время паузы стало невозможно продолжать — прерываем ожидание,
+            # дальнейшая логика должна проверить should_abort().
+            if (not self._is_enabled()) or (self._is_alive() is False) or self._cancel:
+                break
+            try:
+                console.hud("ok", "Автофарм на паузе…")
+            except Exception:
+                pass
+            time.sleep(0.25)
+
     def _run_once(self):
         self._cancel = False
         self._set_busy(True)
@@ -127,12 +141,14 @@ class AutoFarmService:
                 get_window=self._get_window,
                 get_language=self._get_language,
                 cfg=cfg,
+                # ВНИМАНИЕ: пауза БОЛЬШЕ НЕ входит в abort-гейт
                 should_abort=lambda: (
                         (not self._is_enabled())
-                        or self._is_paused()
                         or (self._is_alive() is False)
                         or self._cancel
+                        or (not self._run)
                 ),
+                wait_if_paused=self._wait_if_paused_blocking,  # ← ключевое: ждём, не завершая цикл
             )
 
             # единый вывод статуса

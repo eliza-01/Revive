@@ -1,5 +1,4 @@
-﻿# core/engines/autofarm/runner.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, List
 import importlib
 
@@ -13,6 +12,8 @@ def run_autofarm(
     get_language: Callable[[], str],
     cfg: Dict[str, Any],
     should_abort: Callable[[], bool],
+    *,
+    wait_if_paused: Callable[[], None] = lambda: None,  # ← НОВОЕ: блокирующее ожидание паузы
 ) -> bool:
     """
     Одноразовый прогон автофарма.
@@ -80,11 +81,12 @@ def run_autofarm(
         return False
 
     ctx = {
-        "server":       server.lower(),
-        "controller":   controller,
-        "get_window":   get_window,
-        "get_language": get_language,
-        "should_abort": should_abort,
+        "server":         server.lower(),
+        "controller":     controller,
+        "get_window":     get_window,
+        "get_language":   get_language,
+        "should_abort":   should_abort,
+        "wait_if_paused": wait_if_paused,  # ← прокидываем внутрь движка
     }
 
     ok = bool(start(ctx, cfg_norm))

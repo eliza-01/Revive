@@ -1,5 +1,4 @@
-﻿# core/engines/autofarm/server/boh/engine.py
-from __future__ import annotations
+﻿from __future__ import annotations
 import time
 import os, re, json, ctypes
 from typing import Dict, Any, List, Tuple, Optional
@@ -25,7 +24,6 @@ excluded_targets: set[str] = set()
 
 USER32 = ctypes.windll.user32
 
-# AF_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # -------- helpers (чисто низкоуровневые) --------
 def _res_path(*parts):
     base = getattr(sys, "_MEIPASS", os.path.abspath("."))
@@ -115,17 +113,12 @@ def _target_alive_by_hp(win: Dict, server: str) -> Optional[bool]:
     return alive
 
 def _zone_monsters_raw(server: str, zone_id: str):
-    """
-    Возвращает секцию 'monsters' для зоны из zones.json.
-    Работает и в dev, и в onefile, т.к. читает через zone_repo.
-    """
     try:
         data = _read_zones_map(server) or {}
         z = data.get(zone_id) or {}
         mons = z.get("monsters")
         return mons if isinstance(mons, dict) else None
     except Exception as e:
-        # один раз подсветит реальную причину, если JSON/ключи кривые
         console.log(f"[autofarm] zones read error (server={server}, zone={zone_id}): {e}")
         return None
 
@@ -255,6 +248,12 @@ def _abort(ctx_base) -> bool:
     f = ctx_base.get("should_abort")
     return bool(f and f())
 
+def _wait_if_paused(ctx_base):
+    """Если передано из сервиса — блокирующее ожидание паузы (busy не снимаем)."""
+    f = ctx_base.get("wait_if_paused")
+    if callable(f):
+        f()
+
 def _send_chat(ex: FlowOpExecutor, text: str, wait_ms: int = 500) -> bool:
     flow = [
         {"op": "send_message", "layout": "en", "text": text, "wait_ms": 60},
@@ -289,17 +288,6 @@ def _has_dot_colors_near_rect(
     tol: int = 3,
     min_px: int = 30,
 ) -> Tuple[bool, bool, int, int, bool]:
-    """
-    Проверяем наличие «точек» статуса цели рядом с именем.
-
-    Возвращает кортеж:
-      (has_friend, has_enemy, friend_px, enemy_px, has_neutral)
-
-    ВАЖНО:
-      - Определение друга/врага НЕ зависит от нейтральной точки — их проверяем сразу.
-      - Нейтральная (серая) точка служит подтверждением наведения курсора и
-        проверяется отдельно ПОСЛЕ наведения (в месте вызова).
-    """
     x, y, w, h = rect
     W, H = int(win["width"]), int(win["height"])
     l = max(0, x - pad)
@@ -322,11 +310,8 @@ def _has_dot_colors_near_rect(
             mask |= m.astype(np.uint8)
         return mask
 
-    # Дружеские (синие) точки
     FRIEND_RGB = [(16, 69, 131), (21, 74, 136), (25, 77, 138), (32, 82, 143), (32, 85, 147), (46, 99, 161)]
-    # Вражеские (красные) точки
     ENEMY_RGB = [(169, 30, 0), (183, 58, 23), (196, 69, 32), (204, 89, 58), (221, 100, 73), (239, 138, 114)]
-    # Нейтральные (серые) точки — из target_gray_dot.png (6 штук, де-дуп)
     NEUTRAL_RGB = [(66, 61, 57), (75, 70, 66), (91, 86, 82), (107, 103, 98), (121, 116, 112), (132, 128, 123)]
 
     m_friend = _mask_for_rgb_pool(roi, FRIEND_RGB, tol)
@@ -339,26 +324,16 @@ def _has_dot_colors_near_rect(
 
     has_friend = friend_px >= min_px
     has_enemy = enemy_px >= min_px
-    has_neutral = neutral_px >= min_px  # подтверждение наведения (проверяется ПОСЛЕ hover в вызывающем коде)
+    has_neutral = neutral_px >= min_px
 
     return (has_friend, has_enemy, friend_px, enemy_px, has_neutral)
 
 
 def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win: Dict, cfg: Dict[str, Any]) -> bool:
-    """
-    Логика:
-      1) Находим имя моба по шаблону.
-      2) СРАЗУ проверяем на друга/врага (без наведения курсора). Если друг/враг — пропускаем.
-      3) Наводим курсор на точку клика (без клика), коротко ждём.
-      4) Повторно проверяем ту же область на наличие нейтральных серых точек.
-         Если neutral нет — это не hover по имени → пропускаем.
-      5) Кликаем и возвращаем True.
-    """
     zone_id = (cfg or {}).get("zone") or ""
     if not zone_id:
         return False
 
-    # имена для чата
     def _zone_monster_full_names(server: str, zone_id: str, lang: str) -> List[str]:
         raw = _zone_monsters_raw(server, zone_id) or {}
         for key in (f"{(lang or 'eng').lower()}_full", "eng_full", "rus_full", (lang or 'eng').lower(), "eng", "rus"):
@@ -384,6 +359,10 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
     for nm in full_names:
         if _abort(ctx_base):
             return False
+        _wait_if_paused(ctx_base)  # ← уважаем паузу
+        if _abort(ctx_base):
+            return False
+
         if nm in excluded_targets:
             continue
 
@@ -395,12 +374,10 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
         if not rect:
             continue
 
-        # 1) первичная фильтрация: друг/враг без наведения
         has_friend, has_enemy, _, _, _ = _has_dot_colors_near_rect(win, rect, pad=20, tol=3, min_px=20)
         if has_friend or has_enemy:
             continue
 
-        # 2) наводим курсор рядом с именем (в ту же точку, куда будем кликать)
         x, y, w, h = rect
         cx = min(max(0, int(x + w / 2)), int(win["width"]) - 1)
         cy = min(max(0, int(y + h + 30)), int(win["height"]) - 1)
@@ -410,14 +387,12 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
             controller.move(abs_x, abs_y)
         except Exception:
             pass
-        time.sleep(0.35)  # даём HUD/игре подсветить имя нейтральной точкой
+        time.sleep(0.35)
 
-        # 3) проверка нейтральной «серой» точки уже ПОСЛЕ наведения
         _, _, _, _, has_neutral = _has_dot_colors_near_rect(win, rect, pad=20, tol=3, min_px=20)
         if not has_neutral:
-            continue  # не подтверждён hover по имени — пропускаем
+            continue
 
-        # 4) кликаем
         _movenclick_client(controller, win, cx, cy)
         ctx_base["af_current_target_name"] = nm
         return True
@@ -454,9 +429,8 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     """
     Низкоуровневый цикл автофарма для сервера 'boh'.
     ctx_base: {
-      server, controller, get_window, get_language, should_abort, ...
+      server, controller, get_window, get_language, should_abort, wait_if_paused, ...
     }
-    Внешние проверки (enabled/focus/alive/очередь) — на стороне rules.py.
     """
     global _RESTART_STREAK, excluded_targets
     _RESTART_STREAK = 0
@@ -491,7 +465,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
         templates={},
         extras={},
     )
-    ex = FlowOpExecutor(ctx)  # логгер по умолчанию — console.log
+    ex = FlowOpExecutor(ctx)
 
     start_ts = time.time()
 
@@ -500,18 +474,23 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             console.log("[autofarm] остановлено пользователем")
             return False
 
+        _wait_if_paused(ctx_base)  # ← ключ: ждём на паузе между шагами
+        if _abort(ctx_base):
+            return False
+
         zone_id = (cfg or {}).get("zone") or ""
-        # сперва /targetnext
         _send_chat(ex, "/targetnext", wait_ms=1000)
         if _abort(ctx_base):
             return False
 
-        # проверка HP-полос
         has_any = _has_target_by_hp(win, server, tries=1, delay_ms=150, should_abort=lambda: _abort(ctx_base))
         current_alive = _target_alive_by_hp(win, server)
 
         if current_alive is None:
             for _ in range(10):
+                if _abort(ctx_base):
+                    return False
+                _wait_if_paused(ctx_base)
                 if _abort(ctx_base):
                     return False
                 time.sleep(0.3)
@@ -523,9 +502,8 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 if current_alive is not None:
                     break
             if current_alive is None:
-                current_alive = False  # форсим переход в fallback
+                current_alive = False
 
-        # fallback: пробуем шаблоны, если /targetnext не дал живую цель
         if not (has_any and current_alive) and zone_id:
             if _template_probe_click(ctx_base, server, lang, win, cfg):
                 time.sleep(0.35)
@@ -545,7 +523,6 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
             else:
                 if ctx_base.get("af_unvisible"):
                     ctx_base["af_unvisible"] = False
-                    # перебор имён после «цель не видна»
                     if _search_by_names(ex, ctx_base, server, lang, win, cfg):
                         _RESTART_STREAK = 0
                         excluded_targets.clear()
@@ -554,7 +531,6 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 else:
                     _RESTART_STREAK += 1
         else:
-            # перебор имён «в лоб»
             if _search_by_names(ex, ctx_base, server, lang, win, cfg):
                 _RESTART_STREAK = 0
                 excluded_targets.clear()
@@ -576,7 +552,6 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
 def _search_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lang: str,
                        win: Dict, cfg: Dict[str, Any]) -> bool:
-    """Перебор имён зоны (с учётом чёрного списка и UI-фильтра). True если нашли и добили цель."""
     zone_id = (cfg or {}).get("zone") or ""
     names = _zone_monster_display_names(server, zone_id, lang)
 
@@ -597,6 +572,11 @@ def _search_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, 
             continue
         if _abort(ctx_base):
             return False
+
+        _wait_if_paused(ctx_base)
+        if _abort(ctx_base):
+            return False
+
         _send_chat(ex, f"/target {nm}", wait_ms=500) if False else _send_target_with_ru_name(ex, nm, wait_ms=500)
         if _abort(ctx_base):
             return False
@@ -630,6 +610,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
                   win: Dict, cfg: Dict[str, Any]) -> bool:
     """
     Движок атаки: пока цель жива — крутим круги скиллов.
+    Уважаем паузу: на паузе «залипаем» в ожидании, не падаем с ошибкой.
     """
     skills = list((cfg or {}).get("skills") or [])
     if not skills:
@@ -652,6 +633,10 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
     while True:
         if _abort(ctx_base):
             console.log("[autofarm] остановлено пользователем")
+            return False
+
+        _wait_if_paused(ctx_base)  # ← уважение паузы внутри боевого цикла
+        if _abort(ctx_base):
             return False
 
         if (time.time() - start_ts) > hard_timeout:
@@ -682,9 +667,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
         else:
             time.sleep(probe_sleep)
 
-        # Завершение круга
         if all(it["used"] for it in plan):
-            # Проверка «цель не видна»
             zone_id = (cfg or {}).get("zone") or ""
             if _check_target_visibility(ex, server, lang, win, zone_id):
                 _press_silent_cancel(ex)
