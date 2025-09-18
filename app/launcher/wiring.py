@@ -189,6 +189,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             console.log(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
+    # Экспорт ui_guard_watch в API
+    try:
+        exposed["ui_guard_watch"] = services.ui_guard_watch
+    except Exception:
+        pass
+
     # pool_dump для JS (pywebview.api.pool_dump)
     def pool_dump_api():
         try:

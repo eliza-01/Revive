@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# core/engines/coordinator/service.py
+from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 import threading
 import time

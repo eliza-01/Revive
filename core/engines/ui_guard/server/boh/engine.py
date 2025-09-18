@@ -25,7 +25,7 @@ from core.state.pool import pool_get, pool_write
 Point = Tuple[int, int]
 Zone = Tuple[int, int, int, int]
 
-DEFAULT_CLICK_THRESHOLD = 0.75
+DEFAULT_CLICK_THRESHOLD = 0.95
 DEFAULT_CONFIRM_TIMEOUT_S = 3.0
 
 
@@ -97,6 +97,25 @@ class UIGuardEngine:
             if delay_ms > 0:
                 time.sleep(delay_ms / 1000.0)
 
+    def _read_button_tpl_gray(self, lang: str, filename: str, *, subdir=("interface", "buttons")):
+        langs = []
+        cur = (lang or "rus").lower()
+        if cur not in ("rus", "eng"):
+            langs = [cur, "rus", "eng"]
+        else:
+            langs = [cur, ("eng" if cur == "rus" else "rus")]
+        if "rus" not in langs: langs.append("rus")
+        if "eng" not in langs: langs.append("eng")
+
+        for ln in langs:
+            path = tplresolver.resolve(ln, "<lang>", *subdir, filename)
+            if not path:
+                continue
+            tpl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if tpl is not None and tpl.size != 0:
+                return tpl
+        return None
+
     # --- generic template scan ---
     def _scan_mapping_best(
         self,
@@ -149,9 +168,11 @@ class UIGuardEngine:
             return ((win_x + cx_client, win_y + cy_client), best["key"], float(best["score"]))
         return None
 
-    def _find_all_buttons(self, window: Dict, lang: str, filename: str, ltrb: Zone) -> List[Point]:
+    def _find_all_buttons(self, window: Dict, lang: str, filename: str, ltrb: Zone, *,
+                          subdir=("interface", "buttons")) -> List[Point]:
         """
-        Находит ВСЕ совпадения шаблона кнопки (по filename) на нескольких масштабах.
+        Находит ВСЕ совпадения шаблона кнопки (по filename) на нескольких масштабах
+        в указанной подпапке (по умолчанию interface/buttons).
         Возвращает список экранных координат центров кнопок (дедуплицированный).
         """
         img = capture_window_region_bgr(window, ltrb)
@@ -159,12 +180,8 @@ class UIGuardEngine:
             return []
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        path = tplresolver.resolve((lang or "rus").lower(), "<lang>", "interface", "buttons", filename)
-        if not path:
-            return []
-
-        tpl0 = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        if tpl0 is None or tpl0.size == 0:
+        tpl0 = self._read_button_tpl_gray(lang, filename, subdir=subdir)
+        if tpl0 is None:
             return []
 
         scales = (1.0, 0.95, 1.05, 0.90, 1.10)
@@ -251,13 +268,10 @@ class UIGuardEngine:
     def detect_dashboard_blocker(self, window: Dict, lang: str) -> bool:
         ltrb = self._zone_ltrb(window, "fullscreen")
         mapping = {"dashboard_blocker": DASHBOARD_BLOCKER.get("dashboard_blocker", "")}
-        hit = self._scan_mapping_best(window, lang, ltrb, mapping, subdir=("interface", "blockers"))
+        hit = self._scan_mapping_best(window, lang, ltrb, mapping, subdir=("interface", "dashboard"))
         return hit is not None
 
     def close_dashboard_blocker(self, window: Dict, lang: str) -> bool:
-        """
-        Нажать кнопки dashboard_blocker_close_button до исчезновения dashboard_blocker.
-        """
         ltrb = self._zone_ltrb(window, "fullscreen")
         btn_fname = DASHBOARD_BLOCKER.get("dashboard_blocker_close_button", "")
         if not btn_fname:
@@ -266,10 +280,9 @@ class UIGuardEngine:
         clicked_any = False
         deadline = time.time() + self.confirm_timeout_s
         while time.time() < deadline:
-            pts = self._find_all_buttons(window, lang, btn_fname, ltrb)
+            pts = self._find_all_buttons(window, lang, btn_fname, ltrb, subdir=("interface", "dashboard"))
             pts = self._dedup_points(pts, radius=12)
             if not pts:
-                # проверим, исчез ли сам блокер
                 if not self.detect_dashboard_blocker(window, lang):
                     return clicked_any
                 time.sleep(0.08)
@@ -290,35 +303,35 @@ class UIGuardEngine:
     def detect_language_blocker(self, window: Dict, lang: str) -> bool:
         ltrb = self._zone_ltrb(window, "fullscreen")
         mapping = {"language_blocker": LANGUAGE_BLOCKER.get("language_blocker", "")}
-        hit = self._scan_mapping_best(window, lang, ltrb, mapping, subdir=("interface", "blockers"))
+        hit = self._scan_mapping_best(window, lang, ltrb, mapping, subdir=("interface", "wrong_word"))
         return hit is not None
 
     def handle_language_blocker(self, window: Dict, lang: str) -> bool:
-        """
-        Поменять раскладку → нажать language_blocker_close_button → убедиться, что блокер исчез.
-        """
         ltrb = self._zone_ltrb(window, "fullscreen")
         btn_fname = LANGUAGE_BLOCKER.get("language_blocker_close_button", "")
         if not btn_fname:
             return False
 
-        # переключить раскладку (Alt+Shift)
+        # если не нужна смена раскладки — можешь убрать
         self._toggle_layout(count=1, delay_ms=120)
 
         clicked_any = False
         deadline = time.time() + self.confirm_timeout_s
         while time.time() < deadline:
-            pts = self._find_all_buttons(window, lang, btn_fname, ltrb)
+            pts = self._find_all_buttons(window, lang, btn_fname, ltrb, subdir=("interface", "wrong_word"))
             pts = self._dedup_points(pts, radius=12)
+            if not pts:
+                if not self.detect_language_blocker(window, lang):
+                    return clicked_any
+                time.sleep(0.08)
+                continue
 
-            if pts:
-                clicked_any = True
-                for (x, y) in pts:
-                    self._click(x, y)
-                    time.sleep(0.08)
-                time.sleep(0.12)
+            clicked_any = True
+            for (x, y) in pts:
+                self._click(x, y)
+                time.sleep(0.06)
+            time.sleep(0.12)
 
-            # исчез ли блокер?
             if not self.detect_language_blocker(window, lang):
                 return True
 
@@ -330,7 +343,7 @@ class UIGuardEngine:
     def detect_disconnect_blocker(self, window: Dict, lang: str) -> bool:
         ltrb = self._zone_ltrb(window, "fullscreen")
         mapping = {"disconnect_blocker": DISCONNECT_BLOCKER.get("disconnect_blocker", "")}
-        hit = self._scan_mapping_best(window, lang, ltrb, mapping, subdir=("interface", "blockers"))
+        hit = self._scan_mapping_best(window, lang, ltrb, mapping, subdir=("interface", "disconnect"))
         return hit is not None
 
     def handle_disconnect_blocker(self, window: Dict, lang: str) -> bool:

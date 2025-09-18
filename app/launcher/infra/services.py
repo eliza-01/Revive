@@ -108,6 +108,9 @@ class ServicesBundle:
                 console.log(f"[UI_GUARD] init error: {e}")
                 return None
 
+        # делаем фабрику доступной вне __init__ (её будет использовать публичный метод)
+        self._ensure_ui_guard_runner = _ensure_ui_guard_runner
+
         def _mask_hp_unknown_and_hud():
             """Пока экран перекрыт или UI-страж занят — HP/CP считаем неизвестными ('--')."""
             pool_write(self.state, "player", {"alive": None, "hp_ratio": None, "cp_ratio": None})
@@ -325,6 +328,33 @@ class ServicesBundle:
         except Exception:
             pass
 
+    # ---------- 8.5) UI Guard: публичный watch API ----------
+    def ui_guard_watch(self, enable: bool = True, poll_ms: int = 500):
+        # берём уже созданный или лениво создаём
+        runner = self._ui_guard_runner or None
+        if runner is None:
+            try:
+                runner = self._ensure_ui_guard_runner()
+            except Exception:
+                runner = None
+
+        if runner is None:
+            return {"ok": False, "watching": False, "error": "ui_guard runner not available"}
+
+        try:
+            if enable:
+                if hasattr(runner, "start_watch"):
+                    runner.start_watch(poll_ms=int(poll_ms))
+                    pool_write(self.state, "features.ui_guard", {"watching": True})
+                    return {"ok": True, "watching": True}
+                return {"ok": False, "watching": False, "error": "start_watch() missing"}
+            else:
+                if hasattr(runner, "stop_watch"):
+                    runner.stop_watch()
+                pool_write(self.state, "features.ui_guard", {"watching": False})
+                return {"ok": True, "watching": False}
+        except Exception as e:
+            return {"ok": False, "watching": False, "error": str(e)}
     # =========================
     # Lifecycle
     # =========================

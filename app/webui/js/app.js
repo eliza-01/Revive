@@ -30,7 +30,7 @@
         update:  "#status-update",
         buff:    "#status-buff",
         macros:  "#status-macros",
-        teleport:      "#status-teleport",
+        teleport:"#status-teleport",
         postrow: "#status-postrow",
         respawn: "#status-respawn"
       }[scope] || "#status-driver";
@@ -96,6 +96,22 @@
     if (init.driver_status) window.setStatus("#status-driver", init.driver_status.text, init.driver_status.ok);
     window.setStatus("#status-watcher", init.monitoring ? "Мониторинг: вкл" : "Мониторинг: выкл", init.monitoring ? true : null);
 
+    // ui_guard статус (если есть узел watching — покажем)
+    try {
+      const dump = await pywebview.api.pool_dump();
+      if (dump && dump.ok) {
+        const ui = (((dump.state || {}).features || {}).ui_guard) || {};
+        const watching = !!ui.watching;
+        const busy = !!ui.busy;
+        const label = watching ? (busy ? "UI Guard: watch вкл (busy)" : "UI Guard: watch вкл") : "UI Guard: watch выкл";
+        window.setStatus("#status-ui-guard", label, watching ? true : null);
+      } else {
+        window.setStatus("#status-ui-guard", "UI Guard: неизвестно", null);
+      }
+    } catch (_) {
+      window.setStatus("#status-ui-guard", "UI Guard: неизвестно", null);
+    }
+
     // респавн
     const r = init.respawn || {};
     const chkRespawn = $("#chkRespawn");
@@ -126,7 +142,6 @@
     $("#server")?.addEventListener("change", async (e) => {
       try {
         await pywebview.api.set_server(e.target.value);
-        // после смены сервера заново читаем init и перерисовываем всё зависящее
         await refreshInitAndUI();
       } catch(_){}
     });
@@ -157,12 +172,38 @@
         pin: $("#acc-pin").value
       });
     });
+
+    // === UI_GUARD: watch on/off ===
+    $("#btnUiGuardStart")?.addEventListener("click", async () => {
+      try {
+        const r = await pywebview.api.ui_guard_watch(true, 500);
+        if (r && r.ok) {
+          window.setStatus("#status-ui-guard", "UI Guard: watch вкл", true);
+        } else {
+          window.setStatus("#status-ui-guard", `UI Guard: ошибка (${r?.error || "unknown"})`, false);
+        }
+      } catch (e) {
+        window.setStatus("#status-ui-guard", `UI Guard: ошибка (${e})`, false);
+      }
+    });
+
+    $("#btnUiGuardStop")?.addEventListener("click", async () => {
+      try {
+        const r = await pywebview.api.ui_guard_watch(false, 500);
+        if (r && r.ok) {
+          window.setStatus("#status-ui-guard", "UI Guard: watch выкл", null);
+        } else {
+          window.setStatus("#status-ui-guard", `UI Guard: ошибка (${r?.error || "unknown"})`, false);
+        }
+      } catch (e) {
+        window.setStatus("#status-ui-guard", `UI Guard: ошибка (${e})`, false);
+      }
+    });
   }
 
   async function init() {
     await refreshInitAndUI();
 
-    // Инициализация вынесенных модулей
     if (window.UIBuff)    window.UIBuff.init();
     if (window.UIMacros)  window.UIMacros.init();
     if (window.UIRespawn) window.UIRespawn.init?.();

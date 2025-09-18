@@ -1,6 +1,8 @@
-﻿from __future__ import annotations
+﻿# core/engines/ui_guard/runner.py
+from __future__ import annotations
 from typing import Callable, Optional, Dict, Any
 import time
+import threading
 
 from core.logging import console
 from core.state.pool import pool_write, pool_get
@@ -35,6 +37,10 @@ class UIGuardRunner:
         self._get_language = get_language
         self._is_focused = is_focused or (lambda: True)
         self._state = state or None
+
+        # watch-loop
+        self._watch_thr: Optional[threading.Thread] = None
+        self._watch_stop: Optional[threading.Event] = None
 
     # ---- helpers: pool ---------------------------------------------------
     def _pool_set(
@@ -102,7 +108,7 @@ class UIGuardRunner:
             pass
         return "empty"
 
-    # ---- main ------------------------------------------------------------
+    # ---- main single-run -------------------------------------------------
     def run_once(self) -> Dict[str, Any]:
         # старт: просто объявляемся busy, без выставления paused
         self._pool_set(busy=True, report="empty", pause_reason="")
@@ -111,7 +117,6 @@ class UIGuardRunner:
         try:
             if not self._is_focused():
                 console.hud("err", "[UI_GUARD] skip: no focus")
-                # вернуть базовую причину, чтобы координатор понял контекст
                 base = self._baseline_reason()
                 self._pool_set(busy=False, report="empty", pause_reason=base)
                 return {"found": False, "closed": False, "key": "empty", "reason": base}
@@ -132,20 +137,19 @@ class UIGuardRunner:
         found_any = False
         current_reason = "empty"
 
-        # ===== 1) pages_blocker =====
-        self._pool_set(report="pages_blocker")
-        if self.engine.detect_pages_blocker(win, lang):
-            found_any = True
-            current_reason = "pages_blocker"
-            self._label_reason_for_paused(current_reason)
-            clicked = bool(self.engine.close_all_pages_crosses(win, lang))
-            closed_any = closed_any or clicked
-            if self.engine.detect_pages_blocker(win, lang):
-                # осталось что-то — выходим с этой причиной
-                self._pool_set(busy=False, report="pages_blocker", pause_reason=current_reason)
-                return {"found": True, "closed": closed_any, "key": "pages_blocker", "reason": current_reason}
-            else:
-                console.hud("att", "Обнаружен pages_blocker")
+        # # ===== 1) pages_blocker =====
+        # self._pool_set(report="pages_blocker")
+        # if self.engine.detect_pages_blocker(win, lang):
+        #     found_any = True
+        #     current_reason = "pages_blocker"
+        #     self._label_reason_for_paused(current_reason)
+        #     clicked = bool(self.engine.close_all_pages_crosses(win, lang))
+        #     closed_any = closed_any or clicked
+        #     if self.engine.detect_pages_blocker(win, lang):
+        #         self._pool_set(busy=False, report="pages_blocker", pause_reason=current_reason)
+        #         return {"found": True, "closed": closed_any, "key": "pages_blocker", "reason": current_reason}
+        #     else:
+        #         console.hud("err", "Обнаружен pages_blocker")
 
         # ===== 2) dashboard_blocker =====
         self._pool_set(report="dashboard_blocker")
@@ -155,7 +159,7 @@ class UIGuardRunner:
             self._label_reason_for_paused(current_reason)
             handled = bool(self.engine.close_dashboard_blocker(win, lang))
             if handled and (not self.engine.detect_dashboard_blocker(win, lang)):
-                console.hud("att", "Обнаружен dashboard_blocker")
+                console.hud("err", "Обнаружен dashboard_blocker")
                 closed_any = True
             else:
                 self._pool_set(busy=False, report="dashboard_blocker", pause_reason=current_reason)
@@ -169,7 +173,7 @@ class UIGuardRunner:
             self._label_reason_for_paused(current_reason)
             handled = bool(self.engine.handle_language_blocker(win, lang))
             if handled and (not self.engine.detect_language_blocker(win, lang)):
-                console.hud("att", "Обнаружен language_blocker")
+                console.hud("err", "Обнаружен language_blocker")
                 closed_any = True
             else:
                 self._pool_set(busy=False, report="language_blocker", pause_reason=current_reason)
@@ -179,7 +183,7 @@ class UIGuardRunner:
         self._pool_set(report="disconnect_blocker")
         if self.engine.detect_disconnect_blocker(win, lang):
             found_any = True
-            current_reason = "disconnect_blocker"  # для телеметрии
+            current_reason = "disconnect_blocker"
             console.hud("att", "Обнаружен disconnect_blocker")
             self.engine.handle_disconnect_blocker(win, lang)
             self._pool_set(busy=False, report="disconnect_blocker", pause_reason=current_reason)
@@ -200,3 +204,36 @@ class UIGuardRunner:
             "key": "empty",
             "reason": final_reason if final_reason else "empty",
         }
+
+    # ---- watch-loop ------------------------------------------------------
+    def start_watch(self, poll_ms: int = 500):
+        if self._watch_thr and self._watch_thr.is_alive():
+            return
+        self._watch_stop = threading.Event()
+
+        def _loop():
+            while self._watch_stop and (not self._watch_stop.is_set()):
+                try:
+                    self.run_once()
+                except Exception as e:
+                    try:
+                        console.log(f"[UI_GUARD] watch loop error: {e}")
+                    except Exception:
+                        pass
+                # НЕ слишком агрессивно
+                if self._watch_stop and self._watch_stop.wait(poll_ms / 1000.0):
+                    break
+
+        self._watch_thr = threading.Thread(target=_loop, name="UIGuardWatch", daemon=True)
+        self._watch_thr.start()
+
+    def stop_watch(self):
+        if self._watch_stop:
+            self._watch_stop.set()
+        if self._watch_thr:
+            try:
+                self._watch_thr.join(timeout=0.7)
+            except Exception:
+                pass
+        self._watch_thr = None
+        self._watch_stop = None

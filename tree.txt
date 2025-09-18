@@ -354,6 +354,7 @@ Revive
 │   │   │   │   │   │   │   ├── reborn_banner2.png
 │   │   │   │   │   │   │   ├── reborn_banner.png
 │   │   │   │   │   │   │   └── to_village_button.png
+│   │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
@@ -381,18 +382,17 @@ Revive
 │   │   │   │       │   ├── rus
 │   │   │   │       │   │   └── interface
 │   │   │   │       │   │       ├── blockers
-│   │   │   │       │   │       │   ├── black_loading_screen.png
-│   │   │   │       │   │       │   ├── disconnect_popup.png
-│   │   │   │       │   │       │   └── wrong_word_popup.png
 │   │   │   │       │   │       ├── buttons
+│   │   │   │       │   │       │   └── default_close_button.png
+│   │   │   │       │   │       ├── dashboard
 │   │   │   │       │   │       │   ├── dashboard_close_button.png
-│   │   │   │       │   │       │   ├── default_close_button.png
+│   │   │   │       │   │       │   └── dashboard_page.png
+│   │   │   │       │   │       ├── disconnect
 │   │   │   │       │   │       │   ├── disconnect_accept_button.png
-│   │   │   │       │   │       │   └── wrong_word_accept_button.png
+│   │   │   │       │   │       │   └── disconnect_popup.png
 │   │   │   │       │   │       ├── pages
 │   │   │   │       │   │       │   ├── actions_page.png
 │   │   │   │       │   │       │   ├── clan_page.png
-│   │   │   │       │   │       │   ├── dashboard_page.png
 │   │   │   │       │   │       │   ├── inventory_page.png
 │   │   │   │       │   │       │   ├── macros_page.png
 │   │   │   │       │   │       │   ├── map_page2.png
@@ -401,15 +401,20 @@ Revive
 │   │   │   │       │   │       │   ├── quest_page.png
 │   │   │   │       │   │       │   ├── skills_page.png
 │   │   │   │       │   │       │   └── status_page.png
-│   │   │   │       │   │       └── screens
-│   │   │   │       │   │           ├── choose_character_screen.png
-│   │   │   │       │   │           ├── choose_server_screen.png
-│   │   │   │       │   │           ├── loading_screen.png
-│   │   │   │       │   │           └── login_screen.png
+│   │   │   │       │   │       ├── screens
+│   │   │   │       │   │       │   ├── black_loading_screen.png
+│   │   │   │       │   │       │   ├── choose_character_screen.png
+│   │   │   │       │   │       │   ├── choose_server_screen.png
+│   │   │   │       │   │       │   ├── loading_screen.png
+│   │   │   │       │   │       │   └── login_screen.png
+│   │   │   │       │   │       └── wrong_word
+│   │   │   │       │   │           ├── wrong_word_accept_button.png
+│   │   │   │       │   │           └── wrong_word_popup.png
 │   │   │   │       │   └── resolver.py
 │   │   │   │       ├── engine.py
 │   │   │   │       └── ui_guard_data.py
 │   │   │   ├── __init__.py
+│   │   │   ├── readme.md
 │   │   │   └── runner.py
 │   │   ├── window_focus
 │   │   │   ├── __init__.py
