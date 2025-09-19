@@ -47,6 +47,8 @@ TELEPORT_TOWNS: Dict[str, List[str]] = {
     "Rune_init": ["<lang>", "teleport", "towns", "Rune", "Rune_init.png"],
     "Giran": ["<lang>", "teleport", "towns", "Giran.png"],
     "Giran_init": ["<lang>", "teleport", "towns", "Giran", "Giran_init.png"],
+    "Aden": ["<lang>", "teleport", "towns", "Aden.png"],
+    "Aden_init": ["<lang>", "teleport", "towns", "Aden", "Aden_init.png"],
 }
 TELEPORT_VILLAGES: Dict[str, List[str]] = {
     "villages_init": ["<lang>", "teleport", "villages", "villages_init.png"],
@@ -63,6 +65,8 @@ TELEPORT_LOCATIONS: Dict[str, List[str]] = {
     "VarkaSilenosStronghold": ["<lang>", "teleport", "towns", "Goddard", "VarkaSilenosStronghold.png"],
     "PrimevalIsle": ["<lang>", "teleport", "towns", "Rune", "PrimevalIsle.png"],
     "DragonValley": ["<lang>", "teleport", "towns", "Giran", "DragonValley.png"],
+    # dashboard_teleport_towns_Aden
+    "SilentValley": ["<lang>", "teleport", "towns", "Aden", "SilentValley.png"],
 }
 # Разделы бафов
 BUFFS: Dict[str, List[str]] = {

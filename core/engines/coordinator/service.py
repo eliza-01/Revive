@@ -190,9 +190,6 @@ class CoordinatorService:
                     console.hud("att", "Сервисы остановлены! Вернитесь в Lineage")
                     self._hud_flags["cor1_shown_stop"] = True
                     self._hud_flags["cor1_shown_resume"] = False
-                if "cor_1" in removed and not self._hud_flags.get("cor1_shwn_resume"):
-                    # опечатка в ключе? подстрахуемся обоими
-                    pass
                 if "cor_1" in removed and not self._hud_flags.get("cor1_shown_resume"):
                     console.hud("succ", "Фокус вернулся — возобновляем процессы")
                     console.hud("att", "")
@@ -211,12 +208,13 @@ class CoordinatorService:
 
         # --- cor_2: hp=None при alive и активном autofarm ---
         if "cor_2" in actives:
-            # ставим паузы всем (кроме самого ui_guard, который не в списке features)
+            # ставим паузы всем (кроме самого ui_guard, которого нет в features)
             self._ensure_paused_for_reason("cor_2")
 
-            # 1) если ui_guard не занят — запускаем его через переданный колбэк
+            # 1) если ui_guard не занят — запускаем его
             try:
-                is_busy = self._ui_guard_is_busy() if self._ui_guard_is_busy else bool(pool_get(self.s, "features.ui_guard.busy", False))
+                is_busy = self._ui_guard_is_busy() if self._ui_guard_is_busy \
+                    else bool(pool_get(self.s, "features.ui_guard.busy", False))
             except Exception:
                 is_busy = bool(pool_get(self.s, "features.ui_guard.busy", False))
 
@@ -228,16 +226,16 @@ class CoordinatorService:
                 except Exception as e:
                     console.log(f"[coordinator] ensure_ui_guard_watch error: {e}")
 
-            # 2) если ui_guard уже завершился — смотрим его итог и останавливаем watch
+            # 2) если ui_guard уже завершился — смотрим итог и останавливаем watch
             try:
-                busy_now = self._ui_guard_is_busy() if self._ui_guard_is_busy else bool(pool_get(self.s, "features.ui_guard.busy", False))
+                busy_now = self._ui_guard_is_busy() if self._ui_guard_is_busy \
+                    else bool(pool_get(self.s, "features.ui_guard.busy", False))
                 if not busy_now:
                     reason = str(pool_get(self.s, "features.ui_guard.pause_reason", "") or "").lower().strip()
                     if reason in ("", "empty"):
                         self._release_paused_for_reason("cor_2")
                     else:
                         console.hud("att", reason)
-                    # ui_guard закончил — останавливаем его watch (чтобы не крутился в фоне)
                     try:
                         if self._stop_ui_guard_watch:
                             self._stop_ui_guard_watch()
@@ -250,7 +248,7 @@ class CoordinatorService:
             # причина ушла — отпускаем только наш bucket
             self._release_paused_for_reason("cor_2")
 
-            # защита: если ui_guard всё ещё крутится, аккуратно остановим watch
+            # защита: если ui_guard всё ещё крутится — мягко остановим watch
             try:
                 still_busy = self._ui_guard_is_busy() if self._ui_guard_is_busy \
                     else bool(pool_get(self.s, "features.ui_guard.busy", False))
@@ -268,72 +266,6 @@ class CoordinatorService:
                     pool_write(self.s, "features.ui_guard", {"watching": False})
                 except Exception:
                     pass
-
-                # --- cor_2: hp=None при alive и активном autofarm ---
-                if "cor_2" in actives:
-                    # ставим паузы всем (кроме самого ui_guard, который не в списке features)
-                    self._ensure_paused_for_reason("cor_2")
-
-                    # 1) если ui_guard не занят — запускаем его через переданный колбэк
-                    try:
-                        is_busy = self._ui_guard_is_busy() if self._ui_guard_is_busy \
-                            else bool(pool_get(self.s, "features.ui_guard.busy", False))
-                    except Exception:
-                        is_busy = bool(pool_get(self.s, "features.ui_guard.busy", False))
-
-                    if not is_busy and self._ensure_ui_guard_watch:
-                        try:
-                            started = bool(self._ensure_ui_guard_watch())
-                            if not started:
-                                console.log("[coordinator] ensure_ui_guard_watch() returned False")
-                        except Exception as e:
-                            console.log(f"[coordinator] ensure_ui_guard_watch error: {e}")
-
-                    # 2) если ui_guard уже завершился — смотрим его итог и останавливаем watch
-                    try:
-                        busy_now = self._ui_guard_is_busy() if self._ui_guard_is_busy \
-                            else bool(pool_get(self.s, "features.ui_guard.busy", False))
-                        if not busy_now:
-                            reason = str(pool_get(self.s, "features.ui_guard.pause_reason", "") or "").lower().strip()
-                            if reason in ("", "empty"):
-                                self._release_paused_for_reason("cor_2")
-                            else:
-                                console.hud("att", reason)
-                            # ui_guard закончил — останавливаем его watch (чтобы не крутился в фоне)
-                            try:
-                                if self._stop_ui_guard_watch:
-                                    self._stop_ui_guard_watch()
-                                pool_write(self.s, "features.ui_guard", {"watching": False})
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                else:
-                    # причина ушла — отпускаем только наш bucket
-                    self._release_paused_for_reason("cor_2")
-
-                    # ⬇️ ДОБАВЛЕНО: если ui_guard всё ещё крутится, мягко останавливаем его перед обновлением pipeline
-                    try:
-                        still_busy = self._ui_guard_is_busy() if self._ui_guard_is_busy \
-                            else bool(pool_get(self.s, "features.ui_guard.busy", False))
-                    except Exception:
-                        still_busy = bool(pool_get(self.s, "features.ui_guard.busy", False))
-
-                    try:
-                        watching = bool(pool_get(self.s, "features.ui_guard.watching", False))
-                    except Exception:
-                        watching = False
-
-                    if (still_busy or watching) and self._stop_ui_guard_watch:
-                        try:
-                            self._stop_ui_guard_watch()
-                            pool_write(self.s, "features.ui_guard", {"watching": False})
-                        except Exception:
-                            pass
-
-                # Обновим видимую причину в pipeline (по приоритету)
-                top_reason = self._select_top_reason(list(actives))
-                self._apply_one("pipeline", paused=bool(actives), reason=top_reason, is_pipeline=True)
 
     def _select_top_reason(self, actives: List[str]) -> str:
         for r in self._reason_priority:

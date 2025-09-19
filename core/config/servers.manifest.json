@@ -3,6 +3,43 @@
   "assemblies": {
     "assembly_1": {
       "servers": {
+        "boh_x500": {
+          "name": "boh_x500",
+          "system": {
+            "section": true,
+            "languages": ["rus", "eng"]
+          },
+          "stream": { "section": true },
+          "respawn": { "section": true },
+          "buff": {
+            "section": true,
+            "methods": ["dashboard"],
+            "modes": ["profile", "mage", "fighter", "archer"]
+          },
+          "macros": { "section": true },
+          "teleport": {
+            "section": true,
+            "methods": ["dashboard"],
+            "categories": {
+              "towns": {
+                "locations": [
+                  "Goddard",
+                  "VarkaSilenosStronghold",
+                  "Aden",
+                  "SilentValley"
+                ]
+              },
+              "villages": {
+                "locations": [
+                ]
+              }
+            }
+          },
+          "autofarm": {
+            "section": true,
+            "modes": ["auto", "manual"]
+          }
+        },
         "boh": {
           "name": "boh",
           "system": {
@@ -24,9 +61,11 @@
               "towns": {
                 "locations": [
                   "VarkaSilenosStronghold",
+                  "SilentValley",
                   "PrimevalIsle",
                   "DragonValley",
                   "Goddard",
+                  "Aden",
                   "Giran",
                   "Rune"
                 ]
@@ -43,7 +82,6 @@
             "modes": ["auto", "manual"]
           }
         },
-
         "l2mad": {
           "name": "l2mad",
           "system": {
