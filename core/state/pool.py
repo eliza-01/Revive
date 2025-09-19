@@ -26,44 +26,48 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("window", {"info": None, "found": False, "title": "", "ts": 0.0})
     st.setdefault("focus", {"is_focused": None, "ts": 0.0})
     st.setdefault("player", {"alive": None, "hp_ratio": None, "cp_ratio": None, "ts": 0.0})
-    st.setdefault("ui_guard", {"enabled": False, "tracker": "empty", "ts": 0.0})
 
     # ---- Фичи ----
     st.setdefault("features", {
         "respawn": {
             "enabled": False, "wait_enabled": False, "wait_seconds": 120,
             "click_threshold": 0.70, "confirm_timeout_s": 6.0,
-            "status": "idle", "busy": False, "waiting": False, "last_respawn": {"type": ""}, "ts": 0.0,
+            "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False, "last_respawn": {"type": ""}, "ts": 0.0,
         },
         "buff": {
             "enabled": False, "mode": "", "methods": [],
-            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+            "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False, "ts": 0.0,
             "checker": [],
         },
         "macros": {
             "enabled": False, "repeat_enabled": False, "rows": [],
-            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+            "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False, "ts": 0.0,
         },
         "teleport": {
             "enabled": False,
             "method": "dashboard",
             "category": "",
             "location": "",
-            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+            "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False, "ts": 0.0,
         },
         "stabilize": {
             "enabled": False,
-            "busy": False,
+            "busy": False, "paused": False, "pause_reason":"",
             "status": "idle"
+        },
+        "ui_guard": {
+            "busy": False, "paused": False, "pause_reason":"",
+            "report": "empty",
+            "ts": 0.0
         },
         "record": {
             "enabled": False, "current_record": "", "records": [],
-            "status": "idle", "busy": False, "waiting": False, "ts": 0.0,
+            "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False, "ts": 0.0,
         },
         "autofarm": {
             "enabled": False,
-            "mode": "manual",           # "auto" | "manual"
-            "status": "idle", "busy": False, "waiting": False,
+            "mode": "",           # "auto" | "manual"
+            "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False,
             "config": {
                 "profession": "",
                 "skills": [{"key": "1", "slug": "", "cast_ms": 1100}],
@@ -78,15 +82,15 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("pipeline", {
         "allowed": ["respawn", "buff", "macros", "teleport", "record", "autofarm"],
         "order":   ["respawn", "buff", "macros", "teleport", "record", "autofarm"],
-        "active": False, "idx": 0, "last_step": "", "ts": 0.0,
+        "active": False, "idx": 0, "last_step": "", "paused": False, "pause_reason":"", "ts": 0.0,
     })
 
     # ---- Сервисы ----
     st.setdefault("services", {
-        "player_state": {"running": False, "ts": 0.0},
-        "window_focus": {"running": False, "ts": 0.0},
-        "macros_repeat": {"running": False, "ts": 0.0},
-        "autofarm": {"running": False, "ts": 0.0},
+        "player_state": {"running": False, "busy": False, "paused": False, "pause_reason":"", "ts": 0.0},
+        "window_focus": {"running": False, "busy": False, "paused": False, "pause_reason":"", "ts": 0.0},
+        "macros_repeat": {"running": False, "busy": False, "paused": False, "pause_reason":"", "ts": 0.0},
+        "autofarm": {"running": False, "busy": False, "paused": False, "pause_reason":"", "ts": 0.0},
     })
 
     # ---- Runtime/Debug ----

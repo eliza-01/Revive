@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 import time
+import importlib
 
 from core.logging import console
 from core.state.pool import pool_get, pool_write
@@ -13,12 +14,27 @@ from .engine import TeleportEngine
 from .stabilize import rules as stabilize_rules
 
 
-def _focused_now(state: Dict[str, Any]) -> Optional[bool]:
+def _run_unstuck(state: Dict[str, Any], controller) -> None:
     try:
-        v = pool_get(state, "focus.is_focused", None)
-        return bool(v) if isinstance(v, bool) else None
+        srv = (pool_get(state, "config.server", "boh") or "boh").lower()
+        mod = importlib.import_module(f"core.engines.ui_guard.server.{srv}.engine")
+        Eng = getattr(mod, "UIGuardEngine", None)
+        if Eng is None:
+            console.log("[UNSTUCK] UIGuardEngine not found")
+            return
+        eng = Eng(server=srv, controller=controller, state=state)
+        eng.run_unstuck()
+    except Exception as e:
+        console.log(f"[UNSTUCK] invoke error: {e}")
+
+
+def _paused_now(state: Dict[str, Any]) -> Tuple[bool, str]:
+    try:
+        p = bool(pool_get(state, "features.teleport.paused", False))
+        reason = str(pool_get(state, "features.teleport.pause_reason", "") or "")
+        return p, reason
     except Exception:
-        return None
+        return False, ""
 
 
 def _win_ok(win: Optional[Dict]) -> bool:
@@ -111,28 +127,35 @@ def run_step(
     helpers: Dict[str, Any],
 ) -> tuple[bool, bool]:
 
+    # окно
     win = helpers.get("get_window", lambda: None)()  # type: ignore
     if not _win_ok(win):
         return False, False
 
-    if _focused_now(state) is False:
-        console.hud("ok", "[dashboard] пауза: окно без фокуса — жду")
+    # пауза — уважаем orchestration pause
+    paused, reason = _paused_now(state)
+    if paused:
+        console.hud("ok", f"[teleport] пауза: {reason or 'остановлено'} — жду")
         return False, False
 
+    # мёртв — прерываем попытки
     if _player_is_dead(state):
         _hud_err("[teleport] игрок мёртв — телепорт пропущен")
         return False, True
 
+    # лимит попыток
     attempts = _get_attempts(state)
-    if attempts >= 10:
-        _hud_err("[teleport] попытки исчерпаны (>=10)")
+    if attempts >= 5:
+        _hud_err(f"[teleport] попытки исчерпаны (>={attempts}) — запускаю /unstuck")
+        _run_unstuck(state, controller)
+        _reset_attempts(state)
         return False, True
-    _bump_attempts(state)
 
+    # параметры окружения
     lang = (helpers.get("get_language", lambda: "rus")() or "rus").lower()  # type: ignore
     server = (pool_get(state, "config.server", "") or "").lower()
 
-    method = (pool_get(state, "features.teleport.method", "") or "").strip().lower()
+    method   = (pool_get(state, "features.teleport.method", "")   or "").strip().lower()
     category = (pool_get(state, "features.teleport.category", "") or "").strip()
     location = (pool_get(state, "features.teleport.location", "") or "").strip()
 
@@ -144,15 +167,18 @@ def run_step(
         _hud_err("[teleport] выберите категорию и локацию")
         return True, True
 
+    # инкремент перед процедурой
+    _bump_attempts(state)
+
+    # движок (низкоуровневый, «немой»)
     te = TeleportEngine(
-        state=state,
         server=server,
         controller=controller,
         get_window=helpers.get("get_window", lambda: None),
         get_language=helpers.get("get_language", lambda: "rus"),
     )
 
-    # 1) Сброс
+    # 1) Сброс Alt+B
     _ensure_alt_b(controller, want_open=False, win=win, server=server, lang=lang, timeout_s=1.5)
 
     # 2) Открыть Alt+B
@@ -163,16 +189,21 @@ def run_step(
 
     # 3) Вкладка Teleport
     if not te.open_tab(thr_btn=0.85, thr_init=0.85, timeout_s=2.0):
-        # НЕ закрываем: пусть останется как есть
+        _hud_err("[teleport] вкладка не открылась")
         return False, False
+    _hud_ok("[teleport] вкладка открыта")
 
     # 4) Категория
     if not te.open_category(category):
+        _hud_err(f"[teleport] категория '{category}' не открыта")
         return False, False
+    _hud_ok(f"[teleport] категория '{category}' открыта")
 
-    # 5) Локация (click → ждать пропажи dashboard_init)
+    # 5) Локация (Esc → click → ждать пропажи dashboard_init)
     if not te.click_location(location, category):
+        _hud_err(f"[teleport] локация '{location}' не нажата")
         return False, False
+    _hud_ok(f"[teleport] переход в '{location}'…")
 
     # === СТАБИЛИЗАЦИЯ ===
     ok_stab, _ = stabilize_rules.run_step(

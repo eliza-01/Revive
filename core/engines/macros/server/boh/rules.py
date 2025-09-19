@@ -7,6 +7,13 @@ from core.orchestrators.snapshot import Snapshot
 from core.engines.macros.runner import run_macros
 from core.logging import console
 
+def _paused_now(state: Dict[str, Any]) -> tuple[bool, str]:
+    try:
+        p = bool(pool_get(state, "features.macros.paused", False))
+        reason = str(pool_get(state, "features.macros.pause_reason", "") or "")
+        return p, reason
+    except Exception:
+        return False, ""
 
 def run_step(
     *,
@@ -24,6 +31,12 @@ def run_step(
         console.hud("err", "[MACROS] Нет макросов для выполнения")
         return False, True
 
+    # новая модель: уважение паузы
+    paused, reason = _paused_now(state)
+    if paused:
+        console.hud("ok", f"[MACROS] пауза: {reason or 'остановлено'} — жду")
+        return False, False
+
     srv = pool_get(state, "config.server", None) or ""
     ok = run_macros(
         server=srv,
@@ -31,7 +44,11 @@ def run_step(
         get_window=lambda: pool_get(state, "window.info", None),
         get_language=lambda: pool_get(state, "config.language", "rus"),
         cfg={"rows": rows},
-        should_abort=lambda: False,
+        # прерываем ручной прогон, если во время выполнения включили паузу/отключили фичу
+        should_abort=lambda: (
+            bool(pool_get(state, "features.macros.paused", False))
+            or not bool(pool_get(state, "features.macros.enabled", True))
+        ),
     )
 
     # после успешного «ручного» прогона — сдвигаем таймер повтора

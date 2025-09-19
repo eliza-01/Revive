@@ -1,6 +1,7 @@
 ﻿# core/engines/respawn/server/boh/engine.py
 from __future__ import annotations
 import time
+import os
 from typing import Optional, Dict, Tuple, Callable, List, Any
 
 from core.vision.zones import compute_zone_ltrb
@@ -14,6 +15,7 @@ from core.logging import console
 from core.state.pool import pool_get
 
 Point = Tuple[int, int]
+REVIVE_RESPAWN_DEBUG=1
 
 # Порог и таймаут по умолчанию
 DEFAULT_CLICK_THRESHOLD = 0.70
@@ -57,10 +59,17 @@ class RespawnEngine:
         Никакого state в инстансе — читаем флаг из пула напрямую.
         """
         try:
-            rd = pool_get({}, "runtime.debug.respawn_debug", False)  # корень не используется в pool_get
-            return (rd is True)
+            # 1) Переменная окружения принудительно включает дебаг
+            env = os.getenv("REVIVE_RESPAWN_DEBUG", "")
+            if env.strip().lower() in ("1", "true", "yes", "on"):
+                return True
+            # 2) Попытка достать реальный пул из контроллера (если он его держит)
+            st = getattr(self.controller, "_state", None)
+            if isinstance(st, dict):
+                return pool_get(st, "runtime.debug.respawn_debug", False) is True
         except Exception:
-            return False
+            pass
+        return False
 
     def _dbg(self, msg: str):
         try:
@@ -89,7 +98,7 @@ class RespawnEngine:
         """
         Вернуть ((x,y), key) по разрешённым ключам или None.
         """
-        zone_decl = ZONES.get("death_banners")
+        zone_decl = ZONES.get("fullscreen")
         if not zone_decl or not window:
             return None
         ltrb = compute_zone_ltrb(window, zone_decl)
@@ -142,152 +151,39 @@ class RespawnEngine:
             template_parts=parts,
             threshold=self.click_threshold,
             engine="respawn",
-            debug=self._debug_enabled(),
         )
 
-    def run_stand_up_once(
-        self,
-        window: Dict,
-        lang: str,
-        timeout_ms: int = 14_000,
-        allowed_keys: Optional[List[str]] = None,
-    ) -> bool:
+    def pick_click_point_for_key(
+            self,
+            window: Dict,
+            lang: str,
+            key: str,
+            fallback_pt: Tuple[int, int],
+    ) -> Tuple[int, int]:
         """
-        ОДНА активная фаза:
-          - фокус окна
-          - цикл: скан разрешённых ключей, клик, ожидание alive/исчезновения
-          - если баннер исчез — краткое ожидание подгрузки
+        Для reborn_banner пытается найти accept_button и вернуть его центр,
+        иначе — вернёт fallback_pt. Для остальных ключей — просто fallback_pt.
+        Никакой логики ожидания здесь нет.
         """
-        self._dbg("start: ищу баннеры (death/reborn)…")
-        console.hud("ok", "[respawn] Жду кнопку в город или рес")
+        if key == "reborn_banner":
+            acc = self.find_key_in_zone(window, lang, "accept_button")
+            if acc is not None:
+                return acc
+        return fallback_pt
 
-        # фокус
+    def click_at(self, x: int, y: int, delay_s: float = 0.40) -> None:
         try:
-            if hasattr(self.controller, "focus") and window:
-                self.controller.focus(window)
+            if hasattr(self.controller, "move"):
+                self.controller.move(int(x), int(y))
+            time.sleep(max(0.0, float(delay_s)))
+            if hasattr(self.controller, "_click_left_arduino"):
+                self._dbg(f"click arduino @ {x},{y}")
+                self.controller._click_left_arduino()
+            else:
+                self._dbg(f"click send(l) @ {x},{y}")
+                self.controller.send("l")
         except Exception:
             pass
-
-        zone_decl = ZONES.get("death_banners")
-        if not zone_decl or not window:
-            self._dbg("no window/zone (death_banners) — abort")
-            return False
-        ltrb = compute_zone_ltrb(window, zone_decl)
-
-        total_deadline = time.time() + max(1, int(timeout_ms)) / 1000.0
-        last_seen_key: Optional[str] = None
-        last_click_ts = 0.0
-
-        def _click(x: int, y: int, delay_s: float = 0.40) -> None:
-            try:
-                if hasattr(self.controller, "move"):
-                    self.controller.move(int(x), int(y))
-                time.sleep(max(0.0, float(delay_s)))
-                if hasattr(self.controller, "_click_left_arduino"):
-                    self.controller._click_left_arduino()
-                else:
-                    self.controller.send("l")
-            except Exception:
-                pass
-
-        keys_for_phase = (allowed_keys or PREFERRED_TEMPLATE_KEYS)
-
-        while time.time() < total_deadline:
-            if self._is_alive():
-                self._dbg("alive>0 — поднялись")
-                console.hud("succ", "[respawn] Возродились")
-                return True
-
-            res = match_multi_in_zone(
-                window=window,
-                zone_ltrb=ltrb,
-                server=self.server,
-                lang=(lang or "rus").lower(),
-                templates_map=TEMPLATES,
-                key_order=keys_for_phase,
-                threshold=self.click_threshold,
-                engine="respawn",
-                debug=self._debug_enabled(),
-            )
-
-            if res is None:
-                # Баннер исчез — ждём загрузку/подъём чуть-чуть
-                if last_seen_key == "death_banner":
-                    self._dbg("death_banner исчез → ждём загрузку")
-                    console.hud("ok", "[respawn] кнопка пропала. Ждём подъём")
-                elif last_seen_key == "reborn_banner":
-                    self._dbg("reborn баннер исчез → ждём подъёма")
-                    console.hud("ok", "[respawn] окно реса пропало. Ждём подъём")
-                load_deadline = time.time() + 2.0
-                while time.time() < load_deadline:
-                    if self._is_alive():
-                        self._dbg("alive>0 после исчезновения баннера — ок")
-                        console.hud("succ", "[respawn] Возродились")
-                        return True
-                    time.sleep(0.05)
-                time.sleep(0.05)
-                continue
-
-            (pt, key) = res
-            last_seen_key = key
-
-            now = time.time()
-            if now - last_click_ts < 0.6:
-                time.sleep(0.05)
-                continue
-
-            click_x, click_y = pt
-            confirm_wait_s = self.confirm_timeout_s
-
-            if key == "reborn_banner":
-                acc = self.find_key_in_zone(window, lang, "accept_button")
-                if acc is not None:
-                    click_x, click_y = acc
-                self._dbg("click: reborn accept")
-                console.hud("ok", "[respawn] соглашаемся на рес")
-                confirm_wait_s = 5.0
-            elif key == "death_banner":
-                self._dbg("click: death_banner")
-                console.hud("ok", "[respawn] встаём в город")
-
-            _click(click_x, click_y)
-            last_click_ts = now
-
-            # ожидание подтверждения
-            confirm_deadline = now + float(confirm_wait_s)
-            while time.time() < confirm_deadline:
-                if self._is_alive():
-                    self._dbg("alive>0 после клика — ок")
-                    console.hud("succ", "[respawn] Возродились")
-                    return True
-                # если баннер исчез — отдаём управление наверх
-                res2 = match_multi_in_zone(
-                    window=window,
-                    zone_ltrb=ltrb,
-                    server=self.server,
-                    lang=(lang or "rus").lower(),
-                    templates_map=TEMPLATES,
-                    key_order=keys_for_phase,
-                    threshold=self.click_threshold,
-                    engine="respawn",
-                    debug=self._debug_enabled(),
-                )
-                if res2 is None:
-                    if key == "death_banner":
-                        self._dbg("death_banner пропал после клика — ждём загрузку")
-                        console.hud("ok", "[respawn] кнопка пропала. Ждём подъём")
-                    elif key == "reborn_banner":
-                        self._dbg("reborn пропал после клика — ждём подъёма")
-                        console.hud("ok", "[respawn] окно реса пропало. Ждём подъём")
-                    break
-                time.sleep(0.05)
-
-            self._dbg("timeout confirm — продолжаю цикл")
-            time.sleep(0.05)
-
-        self._dbg("fail: не удалось подняться")
-        console.hud("err", "[respawn] не удалось подняться")
-        return False
 
 
 def create_engine(
@@ -305,4 +201,3 @@ def create_engine(
         click_threshold=click_threshold,
         confirm_timeout_s=confirm_timeout_s,
     )
-

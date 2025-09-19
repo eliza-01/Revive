@@ -1,5 +1,4 @@
-﻿// app/webui/js/record.js
-(function () {
+﻿(function () {
   // ----- DOM build -----
   function buildSection() {
     const grid = document.querySelector('main.container.grid');
@@ -48,11 +47,10 @@
     if (window.pywebview && pywebview.api && pywebview.api.record_list) return void fn();
     const onReady = () => { document.removeEventListener('pywebviewready', onReady); fn(); };
     document.addEventListener('pywebviewready', onReady);
-    // страховочный поллинг (на случай, если событие не прилетит)
     let tries = 0;
     const t = setInterval(() => {
       if (window.pywebview && pywebview.api && pywebview.api.record_list) { clearInterval(t); fn(); }
-      else if (++tries > 200) { clearInterval(t); } // ~10 секунд
+      else if (++tries > 200) { clearInterval(t); }
     }, 50);
   }
 
@@ -81,7 +79,7 @@
   async function loadList() {
     const s = sel(); if (!s) return;
     const res = await api('record_list');
-    if (!res) return; // API ещё не готов — whenAPIReady перезапустит позже
+    if (!res) return;
 
     s.innerHTML = '';
     if (Array.isArray(res) && res.length) {
@@ -123,7 +121,6 @@
     if (focused === false) msg += ' • окно без фокуса';
     setStatus(msg, busy ? 'gray' : 'green');
 
-    // если список пуст и уже есть записи в пуле — перерисуем селект
     const s = sel();
     if (s && s.options.length <= 1) {
       await loadList();
@@ -148,14 +145,25 @@
     if (e.target && e.target.id === 'recCreate') {
       const name = prompt('Название записи:');
       if (!name) return;
+      if (String(name).trim().toLowerCase() === 'prefs') {
+        setStatus('Имя "prefs" зарезервировано', 'red');
+        return;
+      }
       const r = await api('record_create', name);
       if (r && r.ok) {
         await loadList();
         const s = sel();
         if (s) s.value = r.slug;
+        await api('record_set_current', r.slug); // фиксируем выбор в пуле
         setStatus('Создана запись: ' + name, 'green');
       } else {
-        setStatus('Не удалось создать запись', 'red');
+        if (r && r.error === 'reserved_name') {
+          setStatus('Имя "prefs" зарезервировано', 'red');
+        } else if (r && r.error === 'empty_name') {
+          setStatus('Введите название записи', 'red');
+        } else {
+          setStatus('Не удалось создать запись', 'red');
+        }
       }
     }
     if (e.target && e.target.id === 'recPlay') {
@@ -182,7 +190,7 @@
   // ----- Boot -----
   function boot() {
     whenAPIReady(async () => {
-      await loadList();      // ← теперь точно после инжекта API
+      await loadList();
       await refreshState();
       setInterval(refreshState, 1000);
     });

@@ -13,6 +13,8 @@ from core.config.servers import (
     get_buff_methods,
     get_buff_modes,
     get_teleport_methods,
+    get_teleport_categories,      # ← ДОБАВЛЕНО
+    get_teleport_locations,       # ← ДОБАВЛЕНО
 )
 
 # секции
@@ -41,6 +43,8 @@ from app.launcher.infra.expose import expose_api
 from app.launcher.infra.orchestrator_loop import OrchestratorLoop
 from app.launcher.infra.services import ServicesBundle
 
+from app.launcher.prefs import load_prefs, save_prefs, resolve_initial_with_prefs
+
 # новый логгер
 from core.logging import console
 
@@ -55,31 +59,40 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     controller = ReviveController()
 
     # === servers / langs from manifest ===
+    # ⚠ тут просто проверка наличия манифеста;
+    # сами «выбранные» значения возьмём из prefs с валидацией
     servers = list_servers()
     if not servers:
         raise RuntimeError("No servers in manifest")
-    server = servers[0]
-
-    # L2 UI language — первый из списка для сервера
-    l2_langs = get_languages(server)
-    if not l2_langs:  # <<< жёсткая проверка без фолбэков
-        console.log(f"No languages in manifest for server '{server}'")
-        raise RuntimeError(f"No languages in manifest for server '{server}'")
-    l2_lang = l2_langs[0]
 
     # === state / pool ===
     state: Dict[str, Any] = {}
     ensure_pool(state)
 
-    # базовая инициализация пула
+    # версия приложения
     pool_write(state, "app", {"version": local_version})
-    # profile больше не используем — только server + languages
+
+    # === prefs: загрузить и разрешить в значения для пула
+    prefs = load_prefs()
+    resolved = resolve_initial_with_prefs(prefs)
+    # вызываем расширенный в prefs.py
+    # console.log("[prefs] resolved snapshot: "
+    #             f"server={resolved.get('config.server')}, "
+    #             f"lang={resolved.get('config.language')}, "
+    #             f"tp={resolved.get('features.teleport.category')}/"
+    #             f"{resolved.get('features.teleport.location')}, "
+    #             f"buff={resolved.get('features.buff.method')}/{resolved.get('features.buff.mode')}")
+
+    # config.* + ui.sections
     pool_write(state, "config", {
-        "server": server,
-        "language": l2_lang,      # язык интерфейса L2
-        "app_language": l2_lang,   # <<< язык приложения/консоли/HUD (UIBridge требует)
-        "profiles": servers       # доступные сервера
+        "server":        resolved["config.server"],
+        "language":      resolved["config.language"],
+        "app_language":  resolved["config.app_language"],
+        "profiles":      servers,
     })
+    pool_write(state, "ui.sections", resolved["ui.sections"])
+
+    # окна/сервисы — как было
     pool_write(state, "account", {"login": "", "password": "", "pin": ""})
     pool_write(state, "window", {"info": None, "found": False, "title": ""})
     pool_write(state, "services.window_focus", {"running": False})
@@ -87,47 +100,69 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     pool_write(state, "services.macros_repeat", {"running": False})
     pool_write(state, "services.autofarm", {"running": False})
 
-    # фичи/пайплайн дефолты
+    # --- pipeline (allowed + order + базовые флаги состояния)
+    pool_write(state, "pipeline", {
+        "allowed":     resolved["pipeline.allowed"],
+        "order":       resolved["pipeline.order"],
+        "active": False, "idx": 0, "last_step": "",
+        "paused": False, "pause_reason": "", "ts": 0.0,
+    })
+
+    # --- features: respawn
+    # включения/поля — если были в prefs, уже попали в resolved
     pool_write(state, "features.respawn", {
-        "enabled": False, "wait_enabled": False, "wait_seconds": 30,
-        "click_threshold": 0.70, "confirm_timeout_s": 6.0, "status": "idle",
+        "enabled":           bool(resolved.get("features.respawn.enabled", False)),
+        "wait_enabled":      bool(resolved.get("features.respawn.wait_enabled", False)),
+        "wait_seconds":      float(resolved.get("features.respawn.wait_seconds", 30)),
+        "click_threshold":   0.70,
+        "confirm_timeout_s": 6.0,
+        "status": "idle",
     })
+
+    # --- features: macros
     pool_write(state, "features.macros", {
-        "enabled": False, "repeat_enabled": False, "rows": [],
-        "run_always": False, "delay_s": 1.0, "duration_s": 2.0, "sequence": ["1"], "status": "idle",
+        "enabled": bool(resolved.get("features.macros.enabled", False)),
+        "repeat_enabled": bool(resolved.get("features.macros.repeat_enabled", False)),
+        "rows": list(resolved.get("features.macros.rows", []) or []),
+        "status": "idle",
     })
-    # buff/teleport методы из манифеста
-    buff_methods = get_buff_methods(server)
-    buff_modes = get_buff_modes(server)
-    teleport_methods = get_teleport_methods(server)
 
+    # --- features: buff
     pool_write(state, "features.buff", {
-        "enabled": False,
-        "mode": (buff_modes[0] if buff_modes else ""),
-        "method": (buff_methods[0] if buff_methods else ""),  # ← добавили
-        "methods": buff_methods,
-        "modes": buff_modes,
-        "status": "idle"
+        "enabled": bool(resolved.get("features.buff.enabled", False)),
+        "method":  resolved.get("features.buff.method", ""),
+        "mode":    resolved.get("features.buff.mode", ""),
+        "methods": list(resolved.get("features.buff.methods", []) or []),
+        "modes":   list(resolved.get("features.buff.modes", []) or []),
+        "checker": list(resolved.get("features.buff.checker", []) or []),
+        "status": "idle",
     })
-    pool_write(state, "features.teleport", {"enabled": False, "status": "idle", "methods": teleport_methods})
-    pool_write(state, "features.autofarm", {"enabled": False, "status": "idle"})
-    # pool_write(state, "features.record", {
-    #     "enabled": False,
-    #     "current_record": "",
-    #     "records": [],
-    #     "status": "idle",
-    #     "busy": False,
-    #     "waiting": False,
-    #     "ts": 0.0,
-    # })
-    # pool_write(state, "pipeline", {
-    #     "allowed": ["respawn", "buff", "macros", "teleport", "autofarm"],
-    #     "order": ["respawn", "macros", "autofarm"],
-    #     "active": False, "idx": 0, "last_step": ""
-    # })
 
-    # для UI: какие секции показывать для текущего сервера
-    pool_write(state, "ui.sections", get_section_flags(server))
+    # --- features: teleport
+    pool_write(state, "features.teleport", {
+        "enabled":  bool(resolved.get("features.teleport.enabled", False)),
+        "method":   resolved.get("features.teleport.method", ""),
+        "methods":  list(resolved.get("features.teleport.methods", []) or []),
+        "category": resolved.get("features.teleport.category", ""),
+        "location": resolved.get("features.teleport.location", ""),
+        "status": "idle",
+    })
+
+    # --- features: autofarm
+    pool_write(state, "features.autofarm", {
+        "enabled": bool(resolved.get("features.autofarm.enabled", False)),
+        "modes": list(resolved.get("features.autofarm.modes", []) or []),  # ← ДОБАВЛЕНО
+        "mode": resolved.get("features.autofarm.mode", ""),  # ← ДОБАВЛЕНО
+        "config": dict(resolved.get("features.autofarm.config", {}) or {}),
+        "status": "idle",
+    })
+
+    # --- features: record  (инициализация из prefs)
+    pool_write(state, "features.record", {
+        "enabled": bool(resolved.get("features.record.enabled", False)),
+        "current_record": str(resolved.get("features.record.current_record", "")),
+        "status": "idle",
+    })
 
     # === UI-мост ===
     ui = UIBridge(window, state, hud_window)
@@ -200,6 +235,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
             pass
         try:
             services.stop()
+        except Exception:
+            pass
+
+        # Сохраняем prefs перед закрытием
+        try:
+            save_prefs(state)
         except Exception:
             pass
 

@@ -6,18 +6,22 @@
   const TIP_ID  = "buffProfileHintTooltip";
 
   // Вернёт Promise<string> с data: URI (если backend реализован) или "".
+//  function resolveProfileImageURL() {
+//    try {
+//      const api = window.pywebview?.api?.image_access;
+//      if (api && typeof api.get_image_uri === "function") {
+//        // Относительная ссылка на изображение, которую передаём в backend
+//        const rel = "app/webui/assets/lineage/BOH/interface/dashboard_buffer_profile.png";
+//        return api.get_image_uri(rel).then(...);
+//          .then(r => (r && r.ok && r.uri) ? r.uri : "")
+//          .catch(() => "");
+//      }
+//    } catch (_) {}
+//    return Promise.resolve("");
+//  }
   function resolveProfileImageURL() {
-    try {
-      const api = window.pywebview?.api?.image_access;
-      if (api && typeof api.get_image_uri === "function") {
-        // Относительная ссылка на изображение, которую передаём в backend
-        const rel = "core/engines/dashboard/server/boh/templates/rus/buffer/dashboard_buffer_profile.png";
-        return api.get_image_uri(rel)
-          .then(r => (r && r.ok && r.uri) ? r.uri : "")
-          .catch(() => "");
-      }
-    } catch (_) {}
-    return Promise.resolve("");
+    // файл лежит в app/webui/assets/...
+    return Promise.resolve("assets/lineage/BOH/interface/dashboard_buffer_profile.png");
   }
 
   let hideTipTimer = null;

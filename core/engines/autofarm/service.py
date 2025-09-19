@@ -11,14 +11,13 @@ class AutoFarmService:
     """
     Долгоживущий цикл фарма.
 
-    ВАЖНО:
-    - Останавливаемся не из-за vitals==None, а из-за потери фокуса.
-      Факторов три: enabled, focus, alive.
-      * focus=False → пауза цикла (не запускаем и прерываем текущий прогон)
-      * alive=False → тоже прерываем текущий прогон (чтобы «мертвые» не фармили)
+    ВАЖНО (новая модель):
+    - Гейты: enabled, paused, alive.
+      * paused=True → сервис простаивает (не запускаем и прерываем текущий прогон)
+      * alive=False → прерываем текущий прогон
       * enabled=False → сервис в режиме ожидания
-    - В auto-режиме запускаем РОВНО один прогон по событию `_kick` (из пайплайна),
-      если к моменту выполнения есть фокус и включено.
+    - В auto-режиме запускаем ровно один прогон по событию `_kick` (из пайплайна),
+      если к моменту выполнения не стоит пауза, включено и персонаж жив.
     """
 
     def __init__(
@@ -27,12 +26,12 @@ class AutoFarmService:
         controller: Any,
         get_window: Callable[[], Optional[Dict[str, Any]]],
         get_language: Callable[[], str],
-        get_cfg: Callable[[], Dict[str, Any]],      # features.autofarm (или .config)
+        get_cfg: Callable[[], Dict[str, Any]],
         is_enabled: Callable[[], bool],
         is_alive: Callable[[], Optional[bool]] = lambda: True,
-        is_focused: Callable[[], bool] = lambda: True,
+        is_paused: Callable[[], bool] = lambda: False,   # ← новое
         *,
-        set_busy: Optional[Callable[[bool], None]] = None,  # ← коллбек для features.autofarm.busy
+        set_busy: Optional[Callable[[bool], None]] = None,
     ):
         self._server = server
         self._controller = controller
@@ -42,7 +41,7 @@ class AutoFarmService:
 
         self._is_enabled = is_enabled
         self._is_alive = is_alive
-        self._is_focused = is_focused
+        self._is_paused = is_paused
 
         self._set_busy = set_busy or (lambda _b: None)
 
@@ -77,11 +76,8 @@ class AutoFarmService:
         self._cancel = True
 
     def run_once_now(self):
-        """
-        В auto: ставим триггер на ОДИН прогон;
-        в manual: запускаем сразу, если есть фокус.
-        """
-        if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
+        # не запускаем прогон, если гейты закрыты
+        if (not self._is_enabled()) or self._is_paused() or (self._is_alive() is False):
             return
 
         cfg = self._normalize_cfg(self._get_cfg() or {})
@@ -94,8 +90,8 @@ class AutoFarmService:
     # ---------- worker ----------
     def _loop(self, poll_interval: float):
         while self._run:
-            # Паузим сервис, если отключен/нет фокуса/мертвы
-            if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
+            # простаиваем при паузе/отключении/смерти
+            if (not self._is_enabled()) or self._is_paused() or (self._is_alive() is False):
                 time.sleep(self._poll)
                 continue
 
@@ -103,18 +99,18 @@ class AutoFarmService:
             mode = (cfg.get("mode") or "auto").lower()
 
             if mode == "manual":
-                # manual крутится постоянно, но только при фокусе
+                # manual крутится постоянно, но только когда нет паузы
                 self._run_once()
                 time.sleep(self._poll)
                 continue
 
-            # auto: ждём явного «пинка» из пайплайна
             fired = self._kick.wait(timeout=self._poll)
             if not fired:
                 continue
-            # на момент старта прогона перепроверим гейты
-            if (not self._is_enabled()) or (not self._is_focused()) or (self._is_alive() is False):
-                # не сбрасываем событие — пусть сохранится до возврата фокуса
+
+            # перепроверка перед стартом
+            if (not self._is_enabled()) or self._is_paused() or (self._is_alive() is False):
+                # событие не сбрасываем — сохранится до снятия паузы
                 continue
 
             self._kick.clear()
@@ -132,10 +128,10 @@ class AutoFarmService:
                 get_language=self._get_language,
                 cfg=cfg,
                 should_abort=lambda: (
-                    (not self._is_enabled())
-                    or (not self._is_focused())
-                    or (self._is_alive() is False)
-                    or self._cancel
+                        (not self._is_enabled())
+                        or self._is_paused()
+                        or (self._is_alive() is False)
+                        or self._cancel
                 ),
             )
 

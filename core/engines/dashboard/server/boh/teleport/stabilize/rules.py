@@ -24,11 +24,11 @@ def run_step(
     server = (pool_get(state, "config.server", "") or "").lower()
     location = (pool_get(state, "features.teleport.location", "") or "").strip()
 
-    # ⚠️ читаем флаг отсюда: features.stabilize.enabled
+    # флаг: features.stabilize.enabled
     do_optional = bool(pool_get(state, "features.stabilize.enabled", False))
 
     if not location:
-        # ничего стабилизировать
+        # ничего стабилизировать — считаем успехом
         return True, True
 
     eng = StabilizeEngine(
@@ -38,5 +38,6 @@ def run_step(
         get_window=helpers.get("get_window", lambda: None),
         get_language=helpers.get("get_language", lambda: "rus"),
     )
+
     ok = eng.run(location, do_optional=do_optional)
-    return (True if ok else False, True if ok else False)
+    return (ok, ok)

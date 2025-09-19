@@ -10,8 +10,7 @@ ZONES: Dict[str, dict] = {
 }
 
 # Карта "ключ страницы" -> имя файла в templates/<lang>/interface/pages/
-PAGES: Dict[str, str] = {
-    "dashboard_page": "dashboard_page.png",
+PAGES_BLOCKER: Dict[str, str] = {
     "inventory_page": "inventory_page.png",
     "skills_page": "skills_page.png",
     "map_page": "map_page.png",
@@ -21,22 +20,32 @@ PAGES: Dict[str, str] = {
     "clan_page": "clan_page.png",
     "menu_page": "menu_page.png",
     "actions_page": "actions_page.png",
+    "macros_page": "macros_page.png",
     # добавляй по мере появления ассетов
-}
-
-BLOCKERS: Dict[str, str] = {
-    "wrong_word_popup": "wrong_word_popup.png",
-    "black_loading_screen": "black_loading_screen.png",
-    "disconnect_popup": "disconnect_popup.png",
 }
 
 # Какими кнопками закрываем.
 # Файлы лежат в templates/<lang>/interface/buttons/
-CLOSE_BUTTONS: Dict[str, str] = {
-    "default_close_button": "default_close_button.png",
-    "dashboard_close_button": "dashboard_close_button.png",
-    "wrong_word_accept_button": "wrong_word_accept_button.png",
-    "disconnect_accept_button": "disconnect_accept_button.png",
+PAGES_CLOSE_BUTTONS: Dict[str, str] = {
+    "pages_close_button": "default_close_button.png",
+}
 
+DASHBOARD_BLOCKER: Dict[str, str] = {
+    "dashboard_blocker": "dashboard_page.png",
+    "dashboard_blocker_close_button": "dashboard_close_button.png",
+}
 
+LANGUAGE_BLOCKER: Dict[str, str] = {
+    "language_blocker": "wrong_word_popup.png",
+    "language_blocker_close_button": "wrong_word_accept_button.png",
+}
+
+DISCONNECT_BLOCKER: Dict[str, str] = {
+    "disconnect_blocker": "disconnect_popup.png",
+    "disconnect_blocker_close_button": "disconnect_accept_button.png",
+}
+
+DEATH: Dict[str, str] = {
+    "-": "-.png",
+    "--": "--.png",
 }

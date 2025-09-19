@@ -48,7 +48,7 @@ class WindowFocusService:
                     except Exception:
                         # подавляем исключения и пробуем перезапуститься
                         pass
-                    time.sleep(0.05)
+                    time.sleep(0.15)
             finally:
                 self._run = False
 

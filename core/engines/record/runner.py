@@ -1,11 +1,32 @@
-﻿# core/engines/record/runner.py
-from __future__ import annotations
-from typing import Any, Dict
+﻿from __future__ import annotations
+from typing import Any, Dict, List
 
 from core.state.pool import pool_get, pool_write
 from core.logging import console
 
 from .engine import RecordEngine
+
+# Зарезервированные имена/слаги, которые нельзя использовать как записи
+RESERVED_SLUGS = {"prefs"}
+
+
+def _is_reserved_slug(slug: str) -> bool:
+    return str(slug or "").strip().lower() in RESERVED_SLUGS
+
+
+def _filter_records(recs: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Убираем из списка любые записи с зарезервированными слагами."""
+    out: List[Dict[str, str]] = []
+    for r in (recs or []):
+        try:
+            if _is_reserved_slug(r.get("slug", "")):
+                continue
+            out.append(r)
+        except Exception:
+            # на всякий — пропустим битые элементы
+            pass
+    return out
+
 
 class RecordRunner:
     """
@@ -26,19 +47,39 @@ class RecordRunner:
     # ---- pool sync ----
 
     def sync_records_to_pool(self):
-        recs = self.engine.list_records()
+        raw = self.engine.list_records()
+        recs = _filter_records(raw)
         pool_write(self.state, "features.record", {"records": recs})
-        console.log(f"[record.runner] synced {len(recs)} record(s) from disk")
-        cur = pool_get(self.state, "features.record.current_record", "") or ""
+        console.log(f"[record.runner] synced {len(recs)} record(s) from disk (filtered)")
+
+        cur = str(pool_get(self.state, "features.record.current_record", "") or "")
+        # если в пуле лежит зарезервированное/невалидное — заменить
+        valid_slugs = {r["slug"] for r in recs}
+        if _is_reserved_slug(cur) or (cur and cur not in valid_slugs):
+            cur = ""
+
         if not cur and recs:
             pool_write(self.state, "features.record", {"current_record": recs[0]["slug"]})
 
     # ---- API для UI ----
 
     def create_record(self, name: str) -> str:
-        _name, slug = self.engine.create_record(name)
+        nm = str(name or "").strip()
+        if not nm:
+            raise ValueError("empty_name")
+        # запрет на имя "prefs"
+        if nm.lower() == "prefs":
+            raise ValueError("reserved_name")
+
+        _name, slug = self.engine.create_record(nm)
+
+        # страховка: если вдруг движок вернул зарезервированный slug — не принимаем
+        if _is_reserved_slug(slug):
+            raise ValueError("reserved_name")
+
+        # пересинхронизируем список (он уже будет отфильтрован)
         self.sync_records_to_pool()
-        console.hud("ok", f"[record] создана запись: {name}")
+        console.hud("ok", f"[record] создана запись: {nm}")
         console.log(f"[record.runner] create_record -> slug={slug}")
         return slug
 
@@ -51,6 +92,8 @@ class RecordRunner:
 
     def set_current(self, slug: str):
         try:
+            if _is_reserved_slug(slug):
+                return
             pool_write(self.state, "features.record", {"current_record": slug})
         except Exception:
             pass

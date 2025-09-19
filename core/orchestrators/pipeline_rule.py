@@ -30,7 +30,7 @@ class PipelineRule:
         self._active = False
         self._idx = 0
         self._running = False
-        self._busy_until = 0.0
+        self._busy_until = 0.0 #кулдаун. Метка, после которой можно снова работать.
 
         self._respawn_runner = RespawnRunner(
             engine=self._make_respawn_engine(),
@@ -61,19 +61,35 @@ class PipelineRule:
     def _hud_succ(self, text: str): console.hud("succ", text)
     def _hud_err(self, text: str):  console.hud("err",  text)
 
+    # --- helper ---
+    # cooldown
+    def _cd(self, secs: float):
+        self._busy_until = time.time() + max(0.0, secs)
     # ---------- lifecycle ----------
     def when(self, snap: Snapshot) -> bool:
+
+        if pool_get(self.s, "pipeline.paused", False):
+            # опц.: логнуть причину
+            pr = pool_get(self.s, "pipeline.pause_reason", "")
+            console.log(f"[PIPE] pause: pipeline.paused ({pr})")
+            return False
+
         now = time.time()
         if now < self._busy_until:
-            console.log(f"[PIPE] skip: cooldown left {self._busy_until - now:.2f}s")
+            console.log(f"[PIPE] cooldown left {self._busy_until - now:.2f}s")
             return False
         if self._running:
             console.log("[PIPE] skip: already running")
             return False
 
-        # --- ГЕЙТ ПО ФОКУСУ ---
-        if snap.is_focused is False:
-            console.log("[PIPE] skip: waiting is_focused = True to progress pipeline")
+        # === НОВОЕ: глобальные паузы вместо is_focused ===
+        # 1) если UI-страж занят или в паузе — ждём
+        if snap.extras.get("ui_guard_busy") or snap.extras.get("ui_guard_paused"):
+            console.log("[PIPE] pause: ui_guard is busy/paused")
+            return False
+        # 2) если любая фича/сервис на паузе — ждём
+        if snap.extras.get("any_feature_paused"):
+            console.log("[PIPE] pause: some feature/service is paused")
             return False
 
         order = self._order()
@@ -84,40 +100,30 @@ class PipelineRule:
         # Корректный детект смерти
         is_dead = (snap.alive is False) or (snap.hp_ratio is not None and snap.hp_ratio <= 0.001)
 
-        # if is_dead is True:
-        #     console.hud("att", "Вы мертвы")
-
-        # Тумблер авто-респавна — только из пула
         respawn_on = bool(pool_get(self.s, "features.respawn.enabled", False))
-        # Единственный _dbg — тик
-        macros_on = bool(pool_get(self.s, "features.macros.enabled", False))
+        macros_on  = bool(pool_get(self.s, "features.macros.enabled",  False))
         self._dbg(
             "tick: "
-            f"snap.is_focused={snap.is_focused} "
-            f"snap.alive={snap.alive} snap.is_dead={is_dead} snap.hp={snap.hp_ratio} "
-            f"respawn={respawn_on} macros={macros_on} active(pipeline?)={self._active} idx={self._idx} "
-            f"----------------------------------------"
+            f"alive={snap.alive} is_dead={is_dead} hp={snap.hp_ratio} "
+            f"respawn={respawn_on} macros={macros_on} active={self._active} idx={self._idx}"
         )
 
-        # Смерть есть, окно есть, а авто-респавн выключен — сообщим и подождём
         if (not self._active) and is_dead and (not respawn_on) and snap.has_window:
             console.log("[PIPE] no-activate: dead but respawn disabled")
             self._hud_err("[PIPE] смерть обнаружена, но авто-респавн выключен")
-            self._busy_until = time.time() + 2.0
+            self._cd(2.0)
             return False
 
-        # Активировать пайплайн
         if not self._active:
             if is_dead and respawn_on and snap.has_window:
                 self._active = True
                 self._idx = 0
-                pool_merge(self.s, "pipeline", {"active": True, "idx": 0, "last_step": ""})
+                pool_merge(self.s, "pipeline", {"active": True, "idx": 0, "last_step": "", "ts": time.time()})
                 console.log(f"[PIPE] activate: dead={is_dead} alive={snap.alive} hp={snap.hp_ratio}")
                 self._hud_succ("[PIPE] старт пайплайна после смерти")
                 return True
             return False
 
-        # уже активен — двигаем шаг
         return True
 
     def run(self, snap: Snapshot) -> None:
@@ -136,7 +142,7 @@ class PipelineRule:
 
             step = order[self._idx]
             console.log(f"[PIPE] run step[{self._idx}]: {step}")
-            pool_merge(self.s, "pipeline", {"active": True, "idx": self._idx, "last_step": step})
+            pool_merge(self.s, "pipeline", {"active": True, "idx": self._idx, "last_step": step, "ts": time.time()})
 
             ok, advance = self._run_step(step, snap)
 
@@ -144,7 +150,7 @@ class PipelineRule:
             if ok and advance:
                 self._idx += 1
                 pool_merge(self.s, "pipeline", {"idx": self._idx})
-                self._busy_until = time.time() + 0.5
+                self._cd(0.5)
                 console.log(f"[PIPE] advance -> idx={self._idx}")
 
             if self._idx >= len(order):
@@ -156,16 +162,29 @@ class PipelineRule:
     # ---------- steps ----------
     def _is_step_enabled(self, step: str) -> bool:
         feature = {
-            "respawn": "respawn",
-            "buff": "buff",
-            "macros": "macros",
+            "respawn":  "respawn",
+            "buff":     "buff",
+            "macros":   "macros",
             "teleport": "teleport",
-            "record": "record",
+            "record":   "record",
             "autofarm": "autofarm",
         }.get(step)
         if not feature:
             return True
         return bool(pool_get(self.s, f"features.{feature}.enabled", False))
+
+    def _is_step_paused(self, step: str) -> bool:
+        feature = {
+            "respawn":  "respawn",
+            "buff":     "buff",
+            "macros":   "macros",
+            "teleport": "teleport",
+            "record":   "record",
+            "autofarm": "autofarm",
+        }.get(step)
+        if not feature:
+            return False
+        return bool(pool_get(self.s, f"features.{feature}.paused", False))
 
     def _call_server_rule(self, engine: str, func: str = "run_step"):
         """По умолчанию ищем core.engines.{engine}.server.{server}.rules"""
@@ -208,7 +227,13 @@ class PipelineRule:
         # уважаем тумблер шага
         if not self._is_step_enabled(step):
             console.log(f"[PIPE] {step}: disabled -> pass")
+            # disabled — считаем успешно «пройдено»
             return True, True
+
+        # НОВОЕ: пауза шага — ждём (не продвигаем индекс!)
+        if self._is_step_paused(step):
+            console.log(f"[PIPE] {step}: paused -> wait")
+            return False, False
 
         # busy для шагов, которыми управляем из оркестратора
         def _busy_on(feat): self._set_busy(feat, True)
@@ -372,9 +397,10 @@ class PipelineRule:
 
     # ---------- utils ----------
     def _order(self) -> List[str]:
-        raw = list(pool_get(self.s, "pipeline.order", ["respawn", "buff", "macros", "record", "autofarm"]) or [])
+        raw = list(pool_get(self.s, "pipeline.order",
+                            ["respawn", "buff", "teleport", "macros", "record", "autofarm"]) or [])
         if not raw:
-            raw = ["respawn", "buff", "macros", "record", "autofarm"]
+            raw = ["respawn", "buff", "teleport", "macros", "record", "autofarm"]
         rest = [x for x in raw if x and x.lower() != "respawn"]
         return ["respawn"] + rest
 
@@ -429,8 +455,8 @@ class PipelineRule:
         console.log("[PIPE] finish: reset state")
         self._active = False
         self._idx = 0
-        self._busy_until = time.time() + 1.0
-        pool_merge(self.s, "pipeline", {"active": False, "idx": 0})
+        self._cd(1.0)
+        pool_merge(self.s, "pipeline", {"active": False, "idx": 0, "ts": time.time()})
 
 
 def make_pipeline_rule(state, ps_adapter, controller, helpers=None):

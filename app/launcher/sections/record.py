@@ -1,5 +1,4 @@
-﻿# app/launcher/sections/record.py
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import time, threading
 
@@ -65,8 +64,6 @@ class RecordSection:
                             return
                         vk = getattr(key, "vk", None)
                         ch = getattr(key, "char", None)
-                        # Срабатываем, если зажат Ctrl и нажата физическая клавиша R
-                        # (а также подстрахуемся по символу 'r'/'к')
                         if self._ctrl_down and (vk == VK_R or (ch and ch.lower() in ("r", "к"))):
                             console.log("[hotkey] CTRL+R fired (listener)")
                             self.record_hotkey("ctrlR")
@@ -89,7 +86,7 @@ class RecordSection:
                 console.log(f"[hotkey] keyboard listener start error: {e}")
                 self._kbd_listener = None
 
-        # --- мышь через pynput (клики и резервное колесо/движение) ---
+        # --- мышь через pynput ---
         if self._hk_available and self._mouse_listener is None:
             try:
                 eng = self.runner.engine
@@ -111,7 +108,6 @@ class RecordSection:
 
                 def _on_move(x, y):
                     try:
-                        # Если RAW поток жив — он отдаёт dx/dy; движение через pynput не пишем
                         if raw_alive():
                             return
                         eng.on_mouse_move(x, y)
@@ -120,20 +116,15 @@ class RecordSection:
 
                 def _on_scroll(x, y, dx, dy):
                     try:
-                        # Ctrl + wheel_down => «Запустить сейчас» с ожиданием фокуса
                         if self._ctrl_down and dy < 0:
                             now = time.time()
                             if now - self._last_ctrl_wheel_ts >= self._ctrl_wheel_cooldown_s:
                                 self._last_ctrl_wheel_ts = now
                                 console.log("[hotkey] CTRL + wheel_down -> record_play_now(wait focus)")
                                 self._play_now_hotkey()
-                            return  # не писать это в запись
-
-                        # Если RAW поток жив — колесо прийдёт оттуда; тут не пишем (чтобы не задублировать)
+                            return
                         if raw_alive():
                             return
-
-                        # обычная запись колеса через pynput (когда RAW недоступен)
                         if dy > 0:
                             eng.on_wheel_up()
                         elif dy < 0:
@@ -156,7 +147,6 @@ class RecordSection:
         if self._raw_thread is None:
             try:
                 def _raw_cb(dx: int, dy: int, flags: int, wheel: int, ts: float):
-                    # Все сырые события отдаём движку
                     try:
                         self.runner.engine.on_raw_input(dx, dy, flags, wheel, ts)
                     except Exception as e:
@@ -166,13 +156,11 @@ class RecordSection:
                 self._raw_thread.start()
                 console.log("[record] raw mouse thread started")
             except Exception as e:
-                # без фолбэков: если RAW не поднялся — пишем ошибку в лог
                 console.log(f"[record] raw mouse start error: {e}")
                 self._raw_thread = None
 
     def stop_global_hooks(self):
         """Остановить глобальные хуки, если они были запущены."""
-        # клавиатура
         try:
             if self._kbd_listener:
                 self._kbd_listener.stop()
@@ -184,7 +172,6 @@ class RecordSection:
             self._kbd_listener = None
             self._ctrl_down = False
 
-        # мышь pynput
         try:
             if self._mouse_listener:
                 self._mouse_listener.stop()
@@ -195,7 +182,6 @@ class RecordSection:
         finally:
             self._mouse_listener = None
 
-        # RAW
         try:
             if self._raw_thread:
                 self._raw_thread.stop()
@@ -211,7 +197,7 @@ class RecordSection:
         end = time.time() + max(0.0, timeout_s)
         while time.time() < end:
             v = pool_get(self.state, "focus.is_focused", None)
-            if v is not False:   # True или None — считаем, что можно
+            if v is not False:
                 return True
             time.sleep(0.05)
         v = pool_get(self.state, "focus.is_focused", None)
@@ -225,7 +211,6 @@ class RecordSection:
             return None
 
     def _play_now_hotkey(self):
-        """Горячий вызов 'Запустить сейчас' в отдельном потоке (не блокировать слушатели)."""
         def _run():
             try:
                 r = self.record_play_now()
@@ -248,12 +233,23 @@ class RecordSection:
         name = str(name or "").strip()
         if not name:
             return {"ok": False, "error": "empty_name"}
-        slug = self.runner.create_record(name)
         try:
-            pool_write(self.state, "features.record", {"current_record": slug})
-        except Exception:
-            pass
-        return {"ok": True, "slug": slug}
+            slug = self.runner.create_record(name)
+            try:
+                pool_write(self.state, "features.record", {"current_record": slug})
+            except Exception:
+                pass
+            return {"ok": True, "slug": slug}
+        except ValueError as e:
+            code = str(e) or "error"
+            if code == "reserved_name":
+                return {"ok": False, "error": "reserved_name"}
+            if code == "empty_name":
+                return {"ok": False, "error": "empty_name"}
+            return {"ok": False, "error": code}
+        except Exception as e:
+            console.log(f"[record.ui] create error: {e}")
+            return {"ok": False, "error": "exception"}
 
     def record_set_current(self, slug: str) -> Dict[str, Any]:
         slug = str(slug or "").strip()
@@ -301,6 +297,5 @@ class RecordSection:
         }
 
 
-# Фабрика для регистратора секций лаунчера
 def create(*, state: Dict[str, Any], controller: Any, get_window):
     return RecordSection(state=state, controller=controller, get_window=get_window)

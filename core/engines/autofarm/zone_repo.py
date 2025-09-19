@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.logging import console
 
-AF_ROOT = os.path.join("core", "engines", "autofarm")
+AF_ROOT = os.path.abspath(os.path.dirname(__file__))  # .../core/engines/autofarm
 
 def _zones_json_candidates(server: str) -> List[str]:
     # серверный приоритет + общий fallback (ИМЕННО так)
@@ -73,7 +73,7 @@ def _zone_gallery(server: str, zone_id: str, z: dict) -> List[Dict[str, str]]:
       core/engines/autofarm/server/<server>/zones/<zone_id>/<name>
     Отдаём Data URI (data:*), чтобы UI мог сразу отрисовать без файловых путей.
     """
-    base = Path("core") / "engines" / "autofarm" / "server" / server / "zones" / zone_id
+    base = Path(AF_ROOT) / "server" / server / "zones" / zone_id
     base_gallery = base / "gallery"
 
     out: List[Dict[str, str]] = []

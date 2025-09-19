@@ -16,6 +16,12 @@
   --gap: 6px;
 }
 
+/* всё, с чем взаимодействуем, точно не тянет */
+button, input, select, textarea, label, a, summary, details,
+[role="button"], [contenteditable], .no-drag, .interactive, .clickable {
+  -webkit-app-region: no-drag !important;
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
@@ -25,6 +31,13 @@ body {
   font: 600 13px/1.45 "Segoe UI", Tahoma, Verdana, Arial, system-ui;
 }
 
+
+/* всё, с чем взаимодействуем, точно не тянет
+button, input, select, textarea, label, a, summary, details,
+[role="button"], [contenteditable], .no-drag, .interactive, .clickable {
+  -webkit-app-region: no-drag !important;
+}*/
+
 html, body { scrollbar-gutter: stable; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: #0f1114; }
@@ -33,7 +46,13 @@ html, body { scrollbar-gutter: stable; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 /* Header */
-.hdr { padding: 12px; background: #121417; border-bottom: 1px solid var(--line); }
+.hdr {
+    padding: 12px;
+    background: #3e4249;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0px 0px 12px 12px;
+    margin: 0 12px;
+}
 .brand { display: flex; align-items: center; gap: 10px; }
 .icon { width: 26px; height: 26px; }
 .title { font-size: 18px; font-weight: 800; color: var(--accent); }

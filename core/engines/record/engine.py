@@ -98,7 +98,11 @@ class RecordEngine:
         self._r_path: List[Point] = []
 
         self._raw_start_xy: Optional[Point] = None
+        self._last_stop_reason: Optional[str] = None
     # -------- pool helpers --------
+    def last_stop_reason(self) -> Optional[str]:
+        return self._last_stop_reason
+
     def _set_busy(self, val: bool):
         try:
             pool_write(self.s, "features.record", {"busy": bool(val), "ts": _now()})
@@ -221,7 +225,8 @@ class RecordEngine:
         return True
 
     # -------- playback API --------
-    def play(self, slug: Optional[str] = None, *, wait_focus_cb=None, countdown_s: float = 1.0) -> bool:
+    def play(self, slug: Optional[str] = None, *, countdown_s: float = 1.0,
+             should_abort: Optional[Callable[[], bool]] = None) -> bool:
         if self._recording or self._playing:
             return False
 
@@ -247,12 +252,6 @@ class RecordEngine:
             console.hud("err", "[record] запись старого формата (нет t)")
             return False
 
-        if callable(wait_focus_cb):
-            ok = bool(wait_focus_cb(timeout_s=6.0))
-            if not ok:
-                console.hud("err", "[record] окно без фокуса")
-                return False
-
         for i in range(int(countdown_s or 0), 0, -1):
             console.hud("att", f"Воспроизведение записи через {i}")
             time.sleep(1.0)
@@ -261,9 +260,9 @@ class RecordEngine:
         self._set_busy(True)
         self._set_status("playing")
         self._playing = True
-        self._last_stop_reason = None  # <-- сброс причины
+        self._last_stop_reason = None
         try:
-            ok = self._play_steps(steps)   # <-- теперь bool
+            ok = self._play_steps(steps, should_abort=should_abort or (lambda: False))
             return bool(ok)
         finally:
             self._playing = False
@@ -327,19 +326,11 @@ class RecordEngine:
         console.log(f"[record.engine] rdrag_raw captured, steps={len(deltas)}")
 
     # -------- playback impl --------
-    def _play_steps(self, steps: List[Dict[str, Any]]) -> bool:
+    def _play_steps(self, steps: List[Dict[str, Any]],
+                    should_abort: Optional[Callable[[], bool]] = None) -> bool:
         win = self.get_window() or {}
-        x0 = int(win.get("x", 0));
-        y0 = int(win.get("y", 0))
-
-        def _has_focus() -> bool:
-            v = pool_get(self.s, "focus.is_focused", None)
-            return v is not False  # None считаем допустимым
-
-        # если фокуса нет — сразу выходим
-        if not _has_focus():
-            self._last_stop_reason = "focus_lost"
-            return False
+        x0 = int(win.get("x", 0)); y0 = int(win.get("y", 0))
+        should_abort = should_abort or (lambda: False)
 
         def _move_client(cx: int, cy: int):
             try:
@@ -354,46 +345,43 @@ class RecordEngine:
                 pass
 
         def _send_mv_rel(dx: int, dy: int):
-            dx = int(dx);
-            dy = int(dy)
+            dx = int(dx); dy = int(dy)
             while dx != 0 or dy != 0:
+                if should_abort():
+                    self._last_stop_reason = "aborted"
+                    return
                 stepx = max(-self.MV_CHUNK, min(self.MV_CHUNK, dx))
                 stepy = max(-self.MV_CHUNK, min(self.MV_CHUNK, dy))
                 _send(f"mv {stepx} {stepy}")
-                dx -= stepx;
-                dy -= stepy
+                dx -= stepx; dy -= stepy
 
-        # события по времени
         events = sorted(steps, key=lambda e: float(e["t"]))
 
-        # 1) Один раз переместиться в первую абсолютную точку записи (если есть x,y)
-        start_pos = None
-        for ev in events:
-            if "x" in ev and "y" in ev:
-                start_pos = (int(ev["x"]), int(ev["y"]))
-                break
+        # 1) «Подвести» курсор к первой абсолютной точке, если она есть
+        start_pos = next(((int(ev["x"]), int(ev["y"])) for ev in events if "x" in ev and "y" in ev), None)
         if start_pos is not None:
+            if should_abort():
+                self._last_stop_reason = "aborted"; return False
             _move_client(start_pos[0], start_pos[1])
             time.sleep(self.CLICK_AFTER_MOVE_S)
 
         start_wall = time.time()
 
         for ev in events:
-            # до наступления времени события — «умный» сон с проверкой фокуса
+            # умный сон до t события
             t_target = float(ev["t"])
             while True:
+                if should_abort():
+                    self._last_stop_reason = "aborted"
+                    return False
                 now_elapsed = time.time() - start_wall
                 delay = t_target - now_elapsed
                 if delay <= 0:
                     break
-                chunk = 0.10 if delay > 0.10 else delay
-                time.sleep(chunk)
-                if not _has_focus():
-                    self._last_stop_reason = "focus_lost"
-                    return False
+                time.sleep(min(0.10, delay))
 
-            if not _has_focus():
-                self._last_stop_reason = "focus_lost"
+            if should_abort():
+                self._last_stop_reason = "aborted"
                 return False
 
             typ = ev.get("type")
@@ -405,9 +393,7 @@ class RecordEngine:
                 _send("l")
 
             elif typ == "rdrag_raw":
-                # Если событие содержит стартовые координаты — перейти туда перед R-press
-                sx = ev.get("x");
-                sy = ev.get("y")
+                sx = ev.get("x"); sy = ev.get("y")
                 if sx is not None and sy is not None:
                     _move_client(int(sx), int(sy))
                     time.sleep(self.CLICK_AFTER_MOVE_S)
@@ -418,22 +404,18 @@ class RecordEngine:
 
                 _send("R-press")
                 for dx, dy, dt in deltas:
-                    if not _has_focus():
-                        self._last_stop_reason = "focus_lost"
+                    if should_abort():
+                        self._last_stop_reason = "aborted"
                         return False
                     if dx or dy:
                         _send_mv_rel(dx, dy)
                     if dt and dt > 0:
-                        # сон внутри драга — тоже с проверкой фокуса
                         end_ts = time.time() + float(dt)
-                        while True:
-                            if not _has_focus():
-                                self._last_stop_reason = "focus_lost"
+                        while time.time() < end_ts:
+                            if should_abort():
+                                self._last_stop_reason = "aborted"
                                 return False
-                            now = time.time()
-                            if now >= end_ts:
-                                break
-                            time.sleep(min(0.08, end_ts - now))
+                            time.sleep(min(0.08, end_ts - time.time()))
                 _send("R-release")
 
             elif typ == "wheel_up":

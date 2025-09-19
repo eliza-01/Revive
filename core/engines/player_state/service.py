@@ -18,10 +18,15 @@ class PlayerStateService:
         server: Callable[[], str],
         get_window: Callable[[], Optional[Dict[str, Any]]],
         on_update: Optional[Callable[[Dict[str, Any]], None]] = None,
+        # ← НОВОЕ: опциональные колбэки паузы (могут не передаваться)
+        is_paused: Optional[Callable[[], bool]] = None,
+        get_pause_reason: Optional[Callable[[], str]] = None,
     ):
         self._server = server
         self._get_window = get_window
         self._on_update = on_update
+        self._is_paused = is_paused
+        self._get_pause_reason = get_pause_reason
         self._run = False
         self._thr: Optional[threading.Thread] = None
 
@@ -43,6 +48,9 @@ class PlayerStateService:
                             on_update=self._on_update,
                             cfg={"poll_interval": poll_interval},
                             should_abort=lambda: (not self._run),
+                            # ← НОВОЕ: проброс паузы дальше (если заданы)
+                            is_paused=self._is_paused,
+                            get_pause_reason=self._get_pause_reason,
                         )
                     except Exception:
                         # глушим исключения цикла опроса и пробуем перезапуститься

@@ -21,33 +21,13 @@ def _normalize_cfg(state: Dict[str, Any]) -> Dict[str, Any]:
     return base
 
 
-def _is_focused_now(
-    *,
-    state: Dict[str, Any],
-    ps_adapter,
-    snap: Snapshot,
-) -> Optional[bool]:
-    """
-    Свежий фокус берём по приоритету:
-    1) ps_adapter.last()['focus']['is_focused'] — источник с таймстампом
-    2) pool: focus.is_focused
-    3) исходный snap.is_focused
-    Может вернуть None (неизвестно).
-    """
+def _paused_now(state: Dict[str, Any]) -> tuple[bool, str]:
     try:
-        st = ps_adapter.last() or {}
-        foc = st.get("focus") or {}
-        v = foc.get("is_focused", None)
-        if isinstance(v, bool):
-            return v
+        p = bool(pool_get(state, "features.autofarm.paused", False))
+        reason = str(pool_get(state, "features.autofarm.pause_reason", "") or "")
+        return p, reason
     except Exception:
-        pass
-
-    v = pool_get(state, "focus.is_focused", None)
-    if isinstance(v, bool):
-        return v
-
-    return snap.is_focused
+        return False, ""
 
 
 def run_step(
@@ -81,18 +61,23 @@ def run_step(
         console.hud("err", "[AUTOFARM] нет окна — пропуск")
         return False, False
 
-    # жив ли игрок?
+    # мёртв — пропуск шага
     alive = pool_get(state, "player.alive", None)
     if alive is False:
         console.hud("ok", "[AUTOFARM] персонаж мёртв — пропуск (до респавна)")
         return True, True
 
-    # уважение фокуса: если его нет — НЕ идём дальше, не тратим кулдаун
-    focused = _is_focused_now(state=state, ps_adapter=ps_adapter, snap=snap)
-    if focused is False:
-        pool_merge(state, "features.autofarm", {"waiting": True, "status": "unfocused"})
-        console.hud("ok", "[AUTOFARM] пауза: окно без фокуса — жду")
+    # пауза?
+    paused, reason = _paused_now(state)
+    if paused:
+        pool_merge(state, "features.autofarm", {
+            "waiting": True,
+            "status": ("paused" if not reason else f"paused:{reason}")
+        })
+        console.hud("ok", f"[AUTOFARM] пауза: {reason or 'остановлено'} — жду")
         return False, False
+
+    # активны — сбрасываем waiting
     pool_merge(state, "features.autofarm", {"waiting": False})
 
     # режим

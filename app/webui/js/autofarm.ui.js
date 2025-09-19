@@ -27,7 +27,11 @@
   }
   const saveDebounced = (() => {
     let t;
-    return () => { clearTimeout(t); t = setTimeout(saveNow, 250); };
+    return () => {
+      if (_booting) return;                 // ← не сейвим во время гидратации
+      clearTimeout(t);
+      t = setTimeout(saveNow, 250);
+    };
   })();
 
   async function fetchProfessions() {
@@ -79,6 +83,8 @@
     monsters: [],   // [slug,...]
     zone: ""
   };
+  // подавляем автосейв во время первичной гидратации
+  let _booting = false;
 
   // === Утилиты ===
   const $ = (id) => document.getElementById(id);
@@ -290,6 +296,87 @@
     showModal("afZoneInfoModal", true);
   }
 
+  // ждём, пока pywebview.api вообще появится и будет нужный метод
+  function waitForApi(methodName = null, timeoutMs = 8000) {
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      const tick = () => {
+        const a = (window.pywebview && window.pywebview.api) ? window.pywebview.api : null;
+        const ok = a && (!methodName || typeof a[methodName] === "function");
+        if (ok) return resolve(a);
+        if (Date.now() - started >= timeoutMs) {
+          return reject(new Error("pywebview.api is not ready"));
+        }
+        setTimeout(tick, 50);
+      };
+      tick();
+    });
+  }
+
+  async function hydrateFromPool() {
+    _booting = true;
+    try {
+      const a = await waitForApi("autofarm_get");       // ← ЖДЁМ, а не выходим
+      const r = await a.autofarm_get();
+      if (!r || !r.ok) return;
+
+      // раскладываем в state
+      state.enabled    = !!r.enabled;
+      state.mode       = r.mode || "auto";
+      const cfg        = r.config || {};
+      state.profession = cfg.profession || "";
+      state.skills     = Array.isArray(cfg.skills) && cfg.skills.length
+        ? cfg.skills.map(s => {
+            const v = Number(s?.cast_ms);
+            return { key: s?.key || "1", slug: s?.slug || "", cast_ms: Number.isFinite(v) ? v : 1100 };
+          })
+        : [{ key:"1", slug:"", cast_ms:1100 }];
+      state.zone       = cfg.zone || "";
+      state.monsters   = Array.isArray(cfg.monsters) ? cfg.monsters.slice() : [];
+
+      // режимы в селект
+      const modeSel = document.getElementById("afMode");
+      if (modeSel) {
+        const modes = Array.isArray(r.modes) && r.modes.length ? r.modes : ["auto","manual"];
+        modeSel.innerHTML = "";
+        modes.forEach(m => modeSel.appendChild(new Option(m, m)));
+        modeSel.value = state.mode;
+      }
+
+      const chk = document.getElementById("chkAF");
+      if (chk) chk.checked = state.enabled;
+
+      await fillProfessions();
+      const profSel = document.getElementById("afProf");
+      if (profSel) profSel.value = state.profession || "";
+
+      await renderSkillsBlock();
+
+      await fillZones();
+      const zoneSel = document.getElementById("afZone");
+      if (zoneSel) {
+        const valid = Array.from(zoneSel.options).some(o => o.value === state.zone);
+        zoneSel.value = valid ? state.zone : "";
+        if (!valid) state.zone = "";
+      }
+
+      await renderMonsters();
+
+      const v  = validate();
+      const st = document.getElementById("status-af");
+      if (st) {
+        st.textContent = v.ok ? "Настроено" : (v.reason || "Не настроено");
+        st.classList.toggle("ok", v.ok);
+        st.classList.toggle("warn", !v.ok);
+      }
+    } catch (e) {
+      console.warn("[AF] hydrate error:", e);
+    } finally {
+      _booting = false;
+    }
+  }
+
+
   // === События ===
   function wireEvents() {
     const chk   = $("chkAF");
@@ -460,5 +547,21 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", wireEvents);
+  let _hydratedOnce = false;
+  async function bootOnce() {
+    if (_hydratedOnce) return;
+    _hydratedOnce = true;
+    await hydrateFromPool();
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    wireEvents();
+    // старта может хватить, если API уже есть
+    bootOnce();
+  });
+
+  window.addEventListener("pywebviewready", () => {
+    // этот эвент гарантирует готовый API — дублируем на всякий
+    bootOnce();
+  });
 })();
