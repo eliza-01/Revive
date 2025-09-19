@@ -1,0 +1,18 @@
+{
+  "location": {
+    "DragonValley": {
+      "anchor": {
+        "rus": "Гильмор",
+        "eng": "Gilmore"
+      },
+      "travel_time": 2000
+    },
+    "VarkaSilenosStronghold": {
+      "anchor": {
+        "rus": "Наран",
+        "eng": "Наран"
+      },
+      "travel_time": 2000
+    }
+  }
+}

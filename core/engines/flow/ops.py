@@ -9,6 +9,16 @@ from core.engines.flow.engine import FlowEngine
 from core.vision.matching.template_matcher_2 import match_key_in_zone_single
 from core.logging import console
 
+# ---- logging toggle for ops ----
+OPS_LOGGING: bool = False
+
+def _ops_log(msg: str) -> None:
+    if OPS_LOGGING:
+        try:
+            console.log(str(msg))
+        except Exception:
+            pass
+
 _RU2US = {
     # верхний ряд
     "й":"q","ц":"w","у":"e","к":"r","е":"t","н":"y","г":"u","ш":"i","щ":"o","з":"p","х":"[","ъ":"]",
@@ -176,7 +186,7 @@ class FlowCtx:
 
 
 class FlowOpExecutor:
-    def __init__(self, ctx: FlowCtx, logger: Callable[[str], None] = console.log):
+    def __init__(self, ctx: FlowCtx, logger: Callable[[str], None] = _ops_log):
         self.ctx = ctx
         self._log = logger
 
@@ -450,7 +460,7 @@ class FlowOpExecutor:
                     pass
                 next_probe = now + interval_s
             time.sleep(0.08)
-        console.log("[flow] dashboard still locked")
+        self._log("[flow] dashboard still locked")
         return False
 
     def _while_visible_send(self, step: Dict, thr: float) -> bool:
@@ -470,7 +480,7 @@ class FlowOpExecutor:
                     pass
                 next_probe = now + interval_s
             time.sleep(0.05)
-        console.log(f"[flow] still visible: {tpl_key}")
+        self._log(f"[flow] still visible: {tpl_key}")
         return False
 
     def _click_by_resolver(self, zone_key: str, which: str, step: Dict, thr: float) -> bool:

@@ -1,7 +1,7 @@
 ﻿# app/launcher/wiring.py
 from __future__ import annotations
 from typing import Dict, Any
-import importlib
+import threading
 
 from core.arduino.connection import ReviveController
 
@@ -13,8 +13,8 @@ from core.config.servers import (
     get_buff_methods,
     get_buff_modes,
     get_teleport_methods,
-    get_teleport_categories,      # ← ДОБАВЛЕНО
-    get_teleport_locations,       # ← ДОБАВЛЕНО
+    get_teleport_categories,
+    get_teleport_locations,
 )
 
 # секции
@@ -30,9 +30,6 @@ from .sections.record import RecordSection
 
 # оркестратор
 from core.orchestrators.pipeline_rule import make_pipeline_rule
-
-# движки/сервисы (правила)
-from core.engines.window_focus.rules import make_focus_pause_rule
 
 # пул
 from core.state.pool import ensure_pool, pool_get, pool_write, dump_pool
@@ -55,12 +52,11 @@ try:
 except Exception as _e:
     _HK_AVAILABLE = False
 
+
 def build_container(window, local_version: str, hud_window=None) -> Dict[str, Any]:
     controller = ReviveController()
 
     # === servers / langs from manifest ===
-    # ⚠ тут просто проверка наличия манифеста;
-    # сами «выбранные» значения возьмём из prefs с валидацией
     servers = list_servers()
     if not servers:
         raise RuntimeError("No servers in manifest")
@@ -75,13 +71,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     # === prefs: загрузить и разрешить в значения для пула
     prefs = load_prefs()
     resolved = resolve_initial_with_prefs(prefs)
-    # вызываем расширенный в prefs.py
-    # console.log("[prefs] resolved snapshot: "
-    #             f"server={resolved.get('config.server')}, "
-    #             f"lang={resolved.get('config.language')}, "
-    #             f"tp={resolved.get('features.teleport.category')}/"
-    #             f"{resolved.get('features.teleport.location')}, "
-    #             f"buff={resolved.get('features.buff.method')}/{resolved.get('features.buff.mode')}")
 
     # config.* + ui.sections
     pool_write(state, "config", {
@@ -109,7 +98,6 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     })
 
     # --- features: respawn
-    # включения/поля — если были в prefs, уже попали в resolved
     pool_write(state, "features.respawn", {
         "enabled":           bool(resolved.get("features.respawn.enabled", False)),
         "wait_enabled":      bool(resolved.get("features.respawn.wait_enabled", False)),
@@ -151,8 +139,8 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
     # --- features: autofarm
     pool_write(state, "features.autofarm", {
         "enabled": bool(resolved.get("features.autofarm.enabled", False)),
-        "modes": list(resolved.get("features.autofarm.modes", []) or []),  # ← ДОБАВЛЕНО
-        "mode": resolved.get("features.autofarm.mode", ""),  # ← ДОБАВЛЕНО
+        "modes": list(resolved.get("features.autofarm.modes", []) or []),
+        "mode": resolved.get("features.autofarm.mode", ""),
         "config": dict(resolved.get("features.autofarm.config", {}) or {}),
         "status": "idle",
     })
@@ -201,6 +189,12 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         except Exception as e:
             console.log(f"[wiring] expose() failed in {sec.__class__.__name__}: {e}")
 
+    # Экспорт ui_guard_watch в API
+    try:
+        exposed["ui_guard_watch"] = services.ui_guard_watch
+    except Exception:
+        pass
+
     # pool_dump для JS (pywebview.api.pool_dump)
     def pool_dump_api():
         try:
@@ -216,17 +210,21 @@ def build_container(window, local_version: str, hud_window=None) -> Dict[str, An
         console.log(f"[wiring] expose error: {e}")
 
     # === Правила оркестратора ===
+    # Паузы раздаёт CoordinatorService, PS-правила выполняются собственным раннером.
     rules = [
-        make_focus_pause_rule(state, {"grace_seconds": 0.3}),
         make_pipeline_rule(state, ps_adapter, controller, helpers={
             "record_engine": (rec_sec.runner.engine if rec_sec else None)
         }),
     ]
-    loop = OrchestratorLoop(state, ps_adapter, rules, ui.schedule, period_ms=2222)
+
+    loop = OrchestratorLoop(state, ps_adapter, rules, ui.schedule, period_ms=1500)
 
     # старт сервисов + оркестратора
     services.start()
     loop.start()
+
+    console.hud("att", "Сервисы запущены ❤️")
+    threading.Timer(5.0, console.hud_clear).start()
 
     def shutdown():
         try:

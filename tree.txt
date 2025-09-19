@@ -23,6 +23,7 @@ Revive
 │   │   ├── __init__.py
 │   │   ├── base.py
 │   │   ├── main.py
+│   │   ├── prefs.py
 │   │   └── wiring.py
 │   ├── webui
 │   │   ├── assets
@@ -35,6 +36,10 @@ Revive
 │   │   │   │   └── songs
 │   │   │   │       ├── song_of_earth.png
 │   │   │   │       └── song_of_vitality.png
+│   │   │   ├── lineage
+│   │   │   │   └── BOH
+│   │   │   │       └── interface
+│   │   │   │           └── dashboard_buffer_profile.png
 │   │   │   ├── icon.png
 │   │   │   ├── logo.ico
 │   │   │   └── preloader1.gif
@@ -195,6 +200,12 @@ Revive
 │   │   │   ├── service.py
 │   │   │   ├── skill_repo.py
 │   │   │   └── zone_repo.py
+│   │   ├── coordinator
+│   │   │   ├── __init__.py
+│   │   │   ├── engine.py
+│   │   │   ├── rules.py
+│   │   │   ├── runner.py
+│   │   │   └── service.py
 │   │   ├── dashboard
 │   │   │   ├── server
 │   │   │   │   ├── boh
@@ -287,9 +298,11 @@ Revive
 │   │   │   └── ops.py
 │   │   ├── macros
 │   │   │   ├── server
-│   │   │   │   └── boh
-│   │   │   │       ├── engine.py
-│   │   │   │       └── rules.py
+│   │   │   │   ├── boh
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── engine.py
+│   │   │   │   │   └── rules.py
+│   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
 │   │   │   ├── runner.py
 │   │   │   └── service.py
@@ -313,6 +326,8 @@ Revive
 │   │   │   │   │   │   └── slash.png
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
+│   │   │   │   │   ├── readme.md
+│   │   │   │   │   ├── rules.py
 │   │   │   │   │   └── state_data.py
 │   │   │   │   ├── l2mad
 │   │   │   │   │   ├── __init__.py
@@ -320,9 +335,10 @@ Revive
 │   │   │   │   │   └── state_data.py
 │   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
+│   │   │   ├── rules_engine.py
+│   │   │   ├── rules_runner.py
 │   │   │   ├── runner.py
-│   │   │   ├── service.py
-│   │   │   └── watcher.py
+│   │   │   └── service.py
 │   │   ├── record
 │   │   │   ├── engine.py
 │   │   │   ├── rules.py
@@ -333,17 +349,12 @@ Revive
 │   │   │   │   │   ├── templates
 │   │   │   │   │   │   ├── eng
 │   │   │   │   │   │   ├── rus
-│   │   │   │   │   │   │   ├── Новая папка
-│   │   │   │   │   │   │   │   ├── accept_button.png
-│   │   │   │   │   │   │   │   ├── decline_button.png
-│   │   │   │   │   │   │   │   ├── reborn_banner2.png
-│   │   │   │   │   │   │   │   ├── reborn_banner.png
-│   │   │   │   │   │   │   │   └── to_village_button.png
 │   │   │   │   │   │   │   ├── accept_button.png
 │   │   │   │   │   │   │   ├── decline_button.png
 │   │   │   │   │   │   │   ├── reborn_banner2.png
 │   │   │   │   │   │   │   ├── reborn_banner.png
 │   │   │   │   │   │   │   └── to_village_button.png
+│   │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   │   └── resolver.py
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── engine.py
@@ -371,43 +382,43 @@ Revive
 │   │   │   │       │   ├── rus
 │   │   │   │       │   │   └── interface
 │   │   │   │       │   │       ├── blockers
-│   │   │   │       │   │       │   ├── black_loading_screen.png
-│   │   │   │       │   │       │   ├── disconnect_popup.png
-│   │   │   │       │   │       │   └── wrong_word_popup.png
 │   │   │   │       │   │       ├── buttons
+│   │   │   │       │   │       │   └── default_close_button.png
+│   │   │   │       │   │       ├── dashboard
 │   │   │   │       │   │       │   ├── dashboard_close_button.png
-│   │   │   │       │   │       │   ├── default_close_button.png
+│   │   │   │       │   │       │   └── dashboard_page.png
+│   │   │   │       │   │       ├── disconnect
 │   │   │   │       │   │       │   ├── disconnect_accept_button.png
-│   │   │   │       │   │       │   └── wrong_word_accept_button.png
+│   │   │   │       │   │       │   └── disconnect_popup.png
 │   │   │   │       │   │       ├── pages
 │   │   │   │       │   │       │   ├── actions_page.png
 │   │   │   │       │   │       │   ├── clan_page.png
-│   │   │   │       │   │       │   ├── dashboard_page.png
 │   │   │   │       │   │       │   ├── inventory_page.png
+│   │   │   │       │   │       │   ├── macros_page.png
 │   │   │   │       │   │       │   ├── map_page2.png
 │   │   │   │       │   │       │   ├── map_page.png
 │   │   │   │       │   │       │   ├── menu_page.png
 │   │   │   │       │   │       │   ├── quest_page.png
 │   │   │   │       │   │       │   ├── skills_page.png
 │   │   │   │       │   │       │   └── status_page.png
-│   │   │   │       │   │       └── screens
-│   │   │   │       │   │           ├── choose_character_screen.png
-│   │   │   │       │   │           ├── choose_server_screen.png
-│   │   │   │       │   │           ├── loading_screen.png
-│   │   │   │       │   │           └── login_screen.png
+│   │   │   │       │   │       ├── screens
+│   │   │   │       │   │       │   ├── black_loading_screen.png
+│   │   │   │       │   │       │   ├── choose_character_screen.png
+│   │   │   │       │   │       │   ├── choose_server_screen.png
+│   │   │   │       │   │       │   ├── loading_screen.png
+│   │   │   │       │   │       │   └── login_screen.png
+│   │   │   │       │   │       └── wrong_word
+│   │   │   │       │   │           ├── wrong_word_accept_button.png
+│   │   │   │       │   │           └── wrong_word_popup.png
 │   │   │   │       │   └── resolver.py
 │   │   │   │       ├── engine.py
 │   │   │   │       └── ui_guard_data.py
 │   │   │   ├── __init__.py
+│   │   │   ├── readme.md
 │   │   │   └── runner.py
 │   │   ├── window_focus
-│   │   │   ├── server
-│   │   │   │   ├── common
-│   │   │   │   │   ├── __init__.py
-│   │   │   │   │   └── engine.py
-│   │   │   │   └── __init__.py
 │   │   │   ├── __init__.py
-│   │   │   ├── rules.py
+│   │   │   ├── engine.py
 │   │   │   ├── runner.py
 │   │   │   └── service.py
 │   │   └── __init__.py
@@ -447,9 +458,6 @@ Revive
 │   ├── logging_setup.py
 │   └── updater.py
 ├── debug_af_boh
-│   ├── mask_alive.png
-│   ├── mask_any.png
-│   └── target_zone_bgr.png
 ├── documents
 │   ├── test_cases
 │   │   ├── revive_buff_macro_tp.md
@@ -464,7 +472,7 @@ Revive
 │   ├── dump.py
 │   ├── headers.py
 │   ├── hotkey.py
-│   ├── list_project_files.py
+│   ├── list.py
 │   ├── PRO_STRUC.txt
 │   ├── PROJECT_STRUCTURE.txt
 │   ├── rectest.py
@@ -472,6 +480,7 @@ Revive
 ├── 4.4
 ├── .gitignore
 ├── build.bat
+├── Dict[str
 ├── files.json
 ├── files.txt
 ├── latest_version.txt

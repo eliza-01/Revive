@@ -1,0 +1,38 @@
+{
+  "Varka_1": {
+    "title_rus": "Варка",
+    "title_eng": "Varka",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
+      "rus_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
+      "eng_short": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing"],
+      "rus_short": ["Командир Фавнов", "Элитный страж", "Рекрут", "Пехотинец", "Луговая"]
+    }
+  },
+  "SilentValley": {
+    "title_rus": "Silent Valley",
+    "title_eng": "Silent Valley",
+    "about": { "rus": "Сосаловка 66+", "eng": "Сосаловка 66+" },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng_full": ["Черная Тень", "Осколок Иллюзии", "Громадный След", "Воин Древних Времен", "Шаман Древних Времен", "Солдат Древних Времен", "Забытые Древние Жители"],
+      "rus_full": ["Черная Тень", "Осколок Иллюзии", "Громадный След", "Воин Древних Времен", "Шаман Древних Времен", "Солдат Древних Времен", "Забытые Древние Жители"],
+      "eng_short": ["Черная Тень", "Осколок Иллюзии", "Громадный След", "Воин Древних Времен", "Шаман Древних Времен", "Солдат Древних Времен", "Забытые Древние Жители"],
+      "rus_short": ["Черная", "Осколок", "Громадный", "Громадный", "Воин", "Шаман", "Солдат", "Забытые"]
+    }
+  },
+  "Dion_1": {
+    "title_rus": "Дион",
+    "title_eng": "Dion",
+    "about": { "rus": "Описание зоны...", "eng": "Zone description..." },
+    "gallery": ["map.png", "spot_north.png", "spot_south.png"],
+    "monsters": {
+      "eng_full": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Хобгоблин", "Людоед Тумран"],
+      "rus_full": ["Гризли Диона", "Рейнджер Гноллов", "Монстроглаз Искатель", "Хобгоблин", "Людоед Тумран"],
+      "eng_short": ["Гризли", "Рейнджер", "Монстроглаз", "Хобгоблин", "Людоед"],
+      "rus_short": ["Гризли", "Рейнджер", "Монстроглаз", "Хобгоблин", "Людоед"]
+    }
+  }
+}

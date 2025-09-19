@@ -77,7 +77,7 @@ def run_step(*, state, ps_adapter, controller, snap, helpers) -> Tuple[bool, boo
         return False, True
 
     # Проигрываем. Фокус НЕ проверяем — пауза уже всё контролирует.
-    ok = bool(engine.play(countdown_s=3.0,
+    ok = bool(engine.play(countdown_s=2.0,
                           should_abort=lambda: (
                               bool(pool_get(state, "features.record.paused", False))
                               or not bool(pool_get(state, "features.record.enabled", True))

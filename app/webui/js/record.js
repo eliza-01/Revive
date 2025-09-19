@@ -1,4 +1,5 @@
-﻿(function () {
+﻿// app/webui/js/record.js
+(function () {
   // ----- DOM build -----
   function buildSection() {
     const grid = document.querySelector('main.container.grid');

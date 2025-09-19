@@ -3,19 +3,29 @@ from __future__ import annotations
 import json
 import os
 import threading
+from typing import Optional, Callable
 
 # === internal state ===
-_HUD_PUSH = None              # функция-пушер HUD: hud_push(status: str, text: str)
+_HUD_PUSH: Optional[Callable[[str, str], None]] = None   # hud_push(status: str, text: str)
+_HUD_CLEAR: Optional[Callable[[], None]] = None          # (опционально) явный очиститель HUD
 _LANG = "eng"                 # язык подписи HUD (по умолчанию eng, переопределяется set_language)
 _DICT_CACHE = {}              # кеш словарей по языку
 _WARNED_LANGS = set()         # чтобы не спамить варнингами
 _LOCK = threading.Lock()
 
 
-def bind(*, hud_push=None):
-    """Привязка функций вывода (сейчас только HUD)."""
-    global _HUD_PUSH
+def bind(*, hud_push=None, hud_clear=None):
+    """
+    Привязка функций вывода.
+      hud_push(status: str, text: str)
+      hud_clear()                      — (необязательно) явная очистка HUD
+
+    Если hud_clear не передан — console.hud("clear") просто отправит
+    в push статус "clear" с пустым текстом (fallback).
+    """
+    global _HUD_PUSH, _HUD_CLEAR
     _HUD_PUSH = hud_push
+    _HUD_CLEAR = hud_clear
 
 
 def set_language(lang: str):
@@ -43,7 +53,6 @@ def _load_lang_dict(lang: str) -> dict:
                 _DICT_CACHE[lang] = dct
                 return dct
         except FileNotFoundError:
-            # Однократно предупредим в stdout и продолжим без перевода
             if lang not in _WARNED_LANGS:
                 print(f"[console.hud] dictionary not found, fallback to raw text: {path}")
                 _WARNED_LANGS.add(lang)
@@ -65,27 +74,57 @@ def log(msg: str):
         pass
 
 
-def hud(status: str, text: str):
+def hud(status: str, text: str = ""):
     """
     Безопасный HUD-вызов.
-    - Пытаемся перевести текст через словарь текущего языка (если есть).
-    - Если hud_push не привязан — дублируем в stdout, чтобы не терять события.
-    """
-    status = str(status or "")
-    raw_text = str(text or "")
 
+    Варианты вызова:
+      - console.hud("succ", "Готово")
+      - console.hud("err", "Ошибка")
+      - console.hud("clear")          ← очистить текущий HUD-баннер/внимание
+
+    Поведение:
+      - При обычном вызове: пытаемся перевести text через словарь текущего языка (если есть).
+      - При status == "clear" и пустом text: если привязан явный _HUD_CLEAR, используем его;
+        иначе шлём в _HUD_PUSH статус "clear" с пустым текстом (UI может трактовать это как очистку).
+      - Если hud_push не привязан — дублируем в stdout, чтобы не терять события.
+    """
+    try:
+        st = str(status or "")
+    except Exception:
+        st = ""
+
+    # Быстрый путь очистки
+    if st.lower() == "clear" and (text is None or text == ""):
+        try:
+            if callable(_HUD_CLEAR):
+                _HUD_CLEAR()
+            elif callable(_HUD_PUSH):
+                _HUD_PUSH("clear", "")
+            else:
+                print("[HUD][clear]")
+        except Exception as e:
+            print(f"[console.hud] clear error: {e}")
+        return
+
+    raw_text = "" if text is None else str(text)
+
+    # Перевод текста (если словарь доступен)
     try:
         dct = _load_lang_dict(_LANG)
-        # Если ключ есть — переводим, если нет — показываем как есть
         shown_text = dct.get(raw_text, raw_text)
     except Exception:
-        shown_text = raw_text  # абсолютно безопасный фолбэк
+        shown_text = raw_text  # максимально безопасно
 
     try:
         if callable(_HUD_PUSH):
-            _HUD_PUSH(status, shown_text)
+            _HUD_PUSH(st, shown_text)
         else:
-            print(f"[HUD][{status}] {shown_text}")
+            print(f"[HUD][{st}] {shown_text}")
     except Exception as e:
-        # Последний рубеж — не уронить поток из-за HUD
-        print(f"[console.hud] push error: {e} | [{status}] {shown_text}")
+        print(f"[console.hud] push error: {e} | [{st}] {shown_text}")
+
+
+def hud_clear():
+    """Сокращение для очистки HUD: console.hud_clear()."""
+    hud("clear")

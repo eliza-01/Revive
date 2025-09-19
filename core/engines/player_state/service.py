@@ -8,9 +8,8 @@ from core.engines.player_state.runner import run_player_state
 
 class PlayerStateService:
     """
-    Фоновый сервис опроса HP.
-    НИЧЕГО не пишет в пул сам по себе — только вызывает колбэки.
-    Интерфейс: is_running(), start(poll_interval=0.25), stop()
+    Фоновый сервис опроса HP (только измерение и on_update).
+    Паузы/overlay/прочую логику не решает — этим занимаются слой UI и PS-rules.
     """
 
     def __init__(
@@ -18,7 +17,6 @@ class PlayerStateService:
         server: Callable[[], str],
         get_window: Callable[[], Optional[Dict[str, Any]]],
         on_update: Optional[Callable[[Dict[str, Any]], None]] = None,
-        # ← НОВОЕ: опциональные колбэки паузы (могут не передаваться)
         is_paused: Optional[Callable[[], bool]] = None,
         get_pause_reason: Optional[Callable[[], str]] = None,
     ):
@@ -48,14 +46,13 @@ class PlayerStateService:
                             on_update=self._on_update,
                             cfg={"poll_interval": poll_interval},
                             should_abort=lambda: (not self._run),
-                            # ← НОВОЕ: проброс паузы дальше (если заданы)
                             is_paused=self._is_paused,
                             get_pause_reason=self._get_pause_reason,
                         )
                     except Exception:
-                        # глушим исключения цикла опроса и пробуем перезапуститься
+                        # глушим исключения цикла опроса и пробуем перезапуск
                         pass
-                    time.sleep(0.5)  # пауза между перезапусками
+                    time.sleep(0.5)
             finally:
                 self._run = False
 

@@ -74,6 +74,9 @@ class PipelineRule:
             console.log(f"[PIPE] pause: pipeline.paused ({pr})")
             return False
 
+        if snap.is_focused is False:
+            return False
+
         now = time.time()
         if now < self._busy_until:
             console.log(f"[PIPE] cooldown left {self._busy_until - now:.2f}s")
