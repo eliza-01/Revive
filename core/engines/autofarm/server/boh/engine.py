@@ -468,6 +468,9 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     )
     ex = FlowOpExecutor(ctx)
 
+    # персистентная карта КД (живёт между боями в рамках одного запуска start())
+    cd_map: Dict[str, float] = ctx_base.setdefault("af_cd_map", {})
+
     start_ts = time.time()
 
     while True:
@@ -517,14 +520,14 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
             if _abort(ctx_base):
                 return False
-            if _attack_cycle(ex, ctx_base, server, lang, win, cfg):
+            if _attack_cycle(ex, ctx_base, server, lang, win, cfg, cd_map):
                 _RESTART_STREAK = 0
                 excluded_targets.clear()
                 continue
             else:
                 if ctx_base.get("af_unvisible"):
                     ctx_base["af_unvisible"] = False
-                    if _search_by_names(ex, ctx_base, server, lang, win, cfg):
+                    if _search_by_names(ex, ctx_base, server, lang, win, cfg, cd_map):
                         _RESTART_STREAK = 0
                         excluded_targets.clear()
                         continue
@@ -532,7 +535,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 else:
                     _RESTART_STREAK += 1
         else:
-            if _search_by_names(ex, ctx_base, server, lang, win, cfg):
+            if _search_by_names(ex, ctx_base, server, lang, win, cfg, cd_map):
                 _RESTART_STREAK = 0
                 excluded_targets.clear()
                 continue
@@ -552,7 +555,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
 
 def _search_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lang: str,
-                       win: Dict, cfg: Dict[str, Any]) -> bool:
+                     win: Dict, cfg: Dict[str, Any], cd_map: Dict[str, float]) -> bool:
     zone_id = (cfg or {}).get("zone") or ""
     names = _zone_monster_display_names(server, zone_id, lang)
 
@@ -593,7 +596,7 @@ def _search_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, 
             if _abort(ctx_base):
                 return False
 
-            ok = _attack_cycle(ex, ctx_base, server, lang, win, cfg)
+            ok = _attack_cycle(ex, ctx_base, server, lang, win, cfg, cd_map)
             if _abort(ctx_base):
                 return False
 
@@ -608,67 +611,148 @@ def _search_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, 
 
 
 def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lang: str,
-                  win: Dict, cfg: Dict[str, Any]) -> bool:
+                  win: Dict, cfg: Dict[str, Any], cd_map: Dict[str, float]) -> bool:
     """
-    Движок атаки: пока цель жива — крутим круги скиллов.
-    Уважаем паузу: на паузе «залипаем» в ожидании, не падаем с ошибкой.
+    Логика атаки с персистентным КД:
+      1) Пока идёт «каст» последнего прожатого — заняты, не жмём ничего.
+      2) Скилл готов, если (now - last_used) >= cooldown_s.
+      3) Приоритет: больший cooldown_s → выше приоритет.
+         На старте боя, если «тяжёлый» готов — жмём его первым; если нет — жмём лучший из готовых.
+      4) last_used хранится в cd_map и НЕ сбрасывается между циклами.
     """
-    skills = list((cfg or {}).get("skills") or [])
-    if not skills:
+    last_pressed_id: Optional[str] = None
+    skills_cfg = list((cfg or {}).get("skills") or [])
+    if not skills_cfg:
         console.log("[autofarm] нет настроенных скиллов")
         return False
 
+    # нормализация плана
     plan: List[Dict[str, Any]] = []
-    for s in skills:
-        k = str(s.get("key") or "1")
-        cd = max(1, int(s.get("cast_ms") or 2000)) / 1000.0
-        plan.append({"key": k, "cd": cd, "last": 0.0, "used": False})
+    for s in skills_cfg:
+        key = str(s.get("key") or "1")[:1]
+        slug = str(s.get("slug") or "").strip()
 
-    probe_sleep = max((it["cd"] for it in plan), default=0.5)
+        # время «занятости» после прожима (cast)
+        try:
+            cast_ms = int(float(s.get("cast_ms", 850)))
+        except Exception:
+            cast_ms = 850
+        cast_s = max(0.0, cast_ms / 1000.0)
+
+        # кулдаун: поддерживаем разные ключи, фолбэк — cast_ms
+        raw_cd = s.get("cooldown_ms", s.get("cd_ms", s.get("cooldown", s.get("cd", cast_ms))))
+        try:
+            cd_ms = int(float(raw_cd))
+        except Exception:
+            cd_ms = cast_ms
+        cooldown_s = max(0.0, cd_ms / 1000.0)
+
+        sid = slug if slug else f"key:{key}"
+        last_used = float(cd_map.get(sid, 0.0))
+
+        plan.append({
+            "id": sid,
+            "key": key,
+            "cast_s": cast_s,
+            "cooldown_s": cooldown_s,
+            "last_used": last_used,
+            "used": False,
+        })
+
+    # хелперы
+    def _ready(it, now_ts: float) -> bool:
+        return (now_ts - (it["last_used"] or 0.0)) >= it["cooldown_s"]
+
+    def _press(it, now_ts: float) -> None:
+        if _press_key(ex, it["key"]):
+            it["last_used"] = now_ts
+            it["used"] = True
+            cd_map[it["id"]] = now_ts  # ← сохраняем персистентно
+
+    casting_until: float = 0.0
+    first_press_done = False
     start_ts = time.time()
-    hard_timeout = 10.0
-
-    def ready(item) -> bool:
-        return (time.time() - (item["last"] or 0.0)) >= item["cd"]
+    hard_timeout = 10.0  # как и раньше
 
     while True:
+        # отмена / пауза
         if _abort(ctx_base):
             console.log("[autofarm] остановлено пользователем")
             return False
-
-        _wait_if_paused(ctx_base)  # ← уважение паузы внутри боевого цикла
+        _wait_if_paused(ctx_base)
         if _abort(ctx_base):
             return False
 
+        # таймаут боя
         if (time.time() - start_ts) > hard_timeout:
             _press_esc(ex)
             console.log("[autofarm] таймаут атаки")
             return False
 
+        # проверка цели
         alive = _target_alive_by_hp(win, server)
         if alive is False:
             console.log("[autofarm] цель мертва/пропала")
             time.sleep(0.2)
             return True
         if alive is None:
-            time.sleep(probe_sleep)
+            time.sleep(0.08)
             continue
 
-        candidate = next((it for it in plan if (not it["used"]) and ready(it)), None)
-        if not candidate:
-            ready_any = [it for it in plan if ready(it)]
-            candidate = ready_any[0] if ready_any else None
+        now = time.time()
 
-        if candidate:
-            if _press_key(ex, candidate["key"]):
-                if _abort(ctx_base):
-                    return False
-                candidate["last"] = time.time()
-                candidate["used"] = True
-            time.sleep(probe_sleep)
-        else:
-            time.sleep(probe_sleep)
+        # заняты кастом — ждём его окончания
+        if now < casting_until:
+            time.sleep(min(0.04, casting_until - now))
+            continue
 
+        # собираем готовых и выбираем максимальный КД
+        ready_list = [it for it in plan if _ready(it, now)]
+
+        # первый прожим: делаем его Heavy ТОЛЬКО если реально нажали
+        if not first_press_done:
+            if ready_list:
+                heavy = max(
+                    ready_list,
+                    key=lambda it: (it["cooldown_s"], now - (it["last_used"] or 0.0))
+                )
+                _press(heavy, now)
+                casting_until = now + (heavy["cast_s"] or 0.0)
+                first_press_done = True  # ← флаг ставим ПОСЛЕ нажатия
+                last_pressed_id = heavy["id"]  # ← добавить эту строку
+                continue
+            # никто ещё не готов — ждём ближайшую готовность, флаг не трогаем
+            next_ready_in = min(
+                (max(0.0, it["cooldown_s"] - (now - it["last_used"])) for it in plan),
+                default=0.08
+            )
+            time.sleep(max(0.02, min(0.15, next_ready_in)))
+            continue
+
+        # обычный шаг: среди ГОТОВЫХ — тот, у кого КД максимальный
+        if ready_list:
+            candidates = ready_list
+            if last_pressed_id and len(ready_list) > 1:
+                alt = [it for it in ready_list if it["id"] != last_pressed_id]
+                if alt:
+                    candidates = alt
+            best = max(
+                candidates,
+                key=lambda it: (it["cooldown_s"], now - (it["last_used"] or 0.0))
+            )
+            _press(best, now)
+            casting_until = now + (best["cast_s"] or 0.0)
+            last_pressed_id = best["id"]  # ← добавить
+            continue
+
+        # никто не готов — ждём до ближайшей готовности
+        next_ready_in = min(
+            (max(0.0, it["cooldown_s"] - (now - it["last_used"])) for it in plan),
+            default=0.12
+        )
+        time.sleep(max(0.02, min(0.15, next_ready_in)))
+
+        # проверка «невидимости цели» после того, как каждый уже был прожат хотя бы раз
         if all(it["used"] for it in plan):
             zone_id = (cfg or {}).get("zone") or ""
             if _check_target_visibility(ex, server, lang, win, zone_id):

@@ -70,7 +70,7 @@ def ensure_pool(state: Dict[str, Any]) -> Dict[str, Any]:
             "status": "idle", "busy": False, "paused": False, "pause_reason":"", "waiting": False,
             "config": {
                 "profession": "",
-                "skills": [{"key": "1", "slug": "", "cast_ms": 1100}],
+                "skills": [{"key": "1", "slug": "", "cast_ms": 850, "cooldown_ms": 850}],
                 "zone": "",
                 "monsters": []
             },

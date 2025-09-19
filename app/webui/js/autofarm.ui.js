@@ -14,7 +14,8 @@
       skills: (state.skills || []).map(s => ({
         key: s.key || "1",
         slug: s.slug || "",
-        cast_ms: Math.max(0, Number(s.cast_ms) || 0)
+        cast_ms: Math.max(0, Number(s.cast_ms) || 0),
+        cooldown_ms: Math.max(0, Number(s.cooldown_ms ?? s.cd_ms ?? s.cooldown ?? s.cast_ms) || 0),
       })),
       zone: state.zone || "",
       monsters: (state.monsters || []).slice()
@@ -79,8 +80,9 @@
     enabled: false,
     mode: "auto",
     profession: "",
-    skills: [],     // [{key, slug, cast_ms}]
-    monsters: [],   // [slug,...]
+    // ↓ добавили cooldown_ms в модель
+    skills: [],     // [{key, slug, cast_ms, cooldown_ms}]
+    monsters: [],
     zone: ""
   };
   // подавляем автосейв во время первичной гидратации
@@ -159,12 +161,22 @@
 
     const cast = document.createElement("input");
     cast.type = "number"; cast.min = "1"; cast.step = "1"; cast.className = "xs";
-    cast.value = item.cast_ms ?? 1100;
+    cast.value = item.cast_ms ?? 850;
     cast.addEventListener("change", () => {
       item.cast_ms = Math.max(1, parseInt(cast.value || "0", 10));
       saveDebounced();
     });
     row.appendChild(cast);
+
+    const cd = document.createElement("input");
+    cd.type = "number"; cd.min = "0"; cd.step = "1"; cd.className = "xs";
+    cd.value = item.cooldown_ms ?? item.cd_ms ?? item.cooldown ?? item.cast_ms ?? 1100;
+    cd.addEventListener("change", () => {
+      const v = Math.max(0, parseInt(cd.value || "0", 10));
+      item.cooldown_ms = Number.isFinite(v) ? v : 0;
+      saveDebounced();
+    });
+    row.appendChild(cd);
 
     return row;
   }
@@ -175,10 +187,14 @@
 
     const hdr = document.createElement("div");
     hdr.className = "row compact";
-    hdr.innerHTML = '<span class="col col-key">Клавиша</span><span class="col col-skill">Скилл</span><span class="col col-cast">Каст, мс</span>';
+    hdr.innerHTML = '' +
+      '<span class="col col-key">Клавиша</span>' +
+      '<span class="col col-skill">Скилл</span>' +
+      '<span class="col col-cast">Каст, мс</span>' +
+      '<span class="col col-cd">КД, мс</span>';
     cont.appendChild(hdr);
 
-    if (!state.skills.length) state.skills.push({ key:"1", slug:"", cast_ms:1100 });
+    if (!state.skills.length) state.skills.push({ key:"1", slug:"", cast_ms:850 });
     const list = await fetchAttackSkills(state.profession);
     state.skills.forEach(item => cont.appendChild(buildSkillRow(item, list)));
   }
@@ -325,12 +341,18 @@
       state.mode       = r.mode || "auto";
       const cfg        = r.config || {};
       state.profession = cfg.profession || "";
-      state.skills     = Array.isArray(cfg.skills) && cfg.skills.length
+      state.skills = Array.isArray(cfg.skills) && cfg.skills.length
         ? cfg.skills.map(s => {
-            const v = Number(s?.cast_ms);
-            return { key: s?.key || "1", slug: s?.slug || "", cast_ms: Number.isFinite(v) ? v : 1100 };
+            const cast = Number(s?.cast_ms);
+            const cd   = Number(s?.cooldown_ms ?? s?.cd_ms ?? s?.cooldown ?? s?.cast_ms);
+            return {
+              key:  s?.key || "1",
+              slug: s?.slug || "",
+              cast_ms: Number.isFinite(cast) ? cast : 850,
+              cooldown_ms: Number.isFinite(cd) ? cd : (Number.isFinite(cast) ? cast : 850),
+            };
           })
-        : [{ key:"1", slug:"", cast_ms:1100 }];
+        : [{ key:"3", slug:"", cast_ms:850, cooldown_ms:850 }];
       state.zone       = cfg.zone || "";
       state.monsters   = Array.isArray(cfg.monsters) ? cfg.monsters.slice() : [];
 
@@ -438,12 +460,12 @@
     // профа/скиллы
     if (prof) prof.addEventListener("change", async () => {
       state.profession = prof.value || "";
-      state.skills = [{ key:"1", slug:"", cast_ms:1100 }];
+      state.skills = [{ key:"1", slug:"", cast_ms:850, cooldown_ms:850 }];
       await renderSkillsBlock();
       saveDebounced();
     });
     if (add) add.addEventListener("click", async ()=> {
-      state.skills.push({ key:"1", slug:"", cast_ms:1100 });
+      state.skills.push({ key:"1", slug:"", cast_ms:850, cooldown_ms:850 });
       await renderSkillsBlock();
       saveDebounced();
     });

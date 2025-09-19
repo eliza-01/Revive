@@ -5,7 +5,7 @@
 
 String command = "";
 
-void typeSlow(const char *text, int delayMs = 25) {
+void typeSlow(const char *text, int delayMs = 17) {
   while (*text) {
     Keyboard.print(*text++);
     delay(delayMs);
@@ -127,7 +127,7 @@ void processCommand(String cmd) {
     Keyboard.press(KEY_BACKSPACE); delay(50); Keyboard.release(KEY_BACKSPACE);
 
   } else if (cmd == "press_enter") {
-    Keyboard.press(KEY_RETURN); delay(40); Keyboard.release(KEY_RETURN);
+    Keyboard.press(KEY_RETURN); delay(50); Keyboard.release(KEY_RETURN);
 
   } else if (cmd.startsWith("enter_text ")) {   // печать без Enter
     String payload = cmd.substring(11);         // после "enter_text "

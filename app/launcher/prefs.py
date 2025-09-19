@@ -113,19 +113,38 @@ def _norm_macros_rows(rows_any: Any) -> List[Dict[str, Any]]:
 def _norm_autofarm_cfg(cfg_any: Any) -> Dict[str, Any]:
     cfg = dict(cfg_any or {})
     prof = str(cfg.get("profession", ""))
-    # skills: [{key, slug, cast_ms}]
-    skills = []
-    for s in (cfg.get("skills") or []):
-        s = s or {}
-        key = str(s.get("key", "1"))[:1]
-        if key not in "0123456789":
-            key = "1"
+
+    def _norm_key(key_any: Any) -> str:
+        k = str(key_any or "1")[:1]
+        return k if k in "0123456789" else "1"
+
+    skills: List[Dict[str, Any]] = []
+    for s_any in (cfg.get("skills") or []):
+        s = dict(s_any or {})
+        key = _norm_key(s.get("key"))
         slug = str(s.get("slug", ""))
+
+        # cast_ms
         try:
-            cast_ms = int(float(s.get("cast_ms", 1100)))
+            cast_ms = int(float(s.get("cast_ms", 850)))
         except Exception:
-            cast_ms = 1100
-        skills.append({"key": key, "slug": slug, "cast_ms": max(0, cast_ms)})
+            cast_ms = 850
+        cast_ms = max(0, cast_ms)
+
+        # cooldown_ms: принимаем разные ключи, фолбэк — cast_ms
+        raw_cd = s.get("cooldown_ms", s.get("cd_ms", s.get("cooldown", s.get("cd", cast_ms))))
+        try:
+            cd_ms = int(float(raw_cd))
+        except Exception:
+            cd_ms = cast_ms
+
+        skills.append({
+            "key": key,
+            "slug": slug,
+            "cast_ms": max(0, cast_ms),
+            "cooldown_ms": max(0, cd_ms),
+        })
+
     zone = str(cfg.get("zone", ""))
     mons = [str(x) for x in (cfg.get("monsters") or [])]
     return {"profession": prof, "skills": skills, "zone": zone, "monsters": mons}

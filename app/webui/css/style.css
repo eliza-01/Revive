@@ -196,7 +196,7 @@ button.primary { background: #1e2a18; border-color: #294027; color: #d7f0d1; }
 .icon-square { width: 20px; height: 20px; border: 1px solid #2a2e36; border-radius: 4px; background-size: cover; background-position: center; }
 .col { display: inline-block; font-size: 12px; color: #cbd3df; opacity: .9; }
 .col-key { width: 60px; }
-.col-skill { width: 180px; }
+.col-skill { width: 220px; padding-left: 6px; }
 .col-cast { width: 90px; }
 
 /* мини-инпут под число */
