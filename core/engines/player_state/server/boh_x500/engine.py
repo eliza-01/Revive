@@ -258,6 +258,9 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
     prev_ratio = 1.0
     was_paused = False
+    _train_hud_last_ts: float = 0.0
+    _FULL_EPS = 0.995
+    initial_hp_warned = False  # ← NEW: показывали ли предупреждение о неполном HP на старте
     console.log(f"[player_state/boh] start (poll={poll_interval}s, extra_down={zone_extra_down})")
 
     try:
@@ -308,9 +311,35 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
 
             now = time.time()
 
+            # ↓↓↓ NEW: тик-худ об обучении, не чаще 1 раза/сек
+            if (not tracker.learned) and (hp_ratio < _FULL_EPS):
+                if (now - _train_hud_last_ts) >= 1.0:
+                    console.hud("att", "Для корректной работы восстановите ❤️ до 100% (идёт обучение)")
+                    _train_hud_last_ts = now
+            else:
+                # как только фулл и/или трекер обучен — один раз очищаем баннер
+                if _train_hud_last_ts > 0 and (now - _train_hud_last_ts) >= 1.0:
+                    console.hud("att", "")
+                    _train_hud_last_ts = 0.0
+
+            # --- NEW: предупреждение на старте, если HP не полный
+            if (not tracker.learned) and (hp_ratio == 1.0):
+                try:
+                    console.hud("att", "Запуск: Восстановите HP для корректного обучения программы ❤️")
+                except Exception:
+                    pass
+                initial_hp_warned = True
+
             # обучение на первом точном 100%
             if (not tracker.learned) and (hp_ratio == 1.0):
                 tracker.learn(win)
+                # NEW: уберём предупреждение, если показывали
+                if initial_hp_warned:
+                    try:
+                        console.hud("att", "")
+                    except Exception:
+                        pass
+                initial_hp_warned = False
 
             # если основной <0.01 — опросить фолбэк СЕЙЧАС
             fb_val: Optional[float] = None
