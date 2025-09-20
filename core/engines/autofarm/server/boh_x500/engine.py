@@ -49,9 +49,9 @@ def _target_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
 def _target_sys_message_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
     """Зона для поиска sys_message."""
     w, h = int(win["width"]), int(win["height"])
-    zw, zh = 120, 330
-    l = 0
-    t = max(0, h - 0 - zh)
+    zw, zh = 93, 40
+    l = 22
+    t = max(0, h - 220 - zh)
     return (l, t, l + zw, t + zh)
 
 def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,int,int]], int]:
@@ -409,6 +409,7 @@ def _press_silent_cancel(ex: FlowOpExecutor):
         pass
 
 def _check_target_visibility(ex: FlowOpExecutor, server: str, lang: str, win: Dict, zone_id: str) -> bool:
+    console.log("Проверяем видимость цели")
     img_path = _res_path("core", "engines", "autofarm", "server", server, "templates", lang, "sys_messages",
                          "target_unvisible.png")
     target_img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
@@ -620,6 +621,8 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
          На старте боя, если «тяжёлый» готов — жмём его первым; если нет — жмём лучший из готовых.
       4) last_used хранится в cd_map и НЕ сбрасывается между циклами.
     """
+    press_count = 0  # ← сколько атак уже прожали в ЭТОМ бою
+
     last_pressed_id: Optional[str] = None
     skills_cfg = list((cfg or {}).get("skills") or [])
     if not skills_cfg:
@@ -663,11 +666,13 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
     def _ready(it, now_ts: float) -> bool:
         return (now_ts - (it["last_used"] or 0.0)) >= it["cooldown_s"]
 
-    def _press(it, now_ts: float) -> None:
-        if _press_key(ex, it["key"]):
+    def _press(it, now_ts: float) -> bool:
+        ok = _press_key(ex, it["key"])
+        if ok:
             it["last_used"] = now_ts
             it["used"] = True
-            cd_map[it["id"]] = now_ts  # ← сохраняем персистентно
+            cd_map[it["id"]] = now_ts  # ← персистим в карту КД
+        return ok
 
     casting_until: float = 0.0
     first_press_done = False
@@ -716,18 +721,21 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
                     ready_list,
                     key=lambda it: (it["cooldown_s"], now - (it["last_used"] or 0.0))
                 )
-                _press(heavy, now)
-                casting_until = now + (heavy["cast_s"] or 0.0)
-                first_press_done = True  # ← флаг ставим ПОСЛЕ нажатия
-                last_pressed_id = heavy["id"]  # ← добавить эту строку
+                if _press(heavy, now):
+                    press_count += 1
+                    casting_until = now + (heavy["cast_s"] or 0.0)
+                    first_press_done = True
+                    last_pressed_id = heavy["id"]
+
+                    # ← ранний чек «цель не видна» после первых двух атак
+                    if press_count >= 2:
+                        zone_id = (cfg or {}).get("zone") or ""
+                        console.log("проверка 'Цели не видно' (1) engine.py 733")
+                        if _check_target_visibility(ex, server, lang, win, zone_id):
+                            _press_silent_cancel(ex)
+                            ctx_base["af_unvisible"] = True
+                            return False
                 continue
-            # никто ещё не готов — ждём ближайшую готовность, флаг не трогаем
-            next_ready_in = min(
-                (max(0.0, it["cooldown_s"] - (now - it["last_used"])) for it in plan),
-                default=0.08
-            )
-            time.sleep(max(0.02, min(0.15, next_ready_in)))
-            continue
 
         # обычный шаг: среди ГОТОВЫХ — тот, у кого КД максимальный
         if ready_list:
@@ -740,9 +748,19 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
                 candidates,
                 key=lambda it: (it["cooldown_s"], now - (it["last_used"] or 0.0))
             )
-            _press(best, now)
-            casting_until = now + (best["cast_s"] or 0.0)
-            last_pressed_id = best["id"]  # ← добавить
+            if _press(best, now):
+                press_count += 1
+                casting_until = now + (best["cast_s"] or 0.0)
+                last_pressed_id = best["id"]
+
+                # ← ранний чек «цель не видна» после первых двух атак
+                if press_count >= 2:
+                    console.log("проверка 'Цели не видно' (2) engine.py 757")
+                    zone_id = (cfg or {}).get("zone") or ""
+                    if _check_target_visibility(ex, server, lang, win, zone_id):
+                        _press_silent_cancel(ex)
+                        ctx_base["af_unvisible"] = True
+                        return False
             continue
 
         # никто не готов — ждём до ближайшей готовности
@@ -754,6 +772,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
 
         # проверка «невидимости цели» после того, как каждый уже был прожат хотя бы раз
         if all(it["used"] for it in plan):
+            console.log("проверка 'Цели не видно' (3) engine.py 773")
             zone_id = (cfg or {}).get("zone") or ""
             if _check_target_visibility(ex, server, lang, win, zone_id):
                 _press_silent_cancel(ex)
