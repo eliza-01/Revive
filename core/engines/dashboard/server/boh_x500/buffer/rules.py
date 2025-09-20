@@ -1,4 +1,4 @@
-﻿# core/engines/dashboard/server/boh/buffer/rules.py
+﻿# core/engines/dashboard/server/boh_x500/buffer/rules.py
 # core/engines/dashboard/server/<server>/buffer/rules.py
 from __future__ import annotations
 from typing import Any, Dict, Optional, List, Tuple

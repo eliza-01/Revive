@@ -135,13 +135,18 @@ core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/васили�
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/гризли_диона.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/громадный_след.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/змей.png
+core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/командир_фавнов_варка.png
+core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/луговая_антилопа.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/людоед_тумран.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/монстроглаз_искатель.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/осколок_иллюзии.png
+core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/пехотинец_фавнов_варка.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/придорожный_падальщик.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/рейнджер_гноллов.png
+core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/рекрут_фавнов_варка.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/хобгоблин.png
 core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/черная_тень.png
+core/engines/autofarm/server/boh_x500/templates/rus/monsters/names/элитный_страж_фавнов_варка.png
 core/engines/autofarm/server/boh_x500/templates/rus/sys_messages/target_unvisible.png
 core/engines/autofarm/server/boh_x500/zones/Dion_1/gallery/map.png
 core/engines/autofarm/server/boh_x500/zones/Dion_1/gallery/spot_north.png
@@ -271,6 +276,8 @@ core/engines/dashboard/server/boh_x500/teleport/stabilize/rules.py
 core/engines/dashboard/server/boh_x500/teleport/stabilize/stabilize_data.py
 core/engines/dashboard/server/boh_x500/teleport/stabilize/templates/__init__.py
 core/engines/dashboard/server/boh_x500/teleport/stabilize/templates/resolver.py
+core/engines/dashboard/server/boh_x500/teleport/stabilize/templates/common/interface/anchor_init — копия.png
+core/engines/dashboard/server/boh_x500/teleport/stabilize/templates/common/interface/anchor_init.png
 core/engines/dashboard/server/boh_x500/teleport/stabilize/templates/common/interface/target_init.png
 core/engines/dashboard/server/boh_x500/templates/__init__.py
 core/engines/dashboard/server/boh_x500/templates/resolver.py

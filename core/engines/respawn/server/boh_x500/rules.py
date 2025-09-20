@@ -1,4 +1,4 @@
-﻿# core/engines/respawn/server/boh/rules.py
+﻿# core/engines/respawn/server/boh_x500/rules.py
 from typing import Any, Dict, Optional, Tuple, List, Callable
 import time
 import os

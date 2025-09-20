@@ -1,4 +1,4 @@
-﻿# core/engines/ui_guard/server/boh/ui_guard_data.py
+﻿# core/engines/ui_guard/server/boh_x500/ui_guard_data.py
 from __future__ import annotations
 from typing import Dict, Tuple
 

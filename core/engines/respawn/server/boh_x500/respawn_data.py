@@ -1,4 +1,4 @@
-﻿# core/engines/respawn/server/boh/respawn_data.py
+﻿# core/engines/respawn/server/boh_x500/respawn_data.py
 # engines/respawn/server/<server>/respawn_data.py
 # Зоны и шаблоны для подъёма после смерти (бывш. to_village).
 

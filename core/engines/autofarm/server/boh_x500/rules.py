@@ -1,4 +1,4 @@
-﻿# core/engines/autofarm/server/boh/rules.py
+﻿# core/engines/autofarm/server/boh_x500/rules.py
 from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 

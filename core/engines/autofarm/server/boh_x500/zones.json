@@ -6,9 +6,9 @@
     "gallery": ["map.png", "spot_north.png", "spot_south.png"],
     "monsters": {
       "eng_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
-      "rus_full": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing Antelope"],
       "eng_short": ["Varka's Commander", "Varka's Elite Guard", "Varka Silenos Recruit", "Varka Silenos Footman", "Grazing"],
-      "rus_short": ["Командир Фавнов", "Элитный страж", "Рекрут", "Пехотинец", "Луговая"]
+      "rus_full": ["Рекрут Фавнов Варка", "Пехотинец Фавнов Варка", "Луговая Антилопа", "Командир Фавнов Варка", "Элитный страж Фавнов Варка"],
+      "rus_short": ["Рекрут", "Пехотинец", "Луговая", "Командир Фавнов", "Элитный страж"]
     }
   },
   "SilentValley": {

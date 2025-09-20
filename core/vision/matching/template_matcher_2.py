@@ -71,6 +71,11 @@ def match_key_in_zone_single(
         zone_gray = zone_img_bgr
 
     tpath = _resolve_path(server, (lang or "rus").lower(), template_parts, engine=engine)
+    # временный отладочный лог:
+    # console.log("Включена отладка match_key_in_zone_single template_matcher_2.py :75")
+    from core.logging import console as _c
+#     _c.log(f"[tm2] engine={engine} server={server} zone={zone_ltrb} tpl={template_parts} -> {tpath or 'None'}")
+
     if not tpath:
         return None
 

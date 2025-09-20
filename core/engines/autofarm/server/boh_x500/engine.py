@@ -1,4 +1,4 @@
-﻿# core/engines/autofarm/server/boh/engine.py
+﻿# core/engines/autofarm/server/boh_x500/engine.py
 from __future__ import annotations
 import time
 import os, re, json, ctypes
@@ -266,10 +266,10 @@ def _send_target_with_ru_name(ex: FlowOpExecutor, mob_name: str, wait_ms: int = 
     flow = [
         {"op": "press_enter"},
         {"op": "enter_text", "layout": "en", "text": "/target "},
-        {"op": "set_layout", "layout": "ru", "delay_ms": 120},
+        {"op": "set_layout", "layout": "ru", "delay_ms": 220},
         {"op": "enter_text", "layout": "ru", "text": mob_name, "wait_ms": 60},
         {"op": "press_enter"},
-        {"op": "set_layout", "layout": "en", "delay_ms": 120},
+        {"op": "set_layout", "layout": "en", "delay_ms": 220},
         {"op": "sleep", "ms": max(0, int(wait_ms))}
     ]
     return bool(run_flow(flow, ex))
@@ -280,7 +280,7 @@ def _press_key(ex: FlowOpExecutor, key_digit: str) -> bool:
     return bool(run_flow(flow, ex))
 
 def _press_esc(ex: FlowOpExecutor) -> bool:
-    return bool(run_flow([{"op": "send_arduino", "cmd": "esc", "delay_ms": 0}], ex))
+    return bool(run_flow([{"op": "send_arduino", "cmd": "esc", "delay_ms": 100}], ex))
 
 def _has_dot_colors_near_rect(
     win: Dict,
@@ -617,19 +617,19 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
     Логика атаки с персистентным КД:
       1) Пока идёт «каст» последнего прожатого — заняты, не жмём ничего.
       2) Скилл готов, если (now - last_used) >= cooldown_s.
-      3) Приоритет: больший cooldown_s → выше приоритет.
-         На старте боя, если «тяжёлый» готов — жмём его первым; если нет — жмём лучший из готовых.
-      4) last_used хранится в cd_map и НЕ сбрасывается между циклами.
+      3) Приоритет: больший cooldown_s → выше приоритет; при равенстве — старше age().
+      4) last_used хранится в cd_map и НЕ сбрасывается между боями.
+      5) Ранний чек "цель не видна" после двух прожимов.
     """
-    press_count = 0  # ← сколько атак уже прожали в ЭТОМ бою
-
+    press_count = 0                      # сколько атак прожали в ЭТОМ бою
     last_pressed_id: Optional[str] = None
+
     skills_cfg = list((cfg or {}).get("skills") or [])
     if not skills_cfg:
         console.log("[autofarm] нет настроенных скиллов")
         return False
 
-    # нормализация плана
+    # --- нормализация плана
     plan: List[Dict[str, Any]] = []
     for s in skills_cfg:
         key = str(s.get("key") or "1")[:1]
@@ -662,22 +662,25 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
             "used": False,
         })
 
-    # хелперы
+    # --- хелперы
     def _ready(it, now_ts: float) -> bool:
         return (now_ts - (it["last_used"] or 0.0)) >= it["cooldown_s"]
+
+    def _age(it, now_ts: float) -> float:
+        return max(0.0, now_ts - (it["last_used"] or 0.0))
 
     def _press(it, now_ts: float) -> bool:
         ok = _press_key(ex, it["key"])
         if ok:
             it["last_used"] = now_ts
             it["used"] = True
-            cd_map[it["id"]] = now_ts  # ← персистим в карту КД
+            cd_map[it["id"]] = now_ts  # персистим в карту КД
         return ok
 
     casting_until: float = 0.0
     first_press_done = False
     start_ts = time.time()
-    hard_timeout = 10.0  # как и раньше
+    hard_timeout = 10.0
 
     while True:
         # отмена / пауза
@@ -690,7 +693,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
 
         # таймаут боя
         if (time.time() - start_ts) > hard_timeout:
-            _press_esc(ex)
+            _press_esc(ex); time.sleep(0.1); _press_esc(ex)
             console.log("[autofarm] таймаут атаки")
             return False
 
@@ -711,68 +714,64 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
             time.sleep(min(0.04, casting_until - now))
             continue
 
-        # собираем готовых и выбираем максимальный КД
+        # кто готов?
         ready_list = [it for it in plan if _ready(it, now)]
 
-        # первый прожим: делаем его Heavy ТОЛЬКО если реально нажали
+        # --- первый прожим: берём самый "тяжёлый" из готовых
         if not first_press_done:
             if ready_list:
-                heavy = max(
-                    ready_list,
-                    key=lambda it: (it["cooldown_s"], now - (it["last_used"] or 0.0))
-                )
+                heavy = max(ready_list, key=lambda it: (it["cooldown_s"], _age(it, now)))
                 if _press(heavy, now):
                     press_count += 1
                     casting_until = now + (heavy["cast_s"] or 0.0)
                     first_press_done = True
                     last_pressed_id = heavy["id"]
-
-                    # ← ранний чек «цель не видна» после первых двух атак
+                    # ранний чек "цель не видна" после 2 прожимов
                     if press_count >= 2:
                         zone_id = (cfg or {}).get("zone") or ""
-                        console.log("проверка 'Цели не видно' (1) engine.py 733")
+                        console.log("проверка 'Цели не видно' (1b) ready-list")
                         if _check_target_visibility(ex, server, lang, win, zone_id):
                             _press_silent_cancel(ex)
                             ctx_base["af_unvisible"] = True
                             return False
-                continue
+            else:
+                # никто не готов — ждём ближайшую готовность, флаг first_press_done не трогаем
+                next_ready_in = min(
+                    (max(0.0, it["cooldown_s"] - _age(it, now)) for it in plan),
+                    default=0.08
+                )
+                time.sleep(max(0.02, min(0.15, next_ready_in)))
+            continue
 
-        # обычный шаг: среди ГОТОВЫХ — тот, у кого КД максимальный
+        # --- обычный шаг: выбираем лучший из готовых
         if ready_list:
-            candidates = ready_list
-            if last_pressed_id and len(ready_list) > 1:
-                alt = [it for it in ready_list if it["id"] != last_pressed_id]
-                if alt:
-                    candidates = alt
-            best = max(
-                candidates,
-                key=lambda it: (it["cooldown_s"], now - (it["last_used"] or 0.0))
-            )
+            # старайся не жать подряд один и тот же, если есть альтернатива
+            candidates = [it for it in ready_list if it["id"] != last_pressed_id] or ready_list
+            best = max(candidates, key=lambda it: (it["cooldown_s"], _age(it, now)))
             if _press(best, now):
                 press_count += 1
                 casting_until = now + (best["cast_s"] or 0.0)
                 last_pressed_id = best["id"]
-
-                # ← ранний чек «цель не видна» после первых двух атак
+                # ранний чек "цель не видна" после двух прожимов
                 if press_count >= 2:
-                    console.log("проверка 'Цели не видно' (2) engine.py 757")
                     zone_id = (cfg or {}).get("zone") or ""
+                    console.log("проверка 'Цели не видно' (2)")
                     if _check_target_visibility(ex, server, lang, win, zone_id):
                         _press_silent_cancel(ex)
                         ctx_base["af_unvisible"] = True
                         return False
             continue
 
-        # никто не готов — ждём до ближайшей готовности
+        # --- никто не готов — ждём ближайшую готовность
         next_ready_in = min(
-            (max(0.0, it["cooldown_s"] - (now - it["last_used"])) for it in plan),
+            (max(0.0, it["cooldown_s"] - _age(it, now)) for it in plan),
             default=0.12
         )
         time.sleep(max(0.02, min(0.15, next_ready_in)))
 
-        # проверка «невидимости цели» после того, как каждый уже был прожат хотя бы раз
+        # --- поздний чек "цель не видна", когда каждый уже был прожат хотя бы раз
         if all(it["used"] for it in plan):
-            console.log("проверка 'Цели не видно' (3) engine.py 773")
+            console.log("проверка 'Цели не видно' (3)")
             zone_id = (cfg or {}).get("zone") or ""
             if _check_target_visibility(ex, server, lang, win, zone_id):
                 _press_silent_cancel(ex)

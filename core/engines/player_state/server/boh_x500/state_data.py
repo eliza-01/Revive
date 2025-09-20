@@ -1,4 +1,4 @@
-# core/engines/player_state/server/boh/state_data.py
+﻿# core/engines/player_state/server/boh_x500/state_data.py
 from typing import Dict, Tuple, List
 
 Zone = Dict[str, int]  # {"left":..., "top":..., "width":..., "height":...}

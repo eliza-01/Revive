@@ -1,4 +1,4 @@
-﻿# core/engines/dashboard/server/boh/teleport/rules.py
+﻿# core/engines/dashboard/server/boh_x500/teleport/rules.py
 from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 import time

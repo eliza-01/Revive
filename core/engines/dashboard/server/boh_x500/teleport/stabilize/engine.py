@@ -1,4 +1,4 @@
-﻿# core/engines/dashboard/server/boh/teleport/stabilize/engine.py
+﻿# core/engines/dashboard/server/boh_x500/teleport/stabilize/engine.py
 from __future__ import annotations
 import json
 import os
@@ -12,6 +12,9 @@ from core.engines.flow.ops import FlowCtx, FlowOpExecutor, run_flow
 
 from .stabilize_data import ZONES, TEMPLATES
 
+# скрин зоны для отладки
+import os, time, cv2
+from core.vision.capture.window_bgr_capture import capture_window_region_bgr
 
 _ANCHORS_CACHE: Dict[str, Any] = {}
 
@@ -53,6 +56,48 @@ class StabilizeEngine:
         self.get_language = get_language
 
     # --- utils ------------------------------------------------------------
+    def _dump_zone_png(self, zone_name: str, tag: str = "") -> str | None:
+        """Сохраняет PNG с содержимым нужной зоны в TEMP\revive_debug\."""
+        win = self._win()
+        if not win:
+            return None
+        l, t, r, b = self._zone(zone_name)
+        img = capture_window_region_bgr(win, (l, t, r, b))
+        if img is None or img.size == 0:
+            return None
+        try:
+            out_dir = os.path.join(os.environ.get("TEMP") or os.getcwd(), "revive_debug")
+            os.makedirs(out_dir, exist_ok=True)
+            fn = f"{int(time.time() * 1000)}_{zone_name}{('_' + tag) if tag else ''}.png"
+            path = os.path.join(out_dir, fn)
+            cv2.imwrite(path, img)
+            console.log(f"[stabilize] zone '{zone_name}' saved: {path}")
+            return path
+        except Exception as e:
+            console.log(f"[stabilize] dump failed: {e}")
+            return None
+
+    def _dump_window_with_zone(self, zone_name: str, tag: str = "") -> str | None:
+        """Для наглядности: полный скрин окна + рамка зоны."""
+        win = self._win()
+        if not win:
+            return None
+        l, t, r, b = self._zone(zone_name)
+        full = capture_window_region_bgr(win, (0, 0, int(win["width"]), int(win["height"])))
+        if full is None or full.size == 0:
+            return None
+        try:
+            cv2.rectangle(full, (l, t), (r, b), (0, 255, 0), 2)
+            out_dir = os.path.join(os.environ.get("TEMP") or os.getcwd(), "revive_debug")
+            os.makedirs(out_dir, exist_ok=True)
+            fn = f"{int(time.time() * 1000)}_window_with_{zone_name}{('_' + tag) if tag else ''}.png"
+            path = os.path.join(out_dir, fn)
+            cv2.imwrite(path, full)
+            console.log(f"[stabilize] window+zone '{zone_name}' saved: {path}")
+            return path
+        except Exception as e:
+            console.log(f"[stabilize] dump(full) failed: {e}")
+            return None
 
     def _lang(self) -> str:
         try:
@@ -68,13 +113,12 @@ class StabilizeEngine:
 
     def _zone(self, name: str) -> Tuple[int, int, int, int]:
         win = self._win()
-        if not win:
-            return (0, 0, 0, 0)
-        decl = ZONES.get(name, ZONES.get("fullscreen", {"fullscreen": True}))
-        l, t, r, b = compute_zone_ltrb(win, decl)
+        if not win: return (0, 0, 0, 0)
+        l, t, r, b = compute_zone_ltrb(win, ZONES.get(name, ZONES["fullscreen"]))
+        console.log(f"[stabilize] zone {name} -> {(l, t, r, b)} stabilize/engine.py :73")
         return (int(l), int(t), int(r), int(b))
 
-    def _visible(self, tpl_key: str, zone_name: str, thr: float = 0.70) -> bool:
+    def _visible_once(self, tpl_key: str, zone_name: str, thr: float = 0.70) -> bool:
         win = self._win()
         if not win:
             return False
@@ -90,6 +134,82 @@ class StabilizeEngine:
             threshold=thr,
             engine="stabilize",
         ) is not None
+
+    def _visible(
+            self,
+            tpl_key: str,
+            zone_name: str,
+            thr: float = 0.20,
+            *,
+            retries: int = 5,  # ← по умолчанию 5 попыток
+            delay_ms: int = 1000,
+            debug: bool = False  # ← дампы зон/оценок для отладки
+    ) -> bool:
+        tries = max(1, int(retries))
+        best_score = -1.0
+        best_try = -1
+
+        for i in range(tries):
+            if debug:
+                # точный кадр перед матчем (для этой попытки)
+                self._dump_zone_png(zone_name, f"try{i + 1}_{tpl_key}")
+
+            hit, score = self._visible_once_debug(tpl_key, zone_name, thr)
+            if score > best_score:
+                best_score, best_try = score, (i + 1)
+
+            if hit:
+                if debug:
+                    self._dump_zone_png(zone_name, f"hit{i + 1}_{tpl_key}")
+                return True
+
+            if delay_ms > 0:
+                time.sleep(delay_ms / 1000.0)
+
+        if debug:
+            # общий контекст и лучшая неуспешная попытка
+            self._dump_window_with_zone(zone_name, f"miss_{tpl_key}_best{best_try}_score{best_score:.3f}")
+        return False
+
+    def _visible_once_debug(self, tpl_key: str, zone_name: str, thr: float) -> tuple[bool, float]:
+        """
+        Делает одну попытку матча, возвращает (hit, score).
+        Внутри использует тот же резолвер/захват, что и обычный путь.
+        """
+        from core.vision.capture.window_bgr_capture import capture_window_region_bgr
+        from core.vision.matching.template_matcher_2 import _resolve_path  # тот же резолвер, что и в матче
+        import cv2, numpy as np
+
+        win = self._win()
+        if not win:
+            return False, -1.0
+
+        l, t, r, b = self._zone(zone_name)
+        zone_img_bgr = capture_window_region_bgr(win, (l, t, r, b))
+        if zone_img_bgr is None or zone_img_bgr.size == 0:
+            return False, -1.0
+
+        zone_gray = cv2.cvtColor(zone_img_bgr, cv2.COLOR_BGR2GRAY)
+
+        parts = TEMPLATES.get(tpl_key)
+        if not parts:
+            return False, -1.0
+
+        tpath = _resolve_path(self.server, self._lang(), parts, engine="stabilize")
+        if not tpath:
+            return False, -1.0
+
+        templ = cv2.imread(tpath, cv2.IMREAD_GRAYSCALE)
+        if templ is None or templ.size == 0:
+            return False, -1.0
+
+        if zone_gray.shape[0] < templ.shape[0] or zone_gray.shape[1] < templ.shape[1]:
+            return False, -1.0
+
+        res = cv2.matchTemplate(zone_gray, templ, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(res)
+        score = float(max_val)
+        return (score >= float(thr), score)
 
     def _click_abs(self, abs_x: int, abs_y: int, *, hover_delay_s: float = 0.08, post_delay_s: float = 0.08) -> None:
         try:
@@ -189,9 +309,13 @@ class StabilizeEngine:
         """
         Кликаем в центр 'state' пока 'target_init' не виден в 'target' → Esc.
         """
+        # снимки зоны и общего окна для проверки
+        self._dump_zone_png("target", "before")
+        self._dump_window_with_zone("target", "before")
+
         end = time.time() + max(1.0, timeout_s)
         while time.time() < end:
-            if self._visible("target_init", "target", 0.70):
+            if self._visible("target_init", "target", 0.60, retries=5, delay_ms=60, debug=True):
                 self._press_esc(200)
                 return True
             self._click_zone_center("state", 80)
@@ -216,7 +340,6 @@ class StabilizeEngine:
         """
         anchor, travel_ms = self._anchors_for_location(location)
         if not anchor:
-            # нет якоря — нечего делать, считаем успехом
             return True
 
         ex = self._make_executor()
@@ -226,14 +349,15 @@ class StabilizeEngine:
             else:
                 self._send_target_en(ex, anchor, wait_ms=120)
 
+            # даём клиенту “пришевелиться”
             time.sleep(0.20)
-            if self._visible("target_init", "target", 0.86):
+
+            # ← 5 попыток поиска шаблона якоря
+            if self._visible("anchor_init", "target", 0.60, retries=5, delay_ms=1000):
                 break
         else:
-            # ни разу не подсветился target
             return False
 
-        # /attack и ожидание перемещения
         self._press_enter(80)
         self._enter_text("/attack")
         self._press_enter(80)

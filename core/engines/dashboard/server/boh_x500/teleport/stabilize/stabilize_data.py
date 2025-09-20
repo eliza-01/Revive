@@ -1,4 +1,4 @@
-﻿# core/engines/dashboard/server/boh/teleport/stabilize/stabilize_data.py
+﻿# core/engines/dashboard/server/boh_x500/teleport/stabilize/stabilize_data.py
 from typing import Dict, Tuple, List, Union
 
 ZoneLTRB = Tuple[int, int, int, int]
@@ -12,5 +12,6 @@ ZONES: Dict[str, ZoneDecl] = {
 }
 
 TEMPLATES: Dict[str, List[str]] = {
-    "target_init": ["common", "interface", "target_init.png"]
+    "target_init": ["common", "interface", "target_init.png"],
+    "anchor_init": ["common", "interface", "anchor_init.png"]
 }

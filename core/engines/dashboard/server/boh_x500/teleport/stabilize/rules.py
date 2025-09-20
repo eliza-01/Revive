@@ -1,4 +1,4 @@
-﻿# core/engines/dashboard/server/boh/teleport/stabilize/rules.py
+﻿# core/engines/dashboard/server/boh_x500/teleport/stabilize/rules.py
 from __future__ import annotations
 from typing import Any, Dict
 

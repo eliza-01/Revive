@@ -1,1 +1,1 @@
-﻿# core/engines/autofarm/server/boh/__init__.py
+﻿# core/engines/autofarm/server/boh_x500/__init__.py

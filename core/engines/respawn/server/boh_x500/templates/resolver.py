@@ -1,4 +1,4 @@
-﻿# core/engines/respawn/server/boh/templates/resolver.py
+﻿# core/engines/respawn/server/boh_x500/templates/resolver.py
 # Жёсткий, предсказуемый резолвер для шаблонов respawn-движка.
 # Теперь поддерживает плейсхолдер "<lang>", алиасы языков и языковые фолбэки.
 

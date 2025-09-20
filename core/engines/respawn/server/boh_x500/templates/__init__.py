@@ -1,1 +1,1 @@
-﻿# core/engines/respawn/server/boh/templates/__init__.py
+﻿# core/engines/respawn/server/boh_x500/templates/__init__.py

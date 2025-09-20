@@ -1,4 +1,4 @@
-﻿# core/engines/ui_guard/server/boh/templates/resolver.py
+﻿# core/engines/ui_guard/server/boh_x500/templates/resolver.py
 from __future__ import annotations
 import os
 from typing import Optional

@@ -1,1 +1,1 @@
-﻿# core/engines/dashboard/server/boh/teleport/stabilize/__init__.py
+﻿# core/engines/dashboard/server/boh_x500/teleport/stabilize/__init__.py

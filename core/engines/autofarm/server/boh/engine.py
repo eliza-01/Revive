@@ -280,7 +280,7 @@ def _press_key(ex: FlowOpExecutor, key_digit: str) -> bool:
     return bool(run_flow(flow, ex))
 
 def _press_esc(ex: FlowOpExecutor) -> bool:
-    return bool(run_flow([{"op": "send_arduino", "cmd": "esc", "delay_ms": 0}], ex))
+    return bool(run_flow([{"op": "send_arduino", "cmd": "esc", "delay_ms": 100}], ex))
 
 def _has_dot_colors_near_rect(
     win: Dict,
@@ -690,6 +690,8 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
 
         # таймаут боя
         if (time.time() - start_ts) > hard_timeout:
+            _press_esc(ex)
+            time.sleep(0.1)
             _press_esc(ex)
             console.log("[autofarm] таймаут атаки")
             return False

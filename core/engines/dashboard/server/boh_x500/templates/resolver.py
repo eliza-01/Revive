@@ -1,4 +1,4 @@
-﻿# core/engines/dashboard/server/boh/templates/resolver.py
+﻿# core/engines/dashboard/server/boh_x500/templates/resolver.py
 # Резолвер для шаблонов dashboard-движка.
 # Поддерживает плейсхолдер "<lang>", алиасы языков и вложенные подпапки.
 # Разрешает только реально существующие файлы под eng/, rus/ и common/.
