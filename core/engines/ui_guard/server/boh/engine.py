@@ -217,7 +217,7 @@ class UIGuardEngine:
                 self.controller.send("press_enter")
                 for _ in range(20):
                     self.controller.send("backspace_click")
-                    time.sleep(0.05)
+                    time.sleep(0.025)
 
                 time.sleep(0.06)
                 self.controller.send("enter_text /unstuck")
