@@ -49,9 +49,9 @@ def _target_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
 def _target_sys_message_zone_ltrb(win: Dict) -> Tuple[int, int, int, int]:
     """Зона для поиска sys_message."""
     w, h = int(win["width"]), int(win["height"])
-    zw, zh = 93, 40
-    l = 22
-    t = max(0, h - 220 - zh)
+    zw, zh = 120, 330
+    l = 0
+    t = max(0, h - 0 - zh)
     return (l, t, l + zw, t + zh)
 
 def _hp_palettes(server: str) -> Tuple[List[Tuple[int,int,int]], List[Tuple[int,int,int]], int]:

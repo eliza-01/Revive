@@ -55,6 +55,28 @@ if exist app\dep                       set "DATA_OPTS=!DATA_OPTS! --add-data app
 if exist documents                     set "DATA_OPTS=!DATA_OPTS! --add-data documents;documents"
 rem ВАЖНО: включаем core\config целиком (servers.manifest.json и т.п.)
 if exist core\config                   set "DATA_OPTS=!DATA_OPTS! --add-data core\config;core\config"
+
+rem HUD/локализация логгера
+if exist core\logging                 set "DATA_OPTS=!DATA_OPTS! --add-data core\logging;core\logging"
+
+rem === AutoFarm servers: уже включены целиком выше ===
+rem (оставляем как есть)
+
+rem === PlayerState: шаблоны цифр/лейблов ===
+for /d %%S in (core\engines\player_state\server\*) do (
+  if exist "%%S\templates" set "DATA_OPTS=!DATA_OPTS! --add-data "%%S\templates";"%%S\templates""
+)
+
+rem === UI Guard: шаблоны экранов/страниц/кнопок ===
+for /d %%S in (core\engines\ui_guard\server\*) do (
+  if exist "%%S\templates" set "DATA_OPTS=!DATA_OPTS! --add-data "%%S\templates";"%%S\templates""
+)
+
+rem === Respawn: окна респауна и кнопки ===
+for /d %%S in (core\engines\respawn\server\*) do (
+  if exist "%%S\templates" set "DATA_OPTS=!DATA_OPTS! --add-data "%%S\templates";"%%S\templates""
+)
+
 set "COLLECTS=!COLLECTS! --collect-submodules core.engines.autofarm.server"
 rem --- AutoFarm: включаем КАЖДЫЙ сервер целиком (без хардкода) ---
 for /d %%S in (core\engines\autofarm\server\*) do (
