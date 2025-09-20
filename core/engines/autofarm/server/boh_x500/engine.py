@@ -23,7 +23,14 @@ _RESTART_STREAK_LIMIT = 10
 # список исключенных целей в рамках одного цикла
 excluded_targets: set[str] = set()
 
+# NEW: список исключенных целей по ШАБЛОНАМ (template_probe)
+excluded_tpl_targets: set[str] = set()
+
 USER32 = ctypes.windll.user32
+
+# Логика «до удачной атаки или если все окажутся в этом списке» соблюдена:
+# удачная атака чистит оба списка;
+# если все шаблонные кандидаты оказались забаненными, мы очищаем excluded_tpl_targets в _template_probe_click(...) и начинаем заново.
 
 # -------- helpers (чисто низкоуровневые) --------
 def _res_path(*parts):
@@ -355,6 +362,12 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
         if not full_names:
             return False
 
+    # NEW: если ВСЕ кандидаты уже в шаблонном блэклисте — обнуляем его
+    if full_names and all(nm in excluded_tpl_targets for nm in full_names):
+        # все кандидаты по шаблонам уже забанены — не кликаем заново тот же,
+        # выходим False → верхний уровень попробует /targetnext или поиск по имени
+        return False
+
     controller = ctx_base["controller"]
 
     for nm in full_names:
@@ -363,6 +376,10 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
         _wait_if_paused(ctx_base)  # ← уважаем паузу
         if _abort(ctx_base):
             return False
+
+        # NEW: используем отдельный список для шаблонов
+        if nm in excluded_tpl_targets:
+            continue
 
         if nm in excluded_targets:
             continue
@@ -395,7 +412,14 @@ def _template_probe_click(ctx_base: Dict[str, Any], server: str, lang: str, win:
             continue
 
         _movenclick_client(controller, win, cx, cy)
+
+        # NEW: клик выше шаблона на 10px
+        cy_above = max(0, int(y) - 10)
+        time.sleep(0.10)  # короткая пауза, чтобы UI успел обновиться (по желанию)
+        _movenclick_client(controller, win, cx, cy_above)
+
         ctx_base["af_current_target_name"] = nm
+        ctx_base["af_last_acquire"] = "template"  # NEW: запоминаем способ
         return True
 
     return False
@@ -437,6 +461,7 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
     global _RESTART_STREAK, excluded_targets
     _RESTART_STREAK = 0
     excluded_targets.clear()
+    excluded_tpl_targets.clear()  # NEW
 
     server = (ctx_base.get("server") or "").lower()
     if not server:
@@ -516,14 +541,20 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                 current_alive = _target_alive_by_hp(win, server)
 
         if has_any and current_alive:
-            console.log("[autofarm] цель получена /targetnext")
-            ctx_base["af_current_target_name"] = None
+            acquired = ctx_base.get("af_last_acquire")
+            if acquired in (None, "", "targetnext"):
+                console.log("[autofarm] цель получена /targetnext")
+                ctx_base["af_current_target_name"] = None
+                ctx_base["af_last_acquire"] = "targetnext"
+            else:
+                console.log(f"[autofarm] цель подтверждена после {acquired}: {ctx_base.get('af_current_target_name')}")
 
             if _abort(ctx_base):
                 return False
             if _attack_cycle(ex, ctx_base, server, lang, win, cfg, cd_map):
                 _RESTART_STREAK = 0
                 excluded_targets.clear()
+                excluded_tpl_targets.clear()  # NEW
                 continue
             else:
                 if ctx_base.get("af_unvisible"):
@@ -531,9 +562,17 @@ def start(ctx_base: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
                     if _search_by_names(ex, ctx_base, server, lang, win, cfg, cd_map):
                         _RESTART_STREAK = 0
                         excluded_targets.clear()
+                        excluded_tpl_targets.clear()  # NEW
                         continue
                     _RESTART_STREAK += 1
                 else:
+                    # NEW: если бой упал по таймауту и цель была взята по шаблону — баним её в шаблонный список
+                    if ctx_base.get("af_hard_timeout") and ctx_base.get("af_last_acquire") == "template":
+                        nm = ctx_base.get("af_current_target_name")
+                        if nm:
+                            excluded_tpl_targets.add(nm)
+                            console.log(f"[autofarm] tpl-blacklist add: {nm}")
+                    ctx_base["af_hard_timeout"] = False
                     _RESTART_STREAK += 1
         else:
             if _search_by_names(ex, ctx_base, server, lang, win, cfg, cd_map):
@@ -594,6 +633,7 @@ def _search_by_names(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, 
 
             console.log(f"[autofarm] цель найдена: {nm}")
             ctx_base["af_current_target_name"] = nm
+            ctx_base["af_last_acquire"] = "name"  # NEW
             if _abort(ctx_base):
                 return False
 
@@ -622,6 +662,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
       5) Ранний чек "цель не видна" после двух прожимов.
     """
     press_count = 0                      # сколько атак прожали в ЭТОМ бою
+    ctx_base["af_hard_timeout"] = False  # NEW
     last_pressed_id: Optional[str] = None
 
     skills_cfg = list((cfg or {}).get("skills") or [])
@@ -695,6 +736,7 @@ def _attack_cycle(ex: FlowOpExecutor, ctx_base: Dict[str, Any], server: str, lan
         if (time.time() - start_ts) > hard_timeout:
             _press_esc(ex); time.sleep(0.1); _press_esc(ex)
             console.log("[autofarm] таймаут атаки")
+            ctx_base["af_hard_timeout"] = True  # NEW
             return False
 
         # проверка цели

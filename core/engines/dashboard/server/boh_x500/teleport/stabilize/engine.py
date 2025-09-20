@@ -315,7 +315,7 @@ class StabilizeEngine:
 
         end = time.time() + max(1.0, timeout_s)
         while time.time() < end:
-            if self._visible("target_init", "target", 0.60, retries=5, delay_ms=60, debug=True):
+            if self._visible("target_init", "target", 0.60, retries=5, delay_ms=60, debug=False):
                 self._press_esc(200)
                 return True
             self._click_zone_center("state", 80)
